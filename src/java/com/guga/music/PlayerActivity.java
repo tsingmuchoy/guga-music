@@ -23,6 +23,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     private SeekBar sb;
     private ListView lvQueue;
     private LyricsView lyView;
+    private android.widget.LinearLayout llQualityChips;
+    private final TextView[] chipViews = new TextView[5];
     private BiliApi api;
     private boolean seeking = false;
     private final Handler handler = new Handler();
@@ -66,6 +68,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         btnToggle = findViewById(R.id.btnToggle);
         btnMode = findViewById(R.id.btnMode);
         btnQuality = findViewById(R.id.btnQuality);
+        llQualityChips = findViewById(R.id.llQualityChips);
+        buildQualityChips();
         sb = findViewById(R.id.sbProgress);
         lvQueue = findViewById(R.id.lvQueue);
         lyView = findViewById(R.id.lyView);
@@ -85,7 +89,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         btnToggle.setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.toggle(); });
         findViewById(R.id.btnNext).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.next(true); });
         findViewById(R.id.btnPrev).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.prev(); });
-        btnQuality.setOnClickListener(v -> showQualityDialog());
+        btnQuality.setOnClickListener(v -> toggleQualityChips());
         btnMode.setOnClickListener(v -> {
             PlayerService s = PlayerService.get();
             if (s != null) {
@@ -130,23 +134,61 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     private void refreshQuality() {
         PlayerService s = PlayerService.get();
         if (s != null && btnQuality != null) btnQuality.setText(QUALITY_SHORT[s.getQualityTier()]);
+        if (s != null) styleQualityChips(s.getQualityTier());
     }
 
-    private void showQualityDialog() {
+    private void buildQualityChips() {
         PlayerService s = PlayerService.get();
-        if (s == null) return;
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("选择音质（立即生效）")
-                .setSingleChoiceItems(PlayerService.QUALITY_NAMES, s.getQualityTier(), (d, which) -> {
-                    s.setQualityTier(which);
-                    s.applyQualityChange();
-                    refreshQuality();
-                    Toast.makeText(this, "已切到「" + PlayerService.QUALITY_NAMES[which] + "」🎵", Toast.LENGTH_SHORT).show();
-                    d.dismiss();
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        int cur = s == null ? 2 : s.getQualityTier();
+        for (int i = 0; i < 5; i++) {
+            final int tier = i;
+            TextView chip = new TextView(this);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                    0, (int) (38 * getResources().getDisplayMetrics().density), 1);
+            lp.setMargins(3, 0, 3, 0);
+            chip.setLayoutParams(lp);
+            chip.setGravity(android.view.Gravity.CENTER);
+            chip.setText(QUALITY_SHORT[i]);
+            chip.setTextSize(13);
+            chip.setSingleLine(true);
+            chip.setOnClickListener(v -> {
+                PlayerService svc = PlayerService.get();
+                if (svc != null) {
+                    svc.setQualityTier(tier);
+                    svc.applyQualityChange();
+                    Toast.makeText(this, "已切到「" + PlayerService.QUALITY_NAMES[tier] + "」🎵", Toast.LENGTH_SHORT).show();
+                }
+                refreshQuality();
+                llQualityChips.postDelayed(() -> llQualityChips.setVisibility(View.GONE), 350);
+            });
+            chipViews[i] = chip;
+            llQualityChips.addView(chip);
+        }
+        styleQualityChips(cur);
     }
+
+    private void styleQualityChips(int cur) {
+        for (int i = 0; i < 5; i++) {
+            if (chipViews[i] == null) continue;
+            boolean on = i == cur;
+            chipViews[i].setBackgroundResource(on ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+            chipViews[i].setTextColor(ThemeUtil.color(this, on ? R.attr.gOnAccent : R.attr.gTextPri));
+            chipViews[i].setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        }
+    }
+
+    private void toggleQualityChips() {
+        if (llQualityChips.getVisibility() == View.VISIBLE) {
+            llQualityChips.setVisibility(View.GONE);
+        } else {
+            PlayerService s = PlayerService.get();
+            if (s != null) styleQualityChips(s.getQualityTier());
+            llQualityChips.setVisibility(View.VISIBLE);
+            llQualityChips.setAlpha(0f);
+            llQualityChips.animate().alpha(1f).setDuration(160).start();
+        }
+    }
+
 
     private String modeName(int m) {
         return m == PlayerService.MODE_LOOP ? "单曲循环" : m == PlayerService.MODE_SHUFFLE ? "随机播放" : "顺序播放";

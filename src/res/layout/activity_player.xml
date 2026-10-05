@@ -90,7 +90,15 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <LinearLayout
+        <LinearLayout
+        android:id="@+id/llQualityChips"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:visibility="gone" />
+
+<LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
@@ -101,6 +109,8 @@
 
         <TextView
             android:id="@+id/btnMode"
+            android:minWidth="44dp"
+            android:singleLine="true"
             android:layout_width="64dp"
             android:layout_height="52dp"
             android:gravity="center"
@@ -136,6 +146,8 @@
 
         <TextView
             android:id="@+id/btnQuality"
+            android:minWidth="54dp"
+            android:singleLine="true"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:layout_marginLeft="6dp"
