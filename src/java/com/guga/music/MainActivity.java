@@ -42,6 +42,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private boolean favShowingTracks = false;
     private final List<Track> displayTracks = new ArrayList<>();
     private final List<BiliApi.FavFolder> folders = new ArrayList<>();
+    private View llFavSwitch;
+    private TextView chipFavBili, chipFavLocal, btnNewLocal;
+    private boolean favLocalMode = false;
+    private final List<LocalDb.Playlist> localLists = new ArrayList<>();
+    private LocalDb localDb;
 
     private View llSearchBar, btnFavBack, svMine;
     private ListView lvMain;
@@ -100,13 +105,47 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         }
 
         lvMain.setOnItemClickListener((p, v, pos, id) -> {
-            if (tab == 1 && !favShowingTracks) {
+            if (tab == 1 && favLocalMode) {
+                if (pos < localLists.size()) {
+                    LocalDb.Playlist pl = localLists.get(pos);
+                    Intent it = new Intent(this, LocalPlaylistActivity.class);
+                    it.putExtra("pid", pl.id);
+                    it.putExtra("name", pl.name);
+                    startActivity(it);
+                }
+            } else if (tab == 1 && !favShowingTracks) {
                 if (pos < folders.size()) openFolder(folders.get(pos));
             } else if (tab != 3) {
                 if (pos < displayTracks.size()) playTracks(new ArrayList<>(displayTracks), pos);
             }
         });
         lvMain.setOnItemLongClickListener((p, v, pos, id) -> {
+            if (tab == 1 && favLocalMode) {
+                if (pos < localLists.size()) {
+                    final LocalDb.Playlist pl = localLists.get(pos);
+                    new android.app.AlertDialog.Builder(this)
+                            .setTitle(pl.name)
+                            .setItems(new String[]{"✏️ 重命名", "🗑️ 删除歌单"}, (d, w) -> {
+                                if (w == 0) {
+                                    PlaylistPicker.createDialog(this, "重命名歌单", pl.name, "保存", name -> {
+                                        localDb.renamePlaylist(pl.id, name);
+                                        showLocalLists();
+                                    });
+                                } else {
+                                    new android.app.AlertDialog.Builder(this)
+                                            .setMessage("删除歌单「" + pl.name + "」？里面记录的歌曲会一起删掉")
+                                            .setPositiveButton("删除", (d2, w2) -> {
+                                                localDb.deletePlaylist(pl.id);
+                                                showLocalLists();
+                                            })
+                                            .setNegativeButton("取消", null)
+                                            .show();
+                                }
+                            })
+                            .show();
+                }
+                return true;
+            }
             if (tab == 1 && !favShowingTracks) return false;
             if (tab != 3 && pos < displayTracks.size()) {
                 PlaylistPicker.show(this, displayTracks.get(pos));
@@ -145,7 +184,27 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             }
         });
         findViewById(R.id.btnSettings).setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
-        findViewById(R.id.btnLocal).setOnClickListener(v -> startActivity(new Intent(this, LocalPlaylistsActivity.class)));
+        localDb = new LocalDb(this);
+        llFavSwitch = findViewById(R.id.llFavSwitch);
+        chipFavBili = findViewById(R.id.chipFavBili);
+        chipFavLocal = findViewById(R.id.chipFavLocal);
+        btnNewLocal = findViewById(R.id.btnNewLocal);
+        chipFavBili.setOnClickListener(v -> {
+            favLocalMode = false;
+            styleFavChips();
+            favShowingTracks = false;
+            btnFavBack.setVisibility(View.GONE);
+            loadFolders();
+        });
+        chipFavLocal.setOnClickListener(v -> {
+            favLocalMode = true;
+            styleFavChips();
+            showLocalLists();
+        });
+        btnNewLocal.setOnClickListener(v -> PlaylistPicker.createDialog(this, name -> {
+            localDb.createPlaylist(name);
+            showLocalLists();
+        }));
 
         selectTab(0);
         hint("搜一首歌，开始听吧 🎧");
@@ -179,6 +238,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             onStateChanged(s.isPlaying());
         }
         if (tab == 3) refreshMine();
+        if (tab == 1 && favLocalMode) showLocalLists();
     }
 
     @Override
@@ -198,6 +258,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         svMine.setVisibility(i == 3 ? View.VISIBLE : View.GONE);
         lvMain.setVisibility(i == 3 ? View.GONE : View.VISIBLE);
         btnFavBack.setVisibility(i == 1 && favShowingTracks ? View.VISIBLE : View.GONE);
+        llFavSwitch.setVisibility(i == 1 && !favShowingTracks ? View.VISIBLE : View.GONE);
         tvHint.setVisibility(View.GONE);
         switch (i) {
             case 0:
@@ -208,7 +269,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             case 1:
                 favShowingTracks = false;
                 btnFavBack.setVisibility(View.GONE);
-                loadFolders();
+                llFavSwitch.setVisibility(View.VISIBLE);
+                styleFavChips();
+                if (favLocalMode) showLocalLists();
+                else loadFolders();
                 break;
             case 2:
                 showHistory();
@@ -280,6 +344,24 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         lvMain.setAdapter(folderAdapter);
         folderAdapter.notifyDataSetChanged();
         btnFavBack.setVisibility(View.GONE);
+        if (tab == 1) llFavSwitch.setVisibility(View.VISIBLE);
+    }
+
+    private void styleFavChips() {
+        chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
+        chipFavBili.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent));
+        chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+        chipFavLocal.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec));
+        btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
+    }
+
+    private void showLocalLists() {
+        localLists.clear();
+        localLists.addAll(localDb.playlists());
+        lvMain.setAdapter(localAdapter);
+        localAdapter.notifyDataSetChanged();
+        btnFavBack.setVisibility(View.GONE);
+        hint(localLists.isEmpty() ? "还没有本地歌单 🎵\n点右上角「＋ 新建」建一个\n或长按任意歌曲加入歌单" : null);
     }
 
     private void openFolder(BiliApi.FavFolder f) {
@@ -288,6 +370,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             @Override public void onOk(List<Track> v) {
                 if (tab != 1) return;
                 favShowingTracks = true;
+                llFavSwitch.setVisibility(View.GONE);
                 displayTracks.clear();
                 displayTracks.addAll(v);
                 lvMain.setAdapter(trackAdapter);
@@ -375,6 +458,19 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             ((TextView) cv.findViewById(R.id.tvTitle)).setText(t.title);
             String sub = (t.author == null ? "" : t.author) + " · " + Track.fmtDur(t.durationSec);
             ((TextView) cv.findViewById(R.id.tvSub)).setText(sub);
+            return cv;
+        }
+    };
+
+    private final BaseAdapter localAdapter = new BaseAdapter() {
+        @Override public int getCount() { return localLists.size(); }
+        @Override public Object getItem(int p) { return localLists.get(p); }
+        @Override public long getItemId(int p) { return localLists.get(p).id; }
+        @Override public View getView(int p, View cv, ViewGroup parent) {
+            if (cv == null) cv = LayoutInflater.from(MainActivity.this).inflate(R.layout.item_folder, parent, false);
+            LocalDb.Playlist pl = localLists.get(p);
+            ((TextView) cv.findViewById(R.id.tvFolderTitle)).setText("🎵 " + pl.name);
+            ((TextView) cv.findViewById(R.id.tvFolderCount)).setText(pl.count + " 首");
             return cv;
         }
     };

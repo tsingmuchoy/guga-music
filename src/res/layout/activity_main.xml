@@ -61,6 +61,58 @@
             android:textSize="14sp"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/llFavSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="16dp"
+            android:layout_marginRight="16dp"
+            android:layout_marginBottom="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/chipFavBili"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_chip_selected"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:paddingTop="7dp"
+                android:paddingBottom="7dp"
+                android:text="⭐ B站收藏夹"
+                android:textColor="?attr/gOnAccent"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/chipFavLocal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:background="@drawable/bg_chip_pill"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:paddingTop="7dp"
+                android:paddingBottom="7dp"
+                android:text="🎵 本地歌单"
+                android:textColor="?attr/gTextSec"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/btnNewLocal"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="right"
+                android:text="＋ 新建"
+                android:textColor="?attr/gAccent"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
         <!-- 内容区（可滚到悬浮栏下方） -->
         <FrameLayout
             android:layout_width="match_parent"
@@ -144,17 +196,6 @@
                             android:textSize="14sp"
                             android:textStyle="bold" />
                     </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/btnLocal"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:background="@drawable/bg_card"
-                        android:padding="16dp"
-                        android:text="🎵 本地歌单（自己建的歌单）"
-                        android:textColor="?attr/gTextPri"
-                        android:textSize="15sp" />
 
                     <TextView
                         android:id="@+id/btnSettings"
