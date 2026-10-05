@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootMain"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_ambient">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- 搜索栏（仅搜索页显示） -->
+        <LinearLayout
+            android:id="@+id/llSearchBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="12dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/etSearch"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input"
+                android:hint="搜歌名 / 歌手 / UP主"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:singleLine="true"
+                android:textColor="?attr/gTextPri"
+                android:textColorHint="?attr/gTextFaint"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/btnSearch"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginLeft="8dp"
+                android:background="@drawable/bg_chip_selected"
+                android:gravity="center"
+                android:paddingLeft="20dp"
+                android:paddingRight="20dp"
+                android:text="搜索"
+                android:textColor="?attr/gOnAccent"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 收藏返回栏 -->
+        <TextView
+            android:id="@+id/btnFavBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="16dp"
+            android:layout_marginBottom="4dp"
+            android:text="‹ 返回收藏夹列表"
+            android:textColor="?attr/gAccent"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <!-- 内容区（可滚到悬浮栏下方） -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <ListView
+                android:id="@+id/lvMain"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:divider="@null"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp"
+                android:paddingBottom="150dp" />
+
+            <ScrollView
+                android:id="@+id/svMine"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="140dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_card"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="16dp">
+
+                        <ImageView
+                            android:id="@+id/ivFace"
+                            android:layout_width="54dp"
+                            android:layout_height="54dp"
+                            android:contentDescription="头像" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="12dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvUname"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="未登录"
+                                android:textColor="?attr/gTextPri"
+                                android:textSize="17sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvMid"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:textColor="?attr/gTextFaint"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/btnLogin"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_chip_selected"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:paddingTop="9dp"
+                            android:paddingBottom="9dp"
+                            android:text="登录"
+                            android:textColor="?attr/gOnAccent"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/btnSettings"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_card"
+                        android:padding="16dp"
+                        android:text="⚙️ 设置（主题配色 / 音质 / 关于）"
+                        android:textColor="?attr/gTextPri"
+                        android:textSize="15sp" />
+                </LinearLayout>
+            </ScrollView>
+
+            <TextView
+                android:id="@+id/tvHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:textColor="?attr/gTextFaint"
+                android:textSize="15sp"
+                android:visibility="gone" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- 悬浮玻璃层：迷你播放条 + 底部标签栏（真实背景模糊） -->
+    <LinearLayout
+        android:id="@+id/llOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/llMini"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_bar_glass"
+            android:clickable="true"
+            android:elevation="14dp">
+
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingLeft="10dp"
+                android:paddingRight="6dp">
+
+                <ImageView
+                    android:id="@+id/ivMiniCover"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:contentDescription="封面" />
+
+                <TextView
+                    android:id="@+id/tvMiniTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="10dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="咕嘎音乐 · 点一首歌"
+                    android:textColor="?attr/gTextPri"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/btnMiniToggle"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:gravity="center"
+                    android:text="▶"
+                    android:textColor="?attr/gAccent"
+                    android:textSize="22sp" />
+
+                <TextView
+                    android:id="@+id/btnMiniNext"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:gravity="center"
+                    android:text="⏭"
+                    android:textColor="?attr/gTextPri"
+                    android:textSize="19sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_glass_rim" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/llTabs"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:layout_marginBottom="10dp"
+            android:layout_marginTop="2dp"
+            android:background="@drawable/bg_bar_glass"
+            android:elevation="14dp">
+
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tabSearch"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="🔍 搜索"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/tabFav"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="⭐ 收藏"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/tabHistory"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="🕘 历史"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/tabMine"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="🐧 我的"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_glass_rim" />
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>

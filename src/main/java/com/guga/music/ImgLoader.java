@@ -1,0 +1,121 @@
+package com.guga.music;
+
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Shader;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.LruCache;
+import android.widget.ImageView;
+
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/** 极简图片加载：内存缓存 + 异步下载（封面图） */
+public class ImgLoader {
+    private static final LruCache<String, Bitmap> CACHE = new LruCache<String, Bitmap>(12 * 1024 * 1024) {
+        @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
+    };
+    private static final ExecutorService POOL = Executors.newFixedThreadPool(4);
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
+
+    public static void load(ImageView iv, String url) {
+        loadInternal(iv, url, false);
+    }
+
+    /** 加载并合成黑胶唱片图（黑盘+纹路+圆形封面+中心点） */
+    public static void loadDisc(ImageView iv, String url) {
+        loadInternal(iv, url, true);
+    }
+
+    private static void loadInternal(ImageView iv, String url, boolean disc) {
+        if (url == null || url.isEmpty()) {
+            iv.setImageBitmap(null);
+            return;
+        }
+        // B 站封面大量是 http 地址，新系统默认拦截明文流量，统一升级 https
+        if (url.startsWith("http://")) url = "https://" + url.substring(7);
+        else if (url.startsWith("//")) url = "https:" + url;
+        final String furl = url;
+        final int accent = disc ? ThemeUtil.color(iv.getContext(), R.attr.gAccent) : 0;
+        String key = disc ? furl + "#disc" + accent : furl;
+        iv.setTag(key);
+        Bitmap hit = CACHE.get(key);
+        if (hit != null) {
+            iv.setImageBitmap(hit);
+            return;
+        }
+        iv.setImageBitmap(null);
+        POOL.execute(() -> {
+            try {
+                Bitmap src = CACHE.get(furl);
+                if (src == null) {
+                    HttpURLConnection c = (HttpURLConnection) new URL(furl).openConnection();
+                    c.setConnectTimeout(10000);
+                    c.setReadTimeout(10000);
+                    c.setRequestProperty("User-Agent", "Mozilla/5.0");
+                    c.setRequestProperty("Referer", "https://www.bilibili.com");
+                    InputStream in = c.getInputStream();
+                    src = BitmapFactory.decodeStream(in);
+                    in.close();
+                    if (src != null) CACHE.put(furl, src);
+                }
+                if (src != null) {
+                    Bitmap out = disc ? makeDisc(src, accent) : src;
+                    CACHE.put(key, out);
+                    MAIN.post(() -> {
+                        if (key.equals(iv.getTag())) iv.setImageBitmap(out);
+                    });
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private static Bitmap makeDisc(Bitmap cover, int accent) {
+        int size = 720;
+        Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float c = size / 2f;
+        // 黑胶盘面
+        p.setColor(0xFF0C0C0E);
+        cv.drawCircle(c, c, c - 2, p);
+        // 纹路
+        p.setStyle(Paint.Style.STROKE);
+        p.setColor(0xFF232327);
+        for (float r = c * 0.99f; r > c * 0.70f; r -= size * 0.028f) {
+            p.setStrokeWidth(2f);
+            cv.drawCircle(c, c, r, p);
+        }
+        p.setStyle(Paint.Style.FILL);
+        // 圆形封面（中心裁切）
+        float cr = c * 0.66f;
+        BitmapShader shader = new BitmapShader(cover, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        float scale = (cr * 2) / Math.min(cover.getWidth(), cover.getHeight());
+        android.graphics.Matrix m = new android.graphics.Matrix();
+        m.setScale(scale, scale);
+        m.postTranslate(c - cover.getWidth() * scale / 2f, c - cover.getHeight() * scale / 2f);
+        shader.setLocalMatrix(m);
+        p.setShader(shader);
+        cv.drawCircle(c, c, cr, p);
+        p.setShader(null);
+        // 封面外圈细环
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(3f);
+        p.setColor(0xFF3A3A40);
+        cv.drawCircle(c, c, cr + 3, p);
+        p.setStyle(Paint.Style.FILL);
+        // 中心轴孔
+        p.setColor(0xFF121417);
+        cv.drawCircle(c, c, size * 0.035f, p);
+        p.setColor(accent);
+        cv.drawCircle(c, c, size * 0.014f, p);
+        return out;
+    }
+}

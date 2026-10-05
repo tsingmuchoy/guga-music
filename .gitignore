@@ -1,0 +1,4 @@
+build-manual/
+*.apk
+*.idsig
+.DS_Store

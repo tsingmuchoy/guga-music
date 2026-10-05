@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="gBg" format="color" />
+    <attr name="gElevated" format="color" />
+    <attr name="gSurface" format="color" />
+    <attr name="gStroke" format="color" />
+    <attr name="gTextPri" format="color" />
+    <attr name="gTextSec" format="color" />
+    <attr name="gTextFaint" format="color" />
+    <attr name="gAccent" format="color" />
+    <attr name="gOnAccent" format="color" />
+    <attr name="gGlassHi" format="color" />
+    <attr name="gGlassLo" format="color" />
+    <attr name="gGlow1" format="color" />
+    <attr name="gGlow2" format="color" />
+    <attr name="gHiLine" format="color" />
+    <attr name="gRim" format="color" />
+    <attr name="gBarHi" format="color" />
+    <attr name="gBarLo" format="color" />
+    <attr name="gBottomShade" format="color" />
+</resources>

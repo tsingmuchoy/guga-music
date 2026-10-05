@@ -1,0 +1,127 @@
+package com.guga.music;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class SettingsActivity extends Activity {
+
+    private TextView btnQuality;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        ThemeUtil.apply(this);
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_settings);
+
+        buildThemeRows();
+
+        btnQuality = findViewById(R.id.btnQuality);
+        refreshQuality();
+        btnQuality.setOnClickListener(v -> {
+            android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
+            boolean low = !pf.getBoolean("lowq", false);
+            pf.edit().putBoolean("lowq", low).apply();
+            refreshQuality();
+            Toast.makeText(this, low ? "已切到省流模式" : "已切到最高音质", Toast.LENGTH_SHORT).show();
+        });
+
+        findViewById(R.id.btnClearHistory).setOnClickListener(v -> {
+            new HistoryDb(this).clear();
+            Toast.makeText(this, "播放历史已清空", Toast.LENGTH_SHORT).show();
+        });
+        refreshDiag();
+        findViewById(R.id.btnDiagRefresh).setOnClickListener(v -> refreshDiag());
+        findViewById(R.id.btnDiagClear).setOnClickListener(v -> {
+            Diag.clear(this);
+            refreshDiag();
+        });
+        findViewById(R.id.btnAbout).setOnClickListener(v ->
+                startActivity(new Intent(this, AboutActivity.class)));
+    }
+
+    private void refreshQuality() {
+        boolean low = getSharedPreferences("player", MODE_PRIVATE).getBoolean("lowq", false);
+        btnQuality.setText(low ? "音质：省流模式（点切换）" : "音质：最高音质（点切换）");
+    }
+
+    private void buildThemeRows() {
+        LinearLayout box = findViewById(R.id.llThemes);
+        String cur = ThemeUtil.currentId(this);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        for (ThemeUtil.Def d : ThemeUtil.DEFS) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(pad, pad, pad, pad);
+            row.setBackgroundResource(R.drawable.bg_card);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = (int) (10 * getResources().getDisplayMetrics().density);
+            row.setLayoutParams(lp);
+
+            // 三个预览色点：底色 / 表面 / 点缀
+            int[] dots = {d.bg, d.surface, d.accent};
+            for (int c : dots) {
+                View dot = new View(this);
+                int sz = (int) (22 * getResources().getDisplayMetrics().density);
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(sz, sz);
+                dlp.rightMargin = (int) (6 * getResources().getDisplayMetrics().density);
+                dot.setLayoutParams(dlp);
+                GradientDrawable g = new GradientDrawable();
+                g.setShape(GradientDrawable.OVAL);
+                g.setColor(c);
+                g.setStroke(1, 0x3AFFFFFF);
+                dot.setBackground(g);
+                row.addView(dot);
+            }
+
+            TextView name = new TextView(this);
+            name.setText(d.name);
+            name.setTextSize(15);
+            name.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+            LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            nlp.leftMargin = (int) (6 * getResources().getDisplayMetrics().density);
+            name.setLayoutParams(nlp);
+            row.addView(name);
+
+            if (d.id.equals(cur)) {
+                TextView check = new TextView(this);
+                check.setText("✓ 使用中");
+                check.setTextSize(13);
+                check.setTextColor(ThemeUtil.color(this, R.attr.gAccent));
+                row.addView(check);
+            }
+
+            row.setOnClickListener(v -> {
+                if (!d.id.equals(ThemeUtil.currentId(this))) {
+                    ThemeUtil.setTheme(this, d.id);
+                    Toast.makeText(this, "已切换到「" + d.name + "」", Toast.LENGTH_SHORT).show();
+                    recreate();
+                }
+            });
+            box.addView(row);
+        }
+    }
+
+    private void refreshDiag() {
+        TextView st = findViewById(R.id.tvDiagState);
+        TextView lg = findViewById(R.id.tvDiagLog);
+        if (st == null || lg == null) return;
+        PlayerService svc = PlayerService.get();
+        st.setText(svc == null ? "播放服务未运行（先回主页点一首歌再回来）" : svc.debugState());
+        lg.setText(Diag.read(this));
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshDiag();
+    }
+}
