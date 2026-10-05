@@ -96,6 +96,23 @@ return s;
 }
 
 // ---------------- 主流程 ----------------
+/** 歌词不对时换下一候选版本：序号 +1、清缓存、重新匹配 */
+public static void refetchNext(final Context ctx, final Track track, final BiliApi api, final Cb cb) {
+POOL.execute(() -> {
+Context app = ctx.getApplicationContext();
+android.content.SharedPreferences sp = app.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE);
+int next = sp.getInt("alt_" + track.bvid, 0) + 1;
+sp.edit().putInt("alt_" + track.bvid, next).apply();
+try {
+File dir = new File(app.getFilesDir(), "lyrics");
+new File(dir, track.bvid + ".lrc").delete();
+new File(dir, track.bvid + ".none").delete();
+} catch (Exception ignored) {}
+Result r = fetchSync(app, track, api);
+new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult(r));
+});
+}
+
 public static void fetchFor(final Context ctx, final Track track, final BiliApi api, final Cb cb) {
 POOL.execute(() -> {
 Result r = fetchSync(ctx.getApplicationContext(), track, api);
@@ -122,7 +139,8 @@ return new Result(new ArrayList<>(), "");
 
 // 1) 网易云匹配
 try {
-String lrc = neteaseLyrics(track);
+int alt = ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).getInt("alt_" + track.bvid, 0);
+String lrc = neteaseLyrics(track, alt);
 if (lrc!= null) {
 List<Line> lines = parseLrc(lrc);
 if (lines.size() >= 5) {
@@ -177,40 +195,94 @@ synchronized (lock) { box[0] = new ArrayList<>(); lock.notifyAll();}
 }
 
 // ---------------- 网易云 ----------------
-private static String neteaseLyrics(Track track) throws Exception {
-Set<String> queries = new java.util.LinkedHashSet<>();
+private static class Cand {
+long id; int group; long diff;
+Cand(long i, int g, long d) { id = i; group = g; diff = d; }
+}
+
+/** 名字归一化：去空格标点与版本括号，小写 */
+private static String normName(String s) {
+if (s == null) return "";
+return s.toLowerCase()
+.replaceAll("[\\s\\(\\)\\（\\）\\[\\]\\-·•、,，。!！?？:：;；'\"“”‘’]", "");
+}
+
+/** 候选歌名与目标的匹配分：100 同名 / 80 互含 / 50 字面高度重叠 / 0 无关 */
+private static int nameScore(String candName, List<String> hints) {
+String c = normName(candName);
+if (c.isEmpty()) return 0;
+int best = 0;
+for (String h : hints) {
+String n = normName(h);
+if (n.isEmpty()) continue;
+if (c.equals(n)) best = Math.max(best, 100);
+else if (c.contains(n) || n.contains(c)) best = Math.max(best, 80);
+else {
+Set<Character> set = new HashSet<>();
+for (char ch : n.toCharArray()) set.add(ch);
+int hit = 0;
+for (char ch : c.toCharArray()) if (set.contains(ch)) hit++;
+double ratio = c.length() == 0 ? 0 : (double) hit / c.length();
+if (ratio >= 0.6) best = Math.max(best, 50);
+}
+}
+return best;
+}
+
+private static String neteaseLyrics(Track track, int alt) throws Exception {
+List<String> hints = new ArrayList<>();
+java.util.regex.Matcher bm = Pattern.compile("《([^》]+)》").matcher(track.title == null ? "" : track.title);
+if (bm.find()) hints.add(bm.group(1));
 String cleaned = cleanTitle(track.title);
+if (!cleaned.isEmpty()) hints.add(cleaned);
+Set<String> queries = new java.util.LinkedHashSet<>();
 if (!cleaned.isEmpty()) queries.add(cleaned);
-if (track.title!= null &&!track.title.trim().isEmpty()) queries.add(track.title.trim());
-long wantDur = track.durationSec > 0? track.durationSec * 1000L: -1;
-for (String q: queries) {
-String url = "https://music.163.com/api/cloudsearch/pc?type=1&limit=8&offset=0&s="
+if (track.title != null && !track.title.trim().isEmpty()) queries.add(track.title.trim());
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+java.util.Map<Long, Cand> byId = new java.util.HashMap<>();
+for (String q : queries) {
+String url = "https://music.163.com/api/cloudsearch/pc?type=1&limit=10&offset=0&s="
 + URLEncoder.encode(q, "UTF-8");
 JSONObject r = new JSONObject(httpGet(url, "https://music.163.com"));
-JSONArray songs = r.optJSONObject("result") == null? null: r.getJSONObject("result").optJSONArray("songs");
+JSONArray songs = r.optJSONObject("result") == null ? null : r.getJSONObject("result").optJSONArray("songs");
 if (songs == null) continue;
-long bestId = -1, bestDiff = Long.MAX_VALUE;
-long nameId = -1, nameDiff = Long.MAX_VALUE;
 for (int i = 0; i < songs.length(); i++) {
-JSONObject s = songs.getJSONObject(i);
-long id = s.optLong("id");
-String name = s.optString("name");
-long dt = s.optLong("dt");
-long diff = wantDur > 0? Math.abs(dt - wantDur): 0;
-boolean nameHit =!cleaned.isEmpty() && (name.contains(cleaned) || cleaned.contains(name));
-if (wantDur > 0 && diff <= 12000 && diff < bestDiff) { bestDiff = diff; bestId = id;}
-if (nameHit && diff < nameDiff) { nameDiff = diff; nameId = id;}
+JSONObject sj = songs.getJSONObject(i);
+long id = sj.optLong("id");
+if (id <= 0 || byId.containsKey(id)) continue;
+String name = sj.optString("name");
+long dt = sj.optLong("dt");
+long diff = wantDur > 0 ? Math.abs(dt - wantDur) : Long.MAX_VALUE / 2;
+int score = nameScore(name, hints);
+boolean artistHit = false;
+JSONArray ars = sj.optJSONArray("ar");
+if (ars != null && track.title != null) {
+for (int a = 0; a < ars.length(); a++) {
+String an = ars.getJSONObject(a).optString("name");
+if (an.length() >= 2 && track.title.contains(an)) { artistHit = true; break; }
 }
-long pick = bestId > 0? bestId: nameId;
-if (pick > 0) {
+}
+int group;
+if (score >= 80) group = 0;                       // 歌名对得上：主池
+else if (score == 50 && artistHit) group = 1;     // 歌名像 + 歌手对得上
+else if (score == 0 && artistHit && diff <= 5000) group = 2; // 同歌手 + 时长几乎一致
+else continue; // 仅时长相近的名字无关候选一律不要——宁缺毋错
+byId.put(id, new Cand(id, group, diff));
+}
+}
+List<Cand> pool = new ArrayList<>(byId.values());
+Collections.sort(pool, (a, b) -> a.group != b.group ? Integer.compare(a.group, b.group)
+: Long.compare(a.diff, b.diff));
+if (pool.isEmpty()) return null;
+for (int k = 0; k < pool.size(); k++) {
+Cand c = pool.get(Math.floorMod(alt + k, pool.size()));
 JSONObject lr = new JSONObject(httpGet(
-"https://music.163.com/api/song/lyric?lv=1&kv=1&tv=-1&id=" + pick,
+"https://music.163.com/api/song/lyric?lv=1&kv=1&tv=-1&id=" + c.id,
 "https://music.163.com"));
 JSONObject lrc = lr.optJSONObject("lrc");
-if (lrc!= null) {
+if (lrc != null) {
 String text = lrc.optString("lyric");
-if (text!= null && text.contains("[")) return text;
-}
+if (text != null && text.contains("[")) return text;
 }
 }
 return null;

@@ -17,7 +17,7 @@ import java.util.List;
 /** 全屏歌词页：自动滚动跟随播放，点任意一行跳到那句 */
 public class LyricsActivity extends Activity {
 
-    private TextView tvSong, tvSource, tvEmpty;
+    private TextView tvSong, tvSource, tvEmpty, btnFix;
     private ListView lv;
     private List<Lyrics.Line> lines = new ArrayList<>();
     private int curIdx = -2;
@@ -49,6 +49,7 @@ public class LyricsActivity extends Activity {
         tvSong = findViewById(R.id.tvSongTitle);
         tvSource = findViewById(R.id.tvSource);
         tvEmpty = findViewById(R.id.tvEmpty);
+        btnFix = findViewById(R.id.btnFixLyrics);
         lv = findViewById(R.id.lvLyrics);
         lv.setAdapter(adapter);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
@@ -75,18 +76,34 @@ public class LyricsActivity extends Activity {
         final Track t = s.current();
         tvSong.setText(t.title);
         tvSource.setText("歌词加载中…");
-        Lyrics.fetchFor(this, t, new BiliApi(getApplicationContext()), r -> {
+        loadLyrics(t, false);
+        btnFix.setOnClickListener(v -> {
+            btnFix.setVisibility(View.GONE);
+            tvSource.setText("正在换一版歌词…");
+            loadLyrics(t, true);
+        });
+    }
+
+    private void loadLyrics(final Track t, boolean next) {
+        BiliApi api = new BiliApi(getApplicationContext());
+        Lyrics.Cb cb = r -> {
             if (r.has()) {
                 lines = r.lines;
+                tvEmpty.setVisibility(View.GONE);
                 tvSource.setText("来源：" + r.source + "（点任意一行可跳转）");
+                btnFix.setVisibility(r.source.contains("网易云") ? View.VISIBLE : View.GONE);
                 adapter.notifyDataSetChanged();
                 curIdx = -2;
+                if (next) android.widget.Toast.makeText(this, "已换一版歌词 🎵", android.widget.Toast.LENGTH_SHORT).show();
             } else {
                 tvSource.setText("");
-                tvEmpty.setText("这首歌暂时没找到歌词 😢\n可以在网易云有歌词的版本里再搜搜看");
+                btnFix.setVisibility(View.GONE);
+                tvEmpty.setText(next ? "没有其他候选版本了 😢" : "这首歌暂时没找到歌词 😢");
                 tvEmpty.setVisibility(View.VISIBLE);
             }
-        });
+        };
+        if (next) Lyrics.refetchNext(this, t, api, cb);
+        else Lyrics.fetchFor(this, t, api, cb);
     }
 
     @Override protected void onResume() {

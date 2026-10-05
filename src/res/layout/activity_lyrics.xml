@@ -46,6 +46,18 @@
                 android:textColor="?attr/gTextFaint"
                 android:textSize="12sp" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/btnFixLyrics"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:paddingLeft="10dp"
+            android:paddingRight="2dp"
+            android:text="歌词不对？换一版 ⟳"
+            android:textColor="?attr/gAccent"
+            android:textSize="12sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <FrameLayout

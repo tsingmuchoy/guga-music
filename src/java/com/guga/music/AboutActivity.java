@@ -25,6 +25,29 @@ public class AboutActivity extends Activity {
                 android.widget.Toast.makeText(this, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show();
             }
         });
+        findViewById(R.id.tvGithub).setOnClickListener(v -> {
+            try {
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://github.com/tsingmuchoy/guga-music")));
+            } catch (Exception e) {
+                android.widget.Toast.makeText(this, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
+        final TextView tvHint = findViewById(R.id.tvUpdateHint);
+        tvHint.setText("当前版本 v" + UpdateChecker.currentVersion(this) + " · 打开 App 时也会每天自动检查一次");
+        findViewById(R.id.tvUpdate).setOnClickListener(v -> {
+            tvHint.setText("正在检查更新…");
+            UpdateChecker.check(this, (info, err) -> {
+                if (info != null) {
+                    tvHint.setText("发现新版本 v" + info.version + " 🎉");
+                    UpdateChecker.showUpdateDialog(this, info);
+                } else if (err != null) {
+                    tvHint.setText("检查失败（网络原因），稍后再试");
+                } else {
+                    tvHint.setText("已是最新版啦 ✅ 当前 v" + UpdateChecker.currentVersion(this));
+                }
+            });
+        });
         findViewById(R.id.tvEmail).setOnClickListener(v -> {
             android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             cm.setPrimaryClip(android.content.ClipData.newPlainText("email", "tsingmu35607@gmail.com"));

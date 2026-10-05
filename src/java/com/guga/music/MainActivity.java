@@ -56,6 +56,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_main);
+        UpdateChecker.autoCheck(this);
         api = new BiliApi(this);
         history = new HistoryDb(this);
         PlayerService.ensureStarted(this);
