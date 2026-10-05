@@ -209,10 +209,26 @@ public class PlayerService extends Service {
     public void seekTo(int ms) { if (prepared) mp.seekTo(ms); }
 
     public void playQueue(List<Track> tracks, int start) {
+        Track target = tracks != null && start >= 0 && start < tracks.size() ? tracks.get(start) : null;
+        Track cur = current();
+        if (target != null && cur != null && target.bvid != null && target.bvid.equals(cur.bvid)
+                && preparing && sameQueue(tracks)) {
+            Diag.log(this, "（重复点播已合并：这首正在加载中）");
+            return;
+        }
         queue.clear();
         queue.addAll(tracks);
         index = Math.max(0, Math.min(start, queue.size() - 1));
         startTrack();
+    }
+
+    private boolean sameQueue(List<Track> tracks) {
+        if (tracks.size() != queue.size()) return false;
+        for (int i = 0; i < tracks.size(); i++) {
+            String a = tracks.get(i).bvid, b = queue.get(i).bvid;
+            if (a == null ? b != null : !a.equals(b)) return false;
+        }
+        return true;
     }
 
     public void playAt(int i) {
@@ -308,6 +324,7 @@ public class PlayerService extends Service {
         updateNotification();
         requestFocus();
         persistState();
+        armStall();
         resolveAndPlay(t, token, false);
     }
 
@@ -345,10 +362,12 @@ public class PlayerService extends Service {
 
     private void fetchAndPlay(final Track t, final int token) {
         prepareStartAt = System.currentTimeMillis();
+        final long fetchStart = System.currentTimeMillis();
         final int seq = ++fetchSeq;
         api.playUrl(t, activeTier, new BiliApi.Cb<String[]>() {
             @Override public void onOk(String[] urls) {
                 if (token != playToken || seq != fetchSeq) return;
+                Diag.log(PlayerService.this, "🔗 取址完成（" + ((System.currentTimeMillis() - fetchStart) + 500) / 1000 + " 秒）");
                 backupUrl = urls.length > 1 ? urls[1] : null;
                 curStreamKind = urls.length > 2 && urls[2] != null ? urls[2] : "aac";
                 if ("flac".equals(curStreamKind) && flacBad.contains(t.bvid) && !downgradeTried) {
@@ -396,16 +415,23 @@ public class PlayerService extends Service {
         }
     }
 
-    /** 卡死巡检：每 4 秒看一眼，只要还在加载且 12 秒无进展，就走回收链
-     *  （备用地址 -> 重新取址 -> 报错跳歌）。所有 prepareAsync 都经 tryStream 挂上它。 */
+    /** 加载看门狗：从 startTrack 起全程巡检（取 cid -> 取址 -> prepare）。
+     *  流阶段主节点 6 秒没就绪就提前切备用节点；12 秒无进展走完整回收链
+     *  （备用地址 -> 重新解析取址 -> 报错跳歌）。 */
     private void armStall() {
         cancelWatchdog();
         final int token = playToken;
         watchdogTask = () -> {
             if (token != playToken || prepared || !preparing) return;
             long idle = System.currentTimeMillis() - prepareStartAt;
+            if (backupUrl != null && !backupTried && idle >= 6000) {
+                Diag.log(this, "⏩ 主节点 6 秒没动静，提前切备用节点");
+                backupTried = true;
+                prepareStartAt = System.currentTimeMillis();
+                if (tryStream(backupUrl)) return;
+            }
             if (idle < 12000) {
-                watchdog.postDelayed(watchdogTask, 4000);
+                watchdog.postDelayed(watchdogTask, 3000);
                 return;
             }
             Diag.log(this, "⏱ 卡死回收触发（已 " + (idle / 1000) + " 秒无进展）");
@@ -417,13 +443,13 @@ public class PlayerService extends Service {
             if (!refetchTried && refetchTrack != null) {
                 refetchTried = true;
                 api.invalidateMixin();
-                fetchAndPlay(refetchTrack, token);
+                resolveAndPlay(refetchTrack, token, true);
                 return;
             }
             preparing = false;
             onPlayError("加载超时，已自动跳下一首");
         };
-        watchdog.postDelayed(watchdogTask, 4000);
+        watchdog.postDelayed(watchdogTask, 3000);
     }
 
     private void cancelWatchdog() {
