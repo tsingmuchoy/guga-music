@@ -55,25 +55,18 @@ public class UpdateChecker {
             Info found = null;
             String err = null;
             try {
-                String json = Lyrics.httpGet(API, null);
-                JSONObject r = new JSONObject(json);
-                String tag = r.optString("tag_name").replaceFirst("^v", "");
-                if (cmp(tag, currentVersion(ctx)) > 0) {
+                String tag = latestTag();
+                if (tag == null) {
+                    err = "没读到最新版本信息";
+                } else if (cmp(tag, currentVersion(ctx)) > 0) {
                     found = new Info();
                     found.version = tag;
-                    String body = r.optString("body");
-                    found.notes = body.length() > 700 ? body.substring(0, 700) + "…" : body;
-                    JSONArray assets = r.optJSONArray("assets");
-                    if (assets != null) {
-                        for (int i = 0; i < assets.length(); i++) {
-                            JSONObject a = assets.getJSONObject(i);
-                            if (a.optString("name").endsWith(".apk")) {
-                                found.apkUrl = a.optString("browser_download_url");
-                                break;
-                            }
-                        }
+                    found.apkUrl = "https://github.com/tsingmuchoy/guga-music/releases/download/v"
+                            + tag + "/guga-music-v" + tag + ".apk";
+                    found.notes = fetchNotes(tag);
+                    if (found.notes == null || found.notes.isEmpty()) {
+                        found.notes = "新版来啦 🎉 点「立即更新」下载安装（完整更新日志可在 GitHub 查看）";
                     }
-                    if (found.apkUrl == null) found = null;
                 }
             } catch (Exception e) {
                 err = e.getMessage();
@@ -82,6 +75,46 @@ public class UpdateChecker {
             final String er = err;
             new Handler(Looper.getMainLooper()).post(() -> cb.onResult(f, er));
         }).start();
+    }
+
+    /** 不走 GitHub API（有每小时 60 次限额，手机共享 IP 很容易被限）：
+     *  访问 releases/latest 的重定向地址，从最终 URL 里取最新 tag */
+    private static String latestTag() throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                new java.net.URL("https://github.com/tsingmuchoy/guga-music/releases/latest").openConnection();
+        c.setConnectTimeout(8000);
+        c.setReadTimeout(10000);
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        c.getResponseCode();
+        String eff = c.getURL().toString();
+        c.disconnect();
+        int i = eff.indexOf("/tag/");
+        if (i < 0) return null;
+        String tag = eff.substring(i + 5);
+        if (tag.startsWith("v")) tag = tag.substring(1);
+        return tag.matches("[0-9]+(\\.[0-9]+)*") ? tag : null;
+    }
+
+    /** 更新日志尽力而为：走 API 取一次，失败就空着（不影响检测本身） */
+    private static String fetchNotes(String tag) {
+        try {
+            String json = Lyrics.httpGet(API, null);
+            JSONObject r = new JSONObject(json);
+            if (tag.equals(r.optString("tag_name").replaceFirst("^v", ""))) {
+                JSONArray assets = r.optJSONArray("assets");
+                if (assets != null) {
+                    for (int i = 0; i < assets.length(); i++) {
+                        JSONObject a = assets.getJSONObject(i);
+                        if (a.optString("name").endsWith(".apk")) {
+                            // 资产在，说明发布完整
+                            String body = r.optString("body");
+                            return body.length() > 700 ? body.substring(0, 700) + "…" : body;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "";
     }
 
     /** 打开 App 时的静默自动检查：一天最多一次，有新版才弹窗 */
