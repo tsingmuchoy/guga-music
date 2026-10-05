@@ -92,9 +92,15 @@ public class SettingsActivity extends Activity {
 
             row.setOnClickListener(v -> {
                 PlayerService s2 = PlayerService.get();
-                if (s2 != null) s2.setQualityTier(t);
-                else getSharedPreferences("player", MODE_PRIVATE).edit().putInt("quality_tier", t).apply();
-                Toast.makeText(this, "音质已切到「" + PlayerService.QUALITY_NAMES[t] + "」（下一首生效）",
+                boolean hasTrack = s2 != null && s2.current() != null;
+                if (s2 != null) {
+                    s2.setQualityTier(t);
+                    s2.applyQualityChange();
+                } else {
+                    getSharedPreferences("player", MODE_PRIVATE).edit().putInt("quality_tier", t).apply();
+                }
+                Toast.makeText(this, "音质已切到「" + PlayerService.QUALITY_NAMES[t] + "」"
+                                + (hasTrack ? "，当前歌曲已原地切换 🎵" : ""),
                         Toast.LENGTH_SHORT).show();
                 buildQualityRows();
             });

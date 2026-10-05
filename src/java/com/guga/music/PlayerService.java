@@ -57,6 +57,7 @@ public class PlayerService extends Service {
     private String curStreamKind = "aac";    // 本次取到的实际流类型：aac / flac / dolby
     private boolean downgradeTried = false;  // 高音质流报错后降到 192K 的重试是否已用
     private boolean handlingError = false;   // 正在处理一条报错时，吞掉播放器连环补发的旧报错
+    private boolean restartPaused = false;   // 音质原地重载后保持暂停（原本是暂停状态时）
     private final java.util.Set<String> flacBad = new java.util.HashSet<>(); // 本次运行内已知 FLAC 损坏的歌（bvid）
     private long prepareStartAt = 0;
     private int fetchSeq = 0;
@@ -106,8 +107,13 @@ public class PlayerService extends Service {
                 ps.edit().remove("pos").remove("pos_bvid").apply();
             } catch (Exception ignored) {}
             failStreak = 0;
-            m.start();
-            setPlaying(true);
+            if (restartPaused) {
+                restartPaused = false;
+                setPlaying(false);
+            } else {
+                m.start();
+                setPlaying(true);
+            }
             updateNotification();
         });
         mp.setOnCompletionListener(m -> onComplete());
@@ -180,6 +186,22 @@ public class PlayerService extends Service {
     public void setQualityTier(int tier) {
         getSharedPreferences("player", MODE_PRIVATE).edit()
                 .putInt("quality_tier", Math.max(0, Math.min(4, tier))).apply();
+    }
+
+    /** 设置里切换音质后调用：当前歌曲原地以新档位重载，进度与播放/暂停状态都保持 */
+    public void applyQualityChange() {
+        Track t = current();
+        if (t == null) return;
+        if (!prepared && !playing && !preparing) return; // 还没播过：新档位下次播放自然生效
+        int pos = 0;
+        try { pos = prepared ? mp.getCurrentPosition() : 0; } catch (Exception ignored) {}
+        if (pos > 3000) {
+            getSharedPreferences("player_state", MODE_PRIVATE).edit()
+                    .putInt("pos", pos).putString("pos_bvid", t.bvid).apply();
+        }
+        restartPaused = !playing;
+        Diag.log(this, "🔀 音质切换为「" + QUALITY_NAMES[getQualityTier()] + "」，当前歌曲原地重载（进度 " + (pos / 1000) + "s）");
+        startTrack();
     }
 
     public int getPosition() { try { return prepared ? mp.getCurrentPosition() : 0; } catch (Exception e) { return 0; } }
