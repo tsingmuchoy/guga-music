@@ -272,14 +272,56 @@ public class BiliApi {
         }, cb);
     }
 
-    /** 返回 {主地址, 备用地址(可空)}；优先 AAC 流（MediaPlayer 兼容最好），FLAC/杜比仅兜底 */
-    public void playUrl(Track t, boolean lowQuality, Cb<String[]> cb) {
+    // 音质档位：0=64K 1=132K 2=192K 3=Hi-Res(FLAC) 4=杜比全景声
+    static final int TIER_64K = 0, TIER_132K = 1, TIER_192K = 2, TIER_HIRES = 3, TIER_DOLBY = 4;
+
+    private static class StreamCand {
+        int rank;          // 档位 0..4
+        int bandwidth;
+        String baseUrl;
+        String backupUrl;
+        String kind;       // aac / flac / dolby
+    }
+
+    private static StreamCand cand(JSONObject a, int rank, String kind) {
+        if (a == null) return null;
+        String base = a.optString("baseUrl");
+        if (base.isEmpty()) base = a.optString("base_url");
+        if (base.isEmpty()) return null;
+        StreamCand c = new StreamCand();
+        c.rank = rank;
+        c.kind = kind;
+        c.baseUrl = base;
+        c.bandwidth = a.optInt("bandwidth");
+        JSONArray bk = a.optJSONArray("backupUrl");
+        if (bk == null) bk = a.optJSONArray("backup_url");
+        if (bk != null && bk.length() > 0) c.backupUrl = bk.optString(0);
+        return c;
+    }
+
+    /** AAC 流的档位：优先按 B 站流 id（30216/30232/30280），未知 id 按带宽估算 */
+    private static int aacRank(JSONObject a) {
+        int id = a.optInt("id");
+        if (id == 30216) return TIER_64K;
+        if (id == 30232) return TIER_132K;
+        if (id == 30280) return TIER_192K;
+        int bw = a.optInt("bandwidth");
+        if (bw > 0 && bw < 100000) return TIER_64K;
+        if (bw >= 200000) return TIER_192K;
+        return TIER_132K;
+    }
+
+    /**
+     * 按档位取播放地址。返回 {主地址, 备用地址(可空), 实际流类型 aac/flac/dolby}。
+     * 选流规则：精确命中所选档 > 不高于所选档的最高档 > 全部比所选档高时取最低档。
+     */
+    public void playUrl(Track t, int tier, Cb<String[]> cb) {
         run(() -> {
             prepare();
             Map<String, String> p = new HashMap<>();
             p.put("bvid", t.bvid);
             p.put("cid", String.valueOf(t.cid));
-            p.put("fnval", "16");
+            p.put("fnval", "4048"); // 请求 DASH + FLAC + 杜比等全部流
             p.put("fnver", "0");
             p.put("fourk", "1");
             String url = "https://api.bilibili.com/x/player/wbi/playurl?" + Wbi.signQuery(p, mixin());
@@ -288,25 +330,66 @@ public class BiliApi {
             JSONObject d = j.getJSONObject("data");
             JSONObject dash = d.optJSONObject("dash");
             if (dash != null) {
-                JSONArray auds = dash.getJSONArray("audio");
-                JSONObject bestAac = null, bestAny = null;
-                for (int i = 0; i < auds.length(); i++) {
-                    JSONObject a = auds.getJSONObject(i);
-                    int bw = a.optInt("bandwidth");
-                    String codecs = a.optString("codecs");
-                    if (bestAny == null || (lowQuality ? bw < bestAny.optInt("bandwidth") : bw > bestAny.optInt("bandwidth"))) bestAny = a;
-                    if (codecs.startsWith("mp4a")) {
-                        if (bestAac == null || (lowQuality ? bw < bestAac.optInt("bandwidth") : bw > bestAac.optInt("bandwidth"))) bestAac = a;
+                List<StreamCand> cands = new ArrayList<>();
+                JSONArray auds = dash.optJSONArray("audio");
+                if (auds != null) {
+                    for (int i = 0; i < auds.length(); i++) {
+                        JSONObject a = auds.getJSONObject(i);
+                        String codecs = a.optString("codecs").toLowerCase();
+                        StreamCand c;
+                        if (codecs.startsWith("mp4a")) c = cand(a, aacRank(a), "aac");
+                        else if (codecs.startsWith("ec-3") || codecs.startsWith("ac-3")) c = cand(a, TIER_DOLBY, "dolby");
+                        else if (codecs.contains("flac")) c = cand(a, TIER_HIRES, "flac");
+                        else c = cand(a, aacRank(a), "aac");
+                        if (c != null) cands.add(c);
                     }
                 }
-                JSONObject pick = bestAac != null ? bestAac : bestAny;
-                String backup = null;
-                JSONArray bk = pick.optJSONArray("backupUrl");
-                if (bk != null && bk.length() > 0) backup = bk.getString(0);
-                return new String[]{pick.getString("baseUrl"), backup};
+                // Hi-Res：dash.flac.audio（部分响应里 FLAC 也直接出现在 audio 列表，已在上面处理）
+                JSONObject flac = dash.optJSONObject("flac");
+                if (flac != null) {
+                    StreamCand c = cand(flac.optJSONObject("audio"), TIER_HIRES, "flac");
+                    if (c != null) cands.add(c);
+                }
+                // 杜比：dash.dolby.audio[]
+                JSONObject dolby = dash.optJSONObject("dolby");
+                if (dolby != null) {
+                    JSONArray da = dolby.optJSONArray("audio");
+                    if (da != null) {
+                        for (int i = 0; i < da.length(); i++) {
+                            StreamCand c = cand(da.getJSONObject(i), TIER_DOLBY, "dolby");
+                            if (c != null) cands.add(c);
+                        }
+                    }
+                }
+                if (!cands.isEmpty()) {
+                    StreamCand pick = null;
+                    // 1) 精确命中（同档取带宽最高）
+                    for (StreamCand c : cands) {
+                        if (c.rank == tier && (pick == null || c.bandwidth > pick.bandwidth)) pick = c;
+                    }
+                    // 2) 不高于所选档的最高档
+                    if (pick == null) {
+                        int bestRank = -1;
+                        for (StreamCand c : cands) if (c.rank < tier && c.rank > bestRank) bestRank = c.rank;
+                        if (bestRank >= 0) {
+                            for (StreamCand c : cands) {
+                                if (c.rank == bestRank && (pick == null || c.bandwidth > pick.bandwidth)) pick = c;
+                            }
+                        }
+                    }
+                    // 3) 全部比所选档高：取最低档
+                    if (pick == null) {
+                        int minRank = Integer.MAX_VALUE;
+                        for (StreamCand c : cands) if (c.rank < minRank) minRank = c.rank;
+                        for (StreamCand c : cands) {
+                            if (c.rank == minRank && (pick == null || c.bandwidth > pick.bandwidth)) pick = c;
+                        }
+                    }
+                    return new String[]{pick.baseUrl, pick.backupUrl, pick.kind};
+                }
             }
             JSONArray durl = d.optJSONArray("durl");
-            if (durl != null && durl.length() > 0) return new String[]{durl.getJSONObject(0).getString("url"), null};
+            if (durl != null && durl.length() > 0) return new String[]{durl.getJSONObject(0).getString("url"), null, "aac"};
             throw new Exception("该视频没有可播放的音频流");
         }, cb);
     }

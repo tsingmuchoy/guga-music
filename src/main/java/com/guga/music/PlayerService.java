@@ -53,6 +53,9 @@ public class PlayerService extends Service {
     private boolean backupTried = false;
     private boolean refetchTried = false;
     private Track refetchTrack = null;
+    private int activeTier = 2;              // 本首歌实际请求的音质档位（降档重试会改它）
+    private String curStreamKind = "aac";    // 本次取到的实际流类型：aac / flac / dolby
+    private boolean downgradeTried = false;  // 高音质流报错后降到 192K 的重试是否已用
     private long prepareStartAt = 0;
     private int fetchSeq = 0;
     private int playToken = 0;
@@ -108,6 +111,15 @@ public class PlayerService extends Service {
         mp.setOnErrorListener((m, what, extra) -> {
             cancelWatchdog();
             Diag.log(this, "✖ 播放器报错 what=" + what + " extra=" + extra);
+            // 高音质流（FLAC/杜比）报错：多半是设备解码不支持，先降到 192K AAC 重取一次，别直接跳歌
+            if (("flac".equals(curStreamKind) || "dolby".equals(curStreamKind))
+                    && !downgradeTried && refetchTrack != null) {
+                downgradeTried = true;
+                activeTier = BiliApi.TIER_192K;
+                Diag.log(this, "⚠ 高音质流（" + curStreamKind + "）播放失败，降到 192K 重试");
+                fetchAndPlay(refetchTrack, playToken);
+                return true;
+            }
             // 主地址失败 -> 用备用 CDN 地址重试
             if (backupUrl != null && !backupTried) {
                 backupTried = true;
@@ -144,8 +156,20 @@ public class PlayerService extends Service {
         int m = (getMode() + 1) % 3;
         getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
     }
-    public boolean isLowQuality() { return getSharedPreferences("player", MODE_PRIVATE).getBoolean("lowq", false); }
-    public void setLowQuality(boolean v) { getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("lowq", v).apply(); }
+    public static final String[] QUALITY_NAMES = {
+            "64K 省流", "132K 标准", "192K 高清", "Hi-Res 无损（需大会员）", "杜比全景声（需大会员）"};
+
+    /** 音质档位 0-4，默认 192K(2)；旧版 lowq=true 的用户映射到 64K(0) */
+    public int getQualityTier() {
+        android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
+        if (pf.contains("quality_tier")) return Math.max(0, Math.min(4, pf.getInt("quality_tier", 2)));
+        return pf.getBoolean("lowq", false) ? 0 : 2;
+    }
+
+    public void setQualityTier(int tier) {
+        getSharedPreferences("player", MODE_PRIVATE).edit()
+                .putInt("quality_tier", Math.max(0, Math.min(4, tier))).apply();
+    }
 
     public int getPosition() { try { return prepared ? mp.getCurrentPosition() : 0; } catch (Exception e) { return 0; } }
     public int getDuration() { try { return prepared ? mp.getDuration() : 0; } catch (Exception e) { return 0; } }
@@ -241,6 +265,9 @@ public class PlayerService extends Service {
         backupTried = false;
         refetchTried = false;
         refetchTrack = t;
+        activeTier = getQualityTier();
+        curStreamKind = "aac";
+        downgradeTried = false;
         cancelWatchdog();
         try { mp.reset(); } catch (Exception ignored) {}
         setPlaying(false);
@@ -286,10 +313,11 @@ public class PlayerService extends Service {
     private void fetchAndPlay(final Track t, final int token) {
         prepareStartAt = System.currentTimeMillis();
         final int seq = ++fetchSeq;
-        api.playUrl(t, isLowQuality(), new BiliApi.Cb<String[]>() {
+        api.playUrl(t, activeTier, new BiliApi.Cb<String[]>() {
             @Override public void onOk(String[] urls) {
                 if (token != playToken || seq != fetchSeq) return;
                 backupUrl = urls.length > 1 ? urls[1] : null;
+                curStreamKind = urls.length > 2 && urls[2] != null ? urls[2] : "aac";
                 if (!tryStream(urls[0])) {
                     preparing = false;
                     onPlayError("播放器异常");
@@ -369,7 +397,8 @@ public class PlayerService extends Service {
         return "队列 " + queue.size() + " 首 · 第 " + (index + 1) + " 首\n"
                 + "当前：" + (t == null ? "无" : t.title) + "\n"
                 + "prepared=" + prepared + " preparing=" + preparing
-                + " playing=" + playing + " 连败=" + failStreak;
+                + " playing=" + playing + " 连败=" + failStreak
+                + "\n音质档位=" + QUALITY_NAMES[getQualityTier()] + " 实际流=" + curStreamKind;
     }
 
     // ---------------- 状态持久化（防系统杀服务后队列丢失） ----------------

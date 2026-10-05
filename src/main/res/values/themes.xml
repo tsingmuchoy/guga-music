@@ -39,7 +39,7 @@
         <item name="gSurface">#2A2029</item>
         <item name="gAccent">#FB7299</item>
         <item name="gGlow1">#4DFB7299</item>
-        <item name="gGlow2">#264CC3FF</item>
+        <item name="gGlow2">#2656B6F7</item>
         <item name="gHiLine">#59FFFFFF</item>
         <item name="gOnAccent">#2A0E18</item>
     </style>
@@ -48,13 +48,13 @@
         <item name="android:windowBackground">#0E1520</item>
         <item name="android:statusBarColor">#0E1520</item>
         <item name="android:navigationBarColor">#0E1520</item>
-        <item name="android:colorAccent">#4CC3FF</item>
+        <item name="android:colorAccent">#56B6F7</item>
         <item name="gBg">#0E1520</item>
         <item name="gElevated">#16202E</item>
         <item name="gSurface">#1B2839</item>
-        <item name="gAccent">#4CC3FF</item>
-        <item name="gGlow1">#4D4CC3FF</item>
-        <item name="gGlow2">#26A78BFA</item>
+        <item name="gAccent">#56B6F7</item>
+        <item name="gGlow1">#4D56B6F7</item>
+        <item name="gGlow2">#263ECF8E</item>
         <item name="gHiLine">#59FFFFFF</item>
         <item name="gOnAccent">#062A42</item>
     </style>
@@ -63,12 +63,12 @@
         <item name="android:windowBackground">#0D1712</item>
         <item name="android:statusBarColor">#0D1712</item>
         <item name="android:navigationBarColor">#0D1712</item>
-        <item name="android:colorAccent">#3ECF8E</item>
+        <item name="android:colorAccent">#4CC38A</item>
         <item name="gBg">#0D1712</item>
         <item name="gElevated">#14211B</item>
         <item name="gSurface">#192920</item>
-        <item name="gAccent">#3ECF8E</item>
-        <item name="gGlow1">#4D3ECF8E</item>
+        <item name="gAccent">#4CC38A</item>
+        <item name="gGlow1">#4D4CC38A</item>
         <item name="gGlow2">#264CC3FF</item>
         <item name="gHiLine">#59FFFFFF</item>
         <item name="gOnAccent">#06301E</item>

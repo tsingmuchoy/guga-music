@@ -89,7 +89,11 @@ public class LyricsActivity extends Activity {
         });
     }
 
-    @Override protected void onResume() { super.onResume(); handler.post(ticker); }
+    @Override protected void onResume() {
+        super.onResume();
+        if (ThemeUtil.consumeDirty(this)) { recreate(); return; }
+        handler.post(ticker);
+    }
     @Override protected void onPause() { handler.removeCallbacks(ticker); super.onPause(); }
 
     private final BaseAdapter adapter = new BaseAdapter() {

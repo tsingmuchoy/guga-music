@@ -144,6 +144,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     @Override
     protected void onResume() {
         super.onResume();
+        if (ThemeUtil.consumeDirty(this)) { recreate(); return; }
         PlayerService s = PlayerService.get();
         if (s != null) {
             s.addListener(this);

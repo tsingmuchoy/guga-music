@@ -12,7 +12,7 @@ import android.widget.Toast;
 
 public class SettingsActivity extends Activity {
 
-    private TextView btnQuality;
+    private TextView btnFollowSystem;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,15 +22,17 @@ public class SettingsActivity extends Activity {
 
         buildThemeRows();
 
-        btnQuality = findViewById(R.id.btnQuality);
-        refreshQuality();
-        btnQuality.setOnClickListener(v -> {
-            android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
-            boolean low = !pf.getBoolean("lowq", false);
-            pf.edit().putBoolean("lowq", low).apply();
-            refreshQuality();
-            Toast.makeText(this, low ? "已切到省流模式" : "已切到最高音质", Toast.LENGTH_SHORT).show();
+        btnFollowSystem = findViewById(R.id.btnFollowSystem);
+        refreshFollowSystem();
+        btnFollowSystem.setOnClickListener(v -> {
+            boolean on = !ThemeUtil.isFollowSystem(this);
+            ThemeUtil.setFollowSystem(this, on);
+            Toast.makeText(this, on ? "已开启跟随系统（夜间深色 · 日间瓷白）" : "已关闭跟随系统",
+                    Toast.LENGTH_SHORT).show();
+            recreate();
         });
+
+        buildQualityRows();
 
         findViewById(R.id.btnClearHistory).setOnClickListener(v -> {
             new HistoryDb(this).clear();
@@ -46,9 +48,58 @@ public class SettingsActivity extends Activity {
                 startActivity(new Intent(this, AboutActivity.class)));
     }
 
-    private void refreshQuality() {
-        boolean low = getSharedPreferences("player", MODE_PRIVATE).getBoolean("lowq", false);
-        btnQuality.setText(low ? "音质：省流模式（点切换）" : "音质：最高音质（点切换）");
+    private void refreshFollowSystem() {
+        boolean on = ThemeUtil.isFollowSystem(this);
+        btnFollowSystem.setText(on
+                ? "🌗 主题跟随系统：开（夜间用所选主题 · 日间瓷白玻璃）"
+                : "🌗 主题跟随系统：关（点开启）");
+    }
+
+    /** 音质五档选择行（样式与主题行一致），档位存 player 偏好 quality_tier */
+    private void buildQualityRows() {
+        LinearLayout box = findViewById(R.id.llQuality);
+        box.removeAllViews();
+        PlayerService svc = PlayerService.get();
+        int cur = svc != null ? svc.getQualityTier()
+                : getSharedPreferences("player", MODE_PRIVATE).getBoolean("lowq", false) ? 0 : 2;
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        for (int tier = 0; tier < PlayerService.QUALITY_NAMES.length; tier++) {
+            final int t = tier;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(pad, pad, pad, pad);
+            row.setBackgroundResource(R.drawable.bg_card);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = (int) (10 * getResources().getDisplayMetrics().density);
+            row.setLayoutParams(lp);
+
+            TextView name = new TextView(this);
+            name.setText(PlayerService.QUALITY_NAMES[t]);
+            name.setTextSize(15);
+            name.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+            name.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            row.addView(name);
+
+            if (t == cur) {
+                TextView check = new TextView(this);
+                check.setText("✓ 使用中");
+                check.setTextSize(13);
+                check.setTextColor(ThemeUtil.color(this, R.attr.gAccent));
+                row.addView(check);
+            }
+
+            row.setOnClickListener(v -> {
+                PlayerService s2 = PlayerService.get();
+                if (s2 != null) s2.setQualityTier(t);
+                else getSharedPreferences("player", MODE_PRIVATE).edit().putInt("quality_tier", t).apply();
+                Toast.makeText(this, "音质已切到「" + PlayerService.QUALITY_NAMES[t] + "」（下一首生效）",
+                        Toast.LENGTH_SHORT).show();
+                buildQualityRows();
+            });
+            box.addView(row);
+        }
     }
 
     private void buildThemeRows() {

@@ -34,6 +34,16 @@
             android:orientation="vertical" />
 
         <TextView
+            android:id="@+id/btnFollowSystem"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:padding="16dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
@@ -42,15 +52,11 @@
             android:textSize="14sp"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/btnQuality"
+        <LinearLayout
+            android:id="@+id/llQuality"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
-            android:padding="16dp"
-            android:textColor="?attr/gTextPri"
-            android:textSize="15sp" />
+            android:orientation="vertical" />
 
         <TextView
             android:layout_width="wrap_content"
