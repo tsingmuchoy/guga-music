@@ -1,36 +1,69 @@
 package com.guga.music;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.List;
 
-/** 「加入本地歌单」选择器 + 新建歌单对话框（多处复用） */
+/** 「加入本地歌单」底部玻璃弹窗 + 新建歌单输入卡（与 App 玻璃风统一，多处复用） */
 public class PlaylistPicker {
 
     public static void show(final Activity act, final Track track) {
         if (track == null) return;
         final LocalDb db = new LocalDb(act);
         final List<LocalDb.Playlist> pls = db.playlists();
-        String[] names = new String[pls.size() + 1];
-        for (int i = 0; i < pls.size(); i++) names[i] = "🎵 " + pls.get(i).name + "（" + pls.get(i).count + " 首）";
-        names[pls.size()] = "＋ 新建歌单…";
-        new AlertDialog.Builder(act)
-                .setTitle("加入本地歌单")
-                .setItems(names, (d, w) -> {
-                    if (w == pls.size()) {
-                        createDialog(act, name -> {
-                            long id = db.createPlaylist(name);
-                            addToast(act, db.addTrack(id, track), name);
-                        });
-                    } else {
-                        addToast(act, db.addTrack(pls.get(w).id, track), pls.get(w).name);
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+
+        final Dialog dlg = new Dialog(act);
+        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        View root = LayoutInflater.from(act).inflate(R.layout.dialog_playlist_picker, null);
+        dlg.setContentView(root);
+        Window w = dlg.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            w.setGravity(Gravity.BOTTOM);
+            w.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+            w.setWindowAnimations(android.R.style.Animation_InputMethod);
+        }
+        LinearLayout box = root.findViewById(R.id.llPickerItems);
+        for (final LocalDb.Playlist pl : pls) {
+            box.addView(row(act, "🎵  " + pl.name, pl.count + " 首", v -> {
+                dlg.dismiss();
+                addToast(act, db.addTrack(pl.id, track), pl.name);
+            }));
+        }
+        box.addView(row(act, "＋  新建歌单…", "", v -> {
+            dlg.dismiss();
+            createDialog(act, name -> {
+                long id = db.createPlaylist(name);
+                addToast(act, db.addTrack(id, track), name);
+            });
+        }));
+        root.findViewById(R.id.btnPickerCancel).setOnClickListener(v -> dlg.dismiss());
+        dlg.show();
+    }
+
+    private static View row(Activity act, String main, String sub, View.OnClickListener cb) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        TextView tv = new TextView(act);
+        tv.setLayoutParams(lp);
+        tv.setPadding(6, 30, 6, 30);
+        tv.setText(sub.isEmpty() ? main : main + "   ·   " + sub);
+        tv.setTextSize(15.5f);
+        tv.setTextColor(ThemeUtil.color(act, R.attr.gTextPri));
+        tv.setOnClickListener(cb);
+        return tv;
     }
 
     private static void addToast(Activity act, boolean added, String name) {
@@ -41,21 +74,40 @@ public class PlaylistPicker {
     public interface OnName { void onName(String name); }
 
     public static void createDialog(final Activity act, final OnName cb) {
-        final EditText et = new EditText(act);
-        et.setHint("给歌单起个名字");
-        et.setSingleLine(true);
-        new AlertDialog.Builder(act)
-                .setTitle("新建歌单")
-                .setView(et)
-                .setPositiveButton("创建", (d, w) -> {
-                    String name = et.getText().toString().trim();
-                    if (name.isEmpty()) {
-                        Toast.makeText(act, "名字不能为空", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    cb.onName(name);
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        createDialog(act, "新建歌单", "", "创建", cb);
+    }
+
+    /** 玻璃风输入卡（新建 / 重命名共用） */
+    public static void createDialog(final Activity act, String title, String prefill,
+                                    String okText, final OnName cb) {
+        final Dialog dlg = new Dialog(act);
+        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        View root = LayoutInflater.from(act).inflate(R.layout.dialog_input, null);
+        dlg.setContentView(root);
+        Window w = dlg.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int width = (int) (act.getResources().getDisplayMetrics().widthPixels * 0.86);
+            w.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+        ((TextView) root.findViewById(R.id.tvInputTitle)).setText(title);
+        final EditText et = root.findViewById(R.id.etInput);
+        if (prefill != null && !prefill.isEmpty()) {
+            et.setText(prefill);
+            et.setSelection(prefill.length());
+        }
+        TextView ok = root.findViewById(R.id.btnInputOk);
+        ok.setText(okText);
+        root.findViewById(R.id.btnInputCancel).setOnClickListener(v -> dlg.dismiss());
+        ok.setOnClickListener(v -> {
+            String name = et.getText().toString().trim();
+            if (name.isEmpty()) {
+                Toast.makeText(act, "名字不能为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            dlg.dismiss();
+            cb.onName(name);
+        });
+        dlg.show();
     }
 }

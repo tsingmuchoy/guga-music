@@ -63,7 +63,7 @@ public class LocalPlaylistsActivity extends Activity {
                     .setTitle(pl.name)
                     .setItems(new String[]{"✏️ 重命名", "🗑️ 删除歌单"}, (d, w) -> {
                         if (w == 0) {
-                            PlaylistPicker.createDialog(this, name -> {
+                            PlaylistPicker.createDialog(this, "重命名歌单", pl.name, "保存", name -> {
                                 db.renamePlaylist(pl.id, name);
                                 reload();
                             });
