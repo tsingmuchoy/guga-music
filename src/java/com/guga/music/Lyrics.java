@@ -1,6 +1,7 @@
 package com.guga.music;
 
 import android.content.Context;
+import android.util.Base64;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -16,31 +17,34 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 歌词引擎：网易云按歌名+时长匹配取 LRC -> B 站视频字幕兜底 -> 本地缓存 */
+/** 歌词引擎 v3：网易云 -> LRCLIB -> 酷狗 -> B 站字幕，多源级联 + 本地缓存（lyrics_v3 目录，旧缓存作废） */
 public class Lyrics {
 
 public static class Line {
 public final long timeMs;
 public final String text;
-public Line(long t, String s) { timeMs = t; text = s;}
+public Line(long t, String s) { timeMs = t; text = s; }
 }
 
 public static class Result {
 public final List<Line> lines;
-public final String source; // 网易云歌词 / 视频字幕 / ""
-public Result(List<Line> l, String s) { lines = l; source = s;}
-public boolean has() { return lines!= null &&!lines.isEmpty();}
+public final String source;
+public Result(List<Line> l, String s) { lines = l; source = s; }
+public boolean has() { return lines != null && !lines.isEmpty(); }
 }
 
-public interface Cb { void onResult(Result r);}
+public interface Cb { void onResult(Result r); }
 
 private static final ExecutorService POOL = Executors.newCachedThreadPool();
 private static final Pattern STAMP = Pattern.compile("\\[(\\d{1,2}):(\\d{1,2})(?:\\.(\\d{1,3}))?\\]");
@@ -49,16 +53,16 @@ private static final Pattern STAMP = Pattern.compile("\\[(\\d{1,2}):(\\d{1,2})(?
 public static List<Line> parseLrc(String lrc) {
 List<Line> out = new ArrayList<>();
 if (lrc == null) return out;
-for (String raw: lrc.split("\n")) {
+for (String raw : lrc.split("\n")) {
 Matcher m = STAMP.matcher(raw);
 List<Long> times = new ArrayList<>();
 int lastEnd = 0;
 while (m.find()) {
 long ms = Long.parseLong(m.group(1)) * 60000 + Long.parseLong(m.group(2)) * 1000;
 String frac = m.group(3);
-if (frac!= null) {
+if (frac != null) {
 long f = Long.parseLong(frac);
-ms += frac.length() == 1? f * 100: frac.length() == 2? f * 10: f;
+ms += frac.length() == 1 ? f * 100 : frac.length() == 2 ? f * 10 : f;
 }
 times.add(ms);
 lastEnd = m.end();
@@ -66,36 +70,109 @@ lastEnd = m.end();
 if (times.isEmpty()) continue;
 String text = raw.substring(lastEnd).trim();
 if (text.isEmpty()) continue;
-for (long t: times) out.add(new Line(t, text));
+for (long t : times) out.add(new Line(t, text));
 }
 Collections.sort(out, (a, b) -> Long.compare(a.timeMs, b.timeMs));
 return out;
 }
 
-/** 二分查找当前行下标（最后一个 timeMs <= pos 的行） */
 public static int indexAt(List<Line> lines, long pos) {
 int lo = 0, hi = lines.size() - 1, ans = -1;
 while (lo <= hi) {
 int mid = (lo + hi) / 2;
-if (lines.get(mid).timeMs <= pos) { ans = mid; lo = mid + 1;}
+if (lines.get(mid).timeMs <= pos) { ans = mid; lo = mid + 1; }
 else hi = mid - 1;
 }
 return ans;
 }
 
-// ---------------- 标题清洗 ----------------
+// ---------------- 标题清洗与线索提取 ----------------
 static String cleanTitle(String raw) {
 if (raw == null) return "";
 String s = raw;
-s = s.replaceAll("]*】", " ").replaceAll("\\[[^\\]]*\\]", " ")
+s = s.replaceAll("【[^】]*】", " ").replaceAll("\\[[^\\]]*\\]", " ")
 .replaceAll("「[^」]*」", " ").replaceAll("\\([^)]*\\)", " ")
 .replaceAll("（[^）]*）", " ");
-s = s.replaceAll("(?i)官方|正式版|完整版|高清|超清|修复|MV|PV|4K|1080P|720P", " ");
+s = s.replaceAll("(?i)官方|正式版|完整版|高清|超清|修复", " ");
 s = s.replaceAll("\\s+", " ").trim();
 return s;
 }
 
+private static class Hints {
+String name = "";
+String artist = "";
+final List<String> nameCands = new ArrayList<>();
+final List<String> queries = new ArrayList<>();
+}
+
+private static Hints hintsOf(Track t) {
+Hints h = new Hints();
+String raw = t.title == null ? "" : t.title;
+Matcher bm = Pattern.compile("《([^》]+)》").matcher(raw);
+if (bm.find()) {
+h.name = bm.group(1).trim();
+String before = cleanTitle(raw.substring(0, bm.start()));
+String[] seg = before.split("[-—|/]");
+h.artist = seg[seg.length - 1].trim();
+}
+String cleaned = cleanTitle(raw);
+if (h.name.isEmpty() && !cleaned.isEmpty()) {
+String[] parts = cleaned.split("\\s+-\\s+|\\s+—\\s+");
+if (parts.length == 2) {
+h.name = parts[1].trim();
+h.artist = parts[0].trim();
+h.nameCands.add(parts[0].trim());
+h.nameCands.add(parts[1].trim());
+} else {
+h.name = cleaned;
+}
+}
+if (!h.name.isEmpty() && !h.nameCands.contains(h.name)) h.nameCands.add(0, h.name);
+if (!cleaned.isEmpty() && !h.nameCands.contains(cleaned)) h.nameCands.add(cleaned);
+Set<String> qs = new LinkedHashSet<>();
+if (!h.artist.isEmpty() && !h.name.isEmpty()) qs.add(h.artist + " " + h.name);
+if (!h.artist.isEmpty() && !h.name.isEmpty()) qs.add(h.artist + " - " + h.name);
+if (!h.name.isEmpty()) qs.add(h.name);
+if (!cleaned.isEmpty()) qs.add(cleaned);
+if (!raw.trim().isEmpty()) qs.add(raw.trim());
+h.queries.addAll(qs);
+return h;
+}
+
+private static String normName(String s) {
+if (s == null) return "";
+return s.toLowerCase().replaceAll("[\\s\\(\\)（）\\[\\]【】\\-·•、,，。!！?？:：;；'\"“”‘’]", "");
+}
+
+/** 100 同名 / 80 互含 / 50 高重叠 / 0 无关 */
+private static int nameScore(String candName, List<String> hints) {
+String c = normName(candName);
+if (c.isEmpty()) return 0;
+int best = 0;
+for (String hint : hints) {
+String n = normName(hint);
+if (n.isEmpty()) continue;
+if (c.equals(n)) best = Math.max(best, 100);
+else if (c.contains(n) || n.contains(c)) best = Math.max(best, 80);
+else {
+Set<Character> set = new HashSet<>();
+for (char ch : n.toCharArray()) set.add(ch);
+int hit = 0;
+for (char ch : c.toCharArray()) if (set.contains(ch)) hit++;
+if (c.length() > 0 && (double) hit / c.length() >= 0.6) best = Math.max(best, 50);
+}
+}
+return best;
+}
+
 // ---------------- 主流程 ----------------
+public static void fetchFor(final Context ctx, final Track track, final BiliApi api, final Cb cb) {
+POOL.execute(() -> {
+Result r = fetchSync(ctx.getApplicationContext(), track, api);
+new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult(r));
+});
+}
+
 /** 歌词不对时换下一候选版本：序号 +1、清缓存、重新匹配 */
 public static void refetchNext(final Context ctx, final Track track, final BiliApi api, final Cb cb) {
 POOL.execute(() -> {
@@ -104,7 +181,7 @@ android.content.SharedPreferences sp = app.getSharedPreferences("lyrics_alt", Co
 int next = sp.getInt("alt_" + track.bvid, 0) + 1;
 sp.edit().putInt("alt_" + track.bvid, next).apply();
 try {
-File dir = new File(app.getFilesDir(), "lyrics");
+File dir = new File(app.getFilesDir(), "lyrics_v3");
 new File(dir, track.bvid + ".lrc").delete();
 new File(dir, track.bvid + ".none").delete();
 } catch (Exception ignored) {}
@@ -113,22 +190,15 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 });
 }
 
-public static void fetchFor(final Context ctx, final Track track, final BiliApi api, final Cb cb) {
-POOL.execute(() -> {
-Result r = fetchSync(ctx.getApplicationContext(), track, api);
-new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult(r));
-});
-}
-
 private static Result fetchSync(Context ctx, Track track, BiliApi api) {
-File dir = new File(ctx.getFilesDir(), "lyrics");
+File dir = new File(ctx.getFilesDir(), "lyrics_v3");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, track.bvid + ".lrc");
 File none = new File(dir, track.bvid + ".none");
 try {
 if (cache.exists()) {
 String content = readFile(cache);
-String src = content.startsWith("#src:")? content.substring(5, content.indexOf('\n')): "缓存";
+String src = content.startsWith("#src:") ? content.substring(5, content.indexOf('\n')) : "缓存";
 List<Line> lines = parseLrc(content);
 if (!lines.isEmpty()) return new Result(lines, src);
 }
@@ -137,20 +207,31 @@ return new Result(new ArrayList<>(), "");
 }
 } catch (Exception ignored) {}
 
-// 1) 网易云匹配
-try {
+Hints hints = hintsOf(track);
 int alt = ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).getInt("alt_" + track.bvid, 0);
-String lrc = neteaseLyrics(track, alt);
-if (lrc!= null) {
-List<Line> lines = parseLrc(lrc);
-if (lines.size() >= 5) {
-writeFile(cache, "#src:网易云歌词\n" + lrc);
-return new Result(lines, "网易云歌词");
-}
-}
+
+// 1) 网易云
+try {
+String lrc = neteaseLyrics(track, hints, alt);
+Result r = acceptLrc(cache, lrc, "网易云歌词");
+if (r != null) { Diag.log(ctx, "🎤 歌词命中：网易云《" + hints.name + "》"); return r; }
 } catch (Exception ignored) {}
 
-// 2) B 站字幕兜底（同步等结果，最多 ~15 秒）
+// 2) LRCLIB
+try {
+String lrc = lrclibLyrics(track, hints, alt);
+Result r = acceptLrc(cache, lrc, "LRCLIB 歌词");
+if (r != null) { Diag.log(ctx, "🎤 歌词命中：LRCLIB《" + hints.name + "》"); return r; }
+} catch (Exception ignored) {}
+
+// 3) 酷狗
+try {
+String lrc = kugouLyrics(track, hints, alt);
+Result r = acceptLrc(cache, lrc, "酷狗歌词");
+if (r != null) { Diag.log(ctx, "🎤 歌词命中：酷狗《" + hints.name + "》"); return r; }
+} catch (Exception ignored) {}
+
+// 4) B 站字幕兜底
 try {
 final Object lock = new Object();
 final List<Line>[] box = new List[1];
@@ -161,86 +242,59 @@ track.cid = full.cid;
 fetchSubtitles(api, track, box, lock);
 }
 @Override public void onErr(String msg) {
-synchronized (lock) { box[0] = new ArrayList<>(); lock.notifyAll();}
+synchronized (lock) { box[0] = new ArrayList<>(); lock.notifyAll(); }
 }
 });
 } else {
 fetchSubtitles(api, track, box, lock);
 }
-synchronized (lock) { lock.wait(20000);}
-if (box[0]!= null && box[0].size() >= 5) {
+synchronized (lock) { lock.wait(20000); }
+if (box[0] != null && box[0].size() >= 5) {
 StringBuilder sb = new StringBuilder("#src:视频字幕\n");
-for (Line l: box[0]) {
+for (Line l : box[0]) {
 sb.append(String.format("[%02d:%02d.%03d]", l.timeMs / 60000, (l.timeMs % 60000) / 1000, l.timeMs % 1000))
 .append(l.text).append("\n");
 }
 writeFile(cache, sb.toString());
+Diag.log(ctx, "🎤 歌词命中：视频字幕");
 return new Result(box[0], "视频字幕");
 }
 } catch (Exception ignored) {}
 
-try { writeFile(none, "");} catch (Exception ignored) {}
+try { writeFile(none, ""); } catch (Exception ignored) {}
+Diag.log(ctx, "🎤 歌词未命中：《" + hints.name + "》");
 return new Result(new ArrayList<>(), "");
+}
+
+private static Result acceptLrc(File cache, String lrc, String src) {
+if (lrc == null) return null;
+List<Line> lines = parseLrc(lrc);
+if (lines.size() < 5) return null;
+try { writeFile(cache, "#src:" + src + "\n" + lrc); } catch (Exception ignored) {}
+return new Result(lines, src);
 }
 
 private static void fetchSubtitles(BiliApi api, Track track, final List<Line>[] box, final Object lock) {
 api.subtitles(track.bvid, track.cid, new BiliApi.Cb<List<Line>>() {
 @Override public void onOk(List<Line> lines) {
-synchronized (lock) { box[0] = lines; lock.notifyAll();}
+synchronized (lock) { box[0] = lines; lock.notifyAll(); }
 }
 @Override public void onErr(String msg) {
-synchronized (lock) { box[0] = new ArrayList<>(); lock.notifyAll();}
+synchronized (lock) { box[0] = new ArrayList<>(); lock.notifyAll(); }
 }
 });
 }
 
 // ---------------- 网易云 ----------------
 private static class Cand {
-long id; int group; long diff;
+long id; int group; long diff; String ak;
 Cand(long i, int g, long d) { id = i; group = g; diff = d; }
 }
 
-/** 名字归一化：去空格标点与版本括号，小写 */
-private static String normName(String s) {
-if (s == null) return "";
-return s.toLowerCase()
-.replaceAll("[\\s\\(\\)\\（\\）\\[\\]\\-·•、,，。!！?？:：;；'\"“”‘’]", "");
-}
-
-/** 候选歌名与目标的匹配分：100 同名 / 80 互含 / 50 字面高度重叠 / 0 无关 */
-private static int nameScore(String candName, List<String> hints) {
-String c = normName(candName);
-if (c.isEmpty()) return 0;
-int best = 0;
-for (String h : hints) {
-String n = normName(h);
-if (n.isEmpty()) continue;
-if (c.equals(n)) best = Math.max(best, 100);
-else if (c.contains(n) || n.contains(c)) best = Math.max(best, 80);
-else {
-Set<Character> set = new HashSet<>();
-for (char ch : n.toCharArray()) set.add(ch);
-int hit = 0;
-for (char ch : c.toCharArray()) if (set.contains(ch)) hit++;
-double ratio = c.length() == 0 ? 0 : (double) hit / c.length();
-if (ratio >= 0.6) best = Math.max(best, 50);
-}
-}
-return best;
-}
-
-private static String neteaseLyrics(Track track, int alt) throws Exception {
-List<String> hints = new ArrayList<>();
-java.util.regex.Matcher bm = Pattern.compile("《([^》]+)》").matcher(track.title == null ? "" : track.title);
-if (bm.find()) hints.add(bm.group(1));
-String cleaned = cleanTitle(track.title);
-if (!cleaned.isEmpty()) hints.add(cleaned);
-Set<String> queries = new java.util.LinkedHashSet<>();
-if (!cleaned.isEmpty()) queries.add(cleaned);
-if (track.title != null && !track.title.trim().isEmpty()) queries.add(track.title.trim());
+private static String neteaseLyrics(Track track, Hints hints, int alt) throws Exception {
 long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
-java.util.Map<Long, Cand> byId = new java.util.HashMap<>();
-for (String q : queries) {
+Map<Long, Cand> byId = new HashMap<>();
+for (String q : hints.queries) {
 String url = "https://music.163.com/api/cloudsearch/pc?type=1&limit=10&offset=0&s="
 + URLEncoder.encode(q, "UTF-8");
 JSONObject r = new JSONObject(httpGet(url, "https://music.163.com"));
@@ -250,10 +304,9 @@ for (int i = 0; i < songs.length(); i++) {
 JSONObject sj = songs.getJSONObject(i);
 long id = sj.optLong("id");
 if (id <= 0 || byId.containsKey(id)) continue;
-String name = sj.optString("name");
+int score = nameScore(sj.optString("name"), hints.nameCands);
 long dt = sj.optLong("dt");
 long diff = wantDur > 0 ? Math.abs(dt - wantDur) : Long.MAX_VALUE / 2;
-int score = nameScore(name, hints);
 boolean artistHit = false;
 JSONArray ars = sj.optJSONArray("ar");
 if (ars != null && track.title != null) {
@@ -263,10 +316,10 @@ if (an.length() >= 2 && track.title.contains(an)) { artistHit = true; break; }
 }
 }
 int group;
-if (score >= 80) group = 0;                       // 歌名对得上：主池
-else if (score == 50 && artistHit) group = 1;     // 歌名像 + 歌手对得上
-else if (score == 0 && artistHit && diff <= 5000) group = 2; // 同歌手 + 时长几乎一致
-else continue; // 仅时长相近的名字无关候选一律不要——宁缺毋错
+if (score >= 80) group = 0;
+else if (score == 50 && artistHit) group = 1;
+else if (score == 0 && artistHit && diff <= 5000) group = 2;
+else continue;
 byId.put(id, new Cand(id, group, diff));
 }
 }
@@ -288,17 +341,134 @@ if (text != null && text.contains("[")) return text;
 return null;
 }
 
+// ---------------- LRCLIB ----------------
+private static String lrclibLyrics(Track track, Hints hints, int alt) throws Exception {
+if (hints.name.isEmpty()) return null;
+long want = track.durationSec;
+// 精确 get：歌名+歌手+时长
+if (!hints.artist.isEmpty() && want > 0) {
+try {
+String u = "https://lrclib.net/api/get?track_name=" + URLEncoder.encode(hints.name, "UTF-8")
++ "&artist_name=" + URLEncoder.encode(hints.artist, "UTF-8") + "&duration=" + want;
+JSONObject r = new JSONObject(httpGet(u, null));
+String syn = r.optString("syncedLyrics");
+if (syn != null && syn.contains("[")) return syn;
+} catch (Exception ignored) {}
+}
+// search 候选：优先带时间轴的
+String u = "https://lrclib.net/api/search?track_name=" + URLEncoder.encode(hints.name, "UTF-8")
++ (hints.artist.isEmpty() ? "" : "&artist_name=" + URLEncoder.encode(hints.artist, "UTF-8"));
+JSONArray arr = new JSONArray(httpGet(u, null));
+List<JSONObject> synced = new ArrayList<>();
+String plainBest = null;
+long plainBestDiff = Long.MAX_VALUE;
+for (int i = 0; i < arr.length(); i++) {
+JSONObject r = arr.getJSONObject(i);
+if (nameScore(r.optString("trackName"), hints.nameCands) < 80) continue;
+long diff = want > 0 ? Math.abs((long) (r.optDouble("duration") * 1000) - want * 1000) : 0;
+if (want > 0 && diff > 12000) continue;
+String syn = r.optString("syncedLyrics");
+if (syn != null && syn.contains("[")) { synced.add(r); continue; }
+String plain = r.optString("plainLyrics");
+if (plain != null && plain.contains("\n") && diff < plainBestDiff) {
+plainBestDiff = diff;
+plainBest = plain;
+}
+}
+if (!synced.isEmpty()) {
+Collections.sort(synced, (a, b) -> Long.compare(
+want > 0 ? Math.abs((long) (a.optDouble("duration") * 1000) - want * 1000) : 0,
+want > 0 ? Math.abs((long) (b.optDouble("duration") * 1000) - want * 1000) : 0));
+return synced.get(Math.floorMod(alt, synced.size())).optString("syncedLyrics");
+}
+if (plainBest != null) return synthPlain(plainBest, want);
+return null;
+}
+
+/** 无时间轴的纯文本歌词：按时长均分生成近似时间轴 */
+private static String synthPlain(String plain, long durSec) {
+List<String> lines = new ArrayList<>();
+for (String s : plain.split("\n")) {
+String t = s.trim();
+if (!t.isEmpty()) lines.add(t);
+}
+if (lines.size() < 5) return null;
+long total = durSec > 0 ? durSec * 1000L : lines.size() * 4000L;
+StringBuilder sb = new StringBuilder();
+for (int i = 0; i < lines.size(); i++) {
+long ms = total * i / lines.size();
+sb.append(String.format("[%02d:%02d.%03d]", ms / 60000, (ms % 60000) / 1000, ms % 1000))
+.append(lines.get(i)).append("\n");
+}
+return sb.toString();
+}
+
+// ---------------- 酷狗 ----------------
+private static String kugouLyrics(Track track, Hints hints, int alt) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+Map<Long, Cand> byId = new HashMap<>();
+for (String q : hints.queries) {
+if (byId.size() > 0 && q.equals(hints.queries.get(0)) == false) break; // 首个查询有结果就够了
+String url = "https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword="
++ URLEncoder.encode(q, "UTF-8");
+JSONObject r = new JSONObject(httpGet(url, null));
+JSONArray cands = r.optJSONArray("candidates");
+if (cands == null) continue;
+for (int i = 0; i < cands.length(); i++) {
+JSONObject cj = cands.getJSONObject(i);
+long id = cj.optLong("id");
+if (id <= 0 || byId.containsKey(id)) continue;
+int score = nameScore(cj.optString("song"), hints.nameCands);
+long diff = wantDur > 0 ? Math.abs(cj.optLong("duration") - wantDur) : 0;
+if (wantDur > 0 && diff > 12000) continue;
+String singer = cj.optString("singer");
+boolean artistHit = singer.length() >= 2 && track.title != null
+&& (track.title.contains(singer) || singer.equals(hints.artist));
+int group;
+if (score >= 80) group = 0;
+else if (score == 50 && artistHit) group = 1;
+else if (score == 0 && artistHit && diff <= 5000) group = 2;
+else continue;
+Cand c = new Cand(id, group, diff);
+c.ak = cj.optString("accesskey");
+byId.put(id, c);
+}
+}
+List<Cand> pool = new ArrayList<>(byId.values());
+Collections.sort(pool, (a, b) -> a.group != b.group ? Integer.compare(a.group, b.group)
+: Long.compare(a.diff, b.diff));
+if (pool.isEmpty()) return null;
+for (int k = 0; k < pool.size(); k++) {
+Cand c = pool.get(Math.floorMod(alt + k, pool.size()));
+try {
+JSONObject r = new JSONObject(httpGet(
+"https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=" + c.id
++ "&accesskey=" + c.ak, null));
+String content = r.optString("content");
+if (content == null || content.isEmpty()) continue;
+String text;
+try {
+text = new String(Base64.decode(content, Base64.DEFAULT), StandardCharsets.UTF_8);
+} catch (Exception e) {
+text = content;
+}
+if (text.contains("[")) return text;
+} catch (Exception ignored) {}
+}
+return null;
+}
+
 static String httpGet(String url, String referer) throws Exception {
 HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
 c.setConnectTimeout(8000);
 c.setReadTimeout(10000);
 c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-if (referer!= null) c.setRequestProperty("Referer", referer);
-BufferedReader r = new BufferedReader(new InputStreamReader(
-c.getResponseCode() >= 400? c.getErrorStream(): c.getInputStream(), StandardCharsets.UTF_8));
+if (referer != null) c.setRequestProperty("Referer", referer);
+java.io.InputStream in = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
+BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
 StringBuilder sb = new StringBuilder();
 String line;
-while ((line = r.readLine())!= null) sb.append(line);
+while ((line = r.readLine()) != null) sb.append(line);
 r.close();
 return sb.toString();
 }
@@ -307,7 +477,7 @@ private static String readFile(File f) throws Exception {
 BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8));
 StringBuilder sb = new StringBuilder();
 String line;
-while ((line = r.readLine())!= null) sb.append(line).append("\n");
+while ((line = r.readLine()) != null) sb.append(line).append("\n");
 r.close();
 return sb.toString();
 }

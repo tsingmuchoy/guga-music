@@ -91,14 +91,14 @@ public class LyricsActivity extends Activity {
                 lines = r.lines;
                 tvEmpty.setVisibility(View.GONE);
                 tvSource.setText("来源：" + r.source + "（点任意一行可跳转）");
-                btnFix.setVisibility(r.source.contains("网易云") ? View.VISIBLE : View.GONE);
+                btnFix.setVisibility(View.VISIBLE);
                 adapter.notifyDataSetChanged();
                 curIdx = -2;
                 if (next) android.widget.Toast.makeText(this, "已换一版歌词 🎵", android.widget.Toast.LENGTH_SHORT).show();
             } else {
                 tvSource.setText("");
                 btnFix.setVisibility(View.GONE);
-                tvEmpty.setText(next ? "没有其他候选版本了 😢" : "这首歌暂时没找到歌词 😢");
+                tvEmpty.setText(next ? "没有其他候选版本了 😢" : "网易云 / LRCLIB / 酷狗 / 视频字幕都找过了，暂时没找到这首歌的歌词 😢");
                 tvEmpty.setVisibility(View.VISIBLE);
             }
         };
