@@ -19,7 +19,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
 
     private ImageView ivCover;
     private ImageView backdropView;
-    private TextView tvTitle, tvAuthor, tvPos, tvDur, btnToggle, btnMode;
+    private TextView tvTitle, tvAuthor, tvPos, tvDur, btnToggle, btnMode, btnQuality;
     private SeekBar sb;
     private ListView lvQueue;
     private LyricsView lyView;
@@ -65,6 +65,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         tvDur = findViewById(R.id.tvDur);
         btnToggle = findViewById(R.id.btnToggle);
         btnMode = findViewById(R.id.btnMode);
+        btnQuality = findViewById(R.id.btnQuality);
         sb = findViewById(R.id.sbProgress);
         lvQueue = findViewById(R.id.lvQueue);
         lyView = findViewById(R.id.lyView);
@@ -84,6 +85,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         btnToggle.setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.toggle(); });
         findViewById(R.id.btnNext).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.next(true); });
         findViewById(R.id.btnPrev).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.prev(); });
+        btnQuality.setOnClickListener(v -> showQualityDialog());
         btnMode.setOnClickListener(v -> {
             PlayerService s = PlayerService.get();
             if (s != null) {
@@ -123,6 +125,29 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         });
     }
 
+    private static final String[] QUALITY_SHORT = {"64K", "132K", "192K", "Hi-Res", "杜比"};
+
+    private void refreshQuality() {
+        PlayerService s = PlayerService.get();
+        if (s != null && btnQuality != null) btnQuality.setText(QUALITY_SHORT[s.getQualityTier()]);
+    }
+
+    private void showQualityDialog() {
+        PlayerService s = PlayerService.get();
+        if (s == null) return;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("选择音质（立即生效）")
+                .setSingleChoiceItems(PlayerService.QUALITY_NAMES, s.getQualityTier(), (d, which) -> {
+                    s.setQualityTier(which);
+                    s.applyQualityChange();
+                    refreshQuality();
+                    Toast.makeText(this, "已切到「" + PlayerService.QUALITY_NAMES[which] + "」🎵", Toast.LENGTH_SHORT).show();
+                    d.dismiss();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private String modeName(int m) {
         return m == PlayerService.MODE_LOOP ? "单曲循环" : m == PlayerService.MODE_SHUFFLE ? "随机播放" : "顺序播放";
     }
@@ -150,6 +175,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             s.addListener(this);
             Track t = s.current();
             if (t != null) onTrackChanged(t);
+            refreshQuality();
             onStateChanged(s.isPlaying());
             queueAdapter.notifyDataSetChanged();
         }

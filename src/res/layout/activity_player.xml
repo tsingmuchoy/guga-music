@@ -135,6 +135,19 @@
             android:textSize="24sp" />
 
         <TextView
+            android:id="@+id/btnQuality"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginLeft="6dp"
+            android:gravity="center"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:text="192K"
+            android:textColor="?attr/gAccent"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
             android:layout_width="64dp"
             android:layout_height="52dp" />
     </LinearLayout>
