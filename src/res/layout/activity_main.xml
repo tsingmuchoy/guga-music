@@ -146,6 +146,17 @@
                     </LinearLayout>
 
                     <TextView
+                        android:id="@+id/btnLocal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_card"
+                        android:padding="16dp"
+                        android:text="🎵 本地歌单（自己建的歌单）"
+                        android:textColor="?attr/gTextPri"
+                        android:textSize="15sp" />
+
+                    <TextView
                         android:id="@+id/btnSettings"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

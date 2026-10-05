@@ -106,6 +106,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 if (pos < displayTracks.size()) playTracks(new ArrayList<>(displayTracks), pos);
             }
         });
+        lvMain.setOnItemLongClickListener((p, v, pos, id) -> {
+            if (tab == 1 && !favShowingTracks) return false;
+            if (tab != 3 && pos < displayTracks.size()) {
+                PlaylistPicker.show(this, displayTracks.get(pos));
+                return true;
+            }
+            return false;
+        });
         btnFavBack.setOnClickListener(v -> {
             favShowingTracks = false;
             showFolders();
@@ -137,6 +145,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             }
         });
         findViewById(R.id.btnSettings).setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        findViewById(R.id.btnLocal).setOnClickListener(v -> startActivity(new Intent(this, LocalPlaylistsActivity.class)));
 
         selectTab(0);
         hint("搜一首歌，开始听吧 🎧");
