@@ -56,6 +56,8 @@ public class PlayerService extends Service {
     private int activeTier = 2;              // 本首歌实际请求的音质档位（降档重试会改它）
     private String curStreamKind = "aac";    // 本次取到的实际流类型：aac / flac / dolby
     private boolean downgradeTried = false;  // 高音质流报错后降到 192K 的重试是否已用
+    private boolean handlingError = false;   // 正在处理一条报错时，吞掉播放器连环补发的旧报错
+    private final java.util.Set<String> flacBad = new java.util.HashSet<>(); // 本次运行内已知 FLAC 损坏的歌（bvid）
     private long prepareStartAt = 0;
     private int fetchSeq = 0;
     private int playToken = 0;
@@ -89,6 +91,7 @@ public class PlayerService extends Service {
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
         mp.setOnPreparedListener(m -> {
             prepared = true;
+            handlingError = false;
             Diag.log(this, "✔ 已就绪开播");
             preparing = false;
             cancelWatchdog();
@@ -109,11 +112,19 @@ public class PlayerService extends Service {
         });
         mp.setOnCompletionListener(m -> onComplete());
         mp.setOnErrorListener((m, what, extra) -> {
+            // 播放器常在一次失败后连环补发好几条旧报错（典型 -38 连发），
+            // 若不拦，后到的旧报错会把正在进行的恢复（降档/换址）误判成新失败甚至跳歌
+            if (handlingError) {
+                Diag.log(this, "（连环报错已忽略 what=" + what + " extra=" + extra + "）");
+                return true;
+            }
+            handlingError = true;
             cancelWatchdog();
             Diag.log(this, "✖ 播放器报错 what=" + what + " extra=" + extra);
             // 高音质流（FLAC/杜比）报错：多半是设备解码不支持，先降到 192K AAC 重取一次，别直接跳歌
             if (("flac".equals(curStreamKind) || "dolby".equals(curStreamKind))
                     && !downgradeTried && refetchTrack != null) {
+                if ("flac".equals(curStreamKind)) flacBad.add(refetchTrack.bvid);
                 downgradeTried = true;
                 activeTier = BiliApi.TIER_192K;
                 Diag.log(this, "⚠ 高音质流（" + curStreamKind + "）播放失败，降到 192K 重试");
@@ -318,6 +329,13 @@ public class PlayerService extends Service {
                 if (token != playToken || seq != fetchSeq) return;
                 backupUrl = urls.length > 1 ? urls[1] : null;
                 curStreamKind = urls.length > 2 && urls[2] != null ? urls[2] : "aac";
+                if ("flac".equals(curStreamKind) && flacBad.contains(t.bvid) && !downgradeTried) {
+                    downgradeTried = true;
+                    activeTier = BiliApi.TIER_192K;
+                    Diag.log(PlayerService.this, "⏭ 这首歌的 FLAC 已知放不动，直接用 192K");
+                    fetchAndPlay(t, token);
+                    return;
+                }
                 if (!tryStream(urls[0])) {
                     preparing = false;
                     onPlayError("播放器异常");
@@ -347,6 +365,7 @@ public class PlayerService extends Service {
             headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
             mp.setDataSource(getApplicationContext(), android.net.Uri.parse(url), headers);
             mp.prepareAsync();
+            handlingError = false;
             prepareStartAt = System.currentTimeMillis();
             armStall();
             return true;
@@ -471,6 +490,7 @@ public class PlayerService extends Service {
 
     private void onPlayError(String msg) {
         preparing = false;
+        handlingError = false;
         fireError(msg);
         Diag.log(this, "✖ 播放失败：" + msg);
         failStreak++;
