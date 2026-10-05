@@ -90,6 +90,10 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         findViewById(R.id.btnNext).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.next(true); });
         findViewById(R.id.btnPrev).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.prev(); });
         btnQuality.setOnClickListener(v -> toggleQualityChips());
+        findViewById(R.id.btnAddList).setOnClickListener(v -> {
+            PlayerService svc = PlayerService.get();
+            if (svc != null && svc.current() != null) PlaylistPicker.show(this, svc.current());
+        });
         btnMode.setOnClickListener(v -> {
             PlayerService s = PlayerService.get();
             if (s != null) {
