@@ -244,6 +244,14 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         tvAuthor.setText(t.author == null ? "" : t.author);
         ImgLoader.loadDisc(ivCover, t.cover);
         if (backdropView != null) ImgLoader.load(backdropView, t.cover);
+        Lyrics.fetchCover(this, t, url -> {
+            if (url == null) return;
+            PlayerService svc = PlayerService.get();
+            Track cur = svc == null ? null : svc.current();
+            if (cur == null || !t.bvid.equals(cur.bvid)) return;
+            ImgLoader.loadDisc(ivCover, url);
+            if (backdropView != null) ImgLoader.load(backdropView, url);
+        });
         sb.setProgress(0);
         tvPos.setText("00:00");
         queueAdapter.notifyDataSetChanged();

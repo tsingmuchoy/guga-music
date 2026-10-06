@@ -13,6 +13,7 @@ import android.widget.Toast;
 public class SettingsActivity extends Activity {
 
     private TextView btnFollowSystem;
+    private TextView btnAlbumCover;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -23,6 +24,9 @@ public class SettingsActivity extends Activity {
         buildThemeRows();
 
         btnFollowSystem = findViewById(R.id.btnFollowSystem);
+        btnAlbumCover = findViewById(R.id.btnAlbumCover);
+        refreshAlbumCover();
+        btnAlbumCover.setOnClickListener(v -> { Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
         refreshFollowSystem();
         btnFollowSystem.setOnClickListener(v -> {
             boolean on = !ThemeUtil.isFollowSystem(this);
@@ -54,6 +58,10 @@ public class SettingsActivity extends Activity {
         });
         findViewById(R.id.btnAbout).setOnClickListener(v ->
                 startActivity(new Intent(this, AboutActivity.class)));
+    }
+
+    private void refreshAlbumCover() {
+        btnAlbumCover.setText("🖼 专辑封面：" + (Lyrics.isCoverArt(this) ? "开（歌曲自动换专辑原图）" : "关（用视频封面）"));
     }
 
     private void refreshFollowSystem() {

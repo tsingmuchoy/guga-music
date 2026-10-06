@@ -173,6 +173,71 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 });
 }
 
+// ---------------- 专辑封面（轻量化设计） ----------------
+// 只问网易云一家；结果只存内存（进程级 Map），图片走 ImgLoader 原有 12MB 内存缓存；
+// 不写任何磁盘文件，不建缓存目录，用多久都不涨存储。图只取 400x400 小图。
+public interface CoverCb { void onCover(String url); }
+private static final java.util.Map<String, String> COVER_MEM = new java.util.HashMap<>();
+
+public static boolean isCoverArt(Context ctx) {
+return ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getBoolean("cover_art", true);
+}
+public static void setCoverArt(Context ctx, boolean on) {
+ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("cover_art", on).apply();
+}
+
+public static void fetchCover(final Context ctx, final Track track, final CoverCb cb) {
+if (track == null || track.bvid == null || !isCoverArt(ctx)) { cb.onCover(null); return; }
+String memo = COVER_MEM.get(track.bvid);
+if (memo != null) { cb.onCover(memo.isEmpty() ? null : memo); return; }
+POOL.execute(() -> {
+String url = null;
+try { url = neteaseCoverArt(track, hintsOf(track)); } catch (Exception ignored) {}
+COVER_MEM.put(track.bvid, url == null ? "" : url);
+if (url != null) Diag.log(ctx, "\uD83D\uDDBC 专辑封面已替换（网易云专辑图）");
+final String f = url;
+new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onCover(f));
+});
+}
+
+private static String neteaseCoverArt(Track track, Hints hints) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+String bestUrl = null; int bestScore = 0; long bestDiff = Long.MAX_VALUE;
+int used = 0;
+for (String q : hints.queries) {
+if (used++ >= 3 || (bestScore == 100 && bestDiff <= 3000)) break;
+JSONObject r = new JSONObject(httpGet("https://music.163.com/api/cloudsearch/pc?type=1&limit=10&offset=0&s="
++ URLEncoder.encode(q, "UTF-8"), "https://music.163.com"));
+JSONArray songs = r.optJSONObject("result") == null ? null : r.getJSONObject("result").optJSONArray("songs");
+if (songs == null) continue;
+for (int i = 0; i < songs.length(); i++) {
+JSONObject sj = songs.getJSONObject(i);
+int score = nameScore(sj.optString("name"), hints.nameCands);
+if (score < 80) continue;
+JSONObject al = sj.optJSONObject("al");
+String pic = al == null ? "" : al.optString("picUrl");
+if (pic.isEmpty()) continue;
+long dt = sj.optLong("dt");
+long diff = wantDur > 0 ? Math.abs(dt - wantDur) : Long.MAX_VALUE / 2;
+boolean artistHit = false;
+JSONArray ars = sj.optJSONArray("ar");
+if (ars != null) {
+for (int a = 0; a < ars.length(); a++) {
+String an = ars.getJSONObject(a).optString("name");
+if (!an.isEmpty() && ((track.title != null && track.title.contains(an))
+|| (!hints.artist.isEmpty() && (hints.artist.contains(an) || an.contains(hints.artist))))) { artistHit = true; break; }
+}
+}
+if (!artistHit && diff > 5000) continue;
+if (score > bestScore || (score == bestScore && diff < bestDiff)) {
+bestScore = score; bestDiff = diff; bestUrl = pic;
+}
+}
+}
+if (bestUrl != null && !bestUrl.contains("?")) bestUrl += "?param=400y400";
+return bestUrl;
+}
+
 /** 歌词不对时换下一候选版本：序号 +1、清缓存、重新匹配 */
 public static void refetchNext(final Context ctx, final Track track, final BiliApi api, final Cb cb) {
 POOL.execute(() -> {
