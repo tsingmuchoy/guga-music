@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 歌词引擎 v3：网易云 -> LRCLIB -> 酷狗 -> B 站字幕，多源级联 + 本地缓存（lyrics_v3 目录，旧缓存作废） */
+/** 歌词引擎 v4：QQ音乐 / 网易云 / 酷狗 / AMLL TTML / LRCLIB 按用户设置顺序级联（默认 QQ->网易云->酷狗->AMLL->LRCLIB），B 站字幕兜底；本地缓存 lyrics_v4 目录 */
 public class Lyrics {
 
 public static class Line {
@@ -181,7 +181,7 @@ android.content.SharedPreferences sp = app.getSharedPreferences("lyrics_alt", Co
 int next = sp.getInt("alt_" + track.bvid, 0) + 1;
 sp.edit().putInt("alt_" + track.bvid, next).apply();
 try {
-File dir = new File(app.getFilesDir(), "lyrics_v3");
+File dir = new File(app.getFilesDir(), "lyrics_v4");
 new File(dir, track.bvid + ".lrc").delete();
 new File(dir, track.bvid + ".none").delete();
 } catch (Exception ignored) {}
@@ -191,7 +191,7 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 }
 
 private static Result fetchSync(Context ctx, Track track, BiliApi api) {
-File dir = new File(ctx.getFilesDir(), "lyrics_v3");
+File dir = new File(ctx.getFilesDir(), "lyrics_v4");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, track.bvid + ".lrc");
 File none = new File(dir, track.bvid + ".none");
@@ -210,28 +210,21 @@ return new Result(new ArrayList<>(), "");
 Hints hints = hintsOf(track);
 int alt = ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).getInt("alt_" + track.bvid, 0);
 
-// 1) 网易云
+// 按用户设置的顺序逐源尝试（设置页可调；B 站字幕始终最后兜底）
+for (String key : sourceOrder(ctx)) {
 try {
-String lrc = neteaseLyrics(track, hints, alt);
-Result r = acceptLrc(cache, lrc, "网易云歌词");
-if (r != null) { Diag.log(ctx, "🎤 歌词命中：网易云《" + hints.name + "》"); return r; }
+String lrc = null;
+if (key.equals("qq")) lrc = qqLyrics(track, hints, alt);
+else if (key.equals("netease")) lrc = neteaseLyrics(track, hints, alt);
+else if (key.equals("kugou")) lrc = kugouLyrics(track, hints, alt);
+else if (key.equals("amll")) lrc = amllLyrics(track, hints, alt);
+else if (key.equals("lrclib")) lrc = lrclibLyrics(track, hints, alt);
+Result r = acceptLrc(cache, lrc, srcLabel(key));
+if (r != null) { Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + hints.name + "》"); return r; }
 } catch (Exception ignored) {}
+}
 
-// 2) LRCLIB
-try {
-String lrc = lrclibLyrics(track, hints, alt);
-Result r = acceptLrc(cache, lrc, "LRCLIB 歌词");
-if (r != null) { Diag.log(ctx, "🎤 歌词命中：LRCLIB《" + hints.name + "》"); return r; }
-} catch (Exception ignored) {}
-
-// 3) 酷狗
-try {
-String lrc = kugouLyrics(track, hints, alt);
-Result r = acceptLrc(cache, lrc, "酷狗歌词");
-if (r != null) { Diag.log(ctx, "🎤 歌词命中：酷狗《" + hints.name + "》"); return r; }
-} catch (Exception ignored) {}
-
-// 4) B 站字幕兜底
+// B 站字幕兜底
 try {
 final Object lock = new Object();
 final List<Line>[] box = new List[1];
@@ -456,6 +449,235 @@ if (text.contains("[")) return text;
 } catch (Exception ignored) {}
 }
 return null;
+}
+
+// ---------------- 歌词源顺序配置 ----------------
+public static final String[] SRC_KEYS = {"qq", "netease", "kugou", "amll", "lrclib"};
+public static final String[] SRC_NAMES = {"QQ音乐", "网易云音乐", "酷狗音乐", "AMLL TTML", "LRCLIB"};
+private static final String DEFAULT_ORDER = "qq,netease,kugou,amll,lrclib";
+
+public static List<String> sourceOrder(Context ctx) {
+String saved = ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getString("source_order", "");
+List<String> out = new ArrayList<>();
+if (saved != null && !saved.isEmpty()) {
+for (String k : saved.split(",")) {
+k = k.trim();
+if (isSrcKey(k) && !out.contains(k)) out.add(k);
+}
+}
+for (String k : DEFAULT_ORDER.split(",")) if (!out.contains(k)) out.add(k);
+return out;
+}
+
+public static void setSourceOrder(Context ctx, List<String> order) {
+StringBuilder sb = new StringBuilder();
+for (String k : order) { if (sb.length() > 0) sb.append(","); sb.append(k); }
+ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit()
+.putString("source_order", sb.toString()).apply();
+}
+
+private static boolean isSrcKey(String k) {
+for (String s : SRC_KEYS) if (s.equals(k)) return true;
+return false;
+}
+
+public static String srcName(String key) {
+for (int i = 0; i < SRC_KEYS.length; i++) if (SRC_KEYS[i].equals(key)) return SRC_NAMES[i];
+return key;
+}
+
+private static String srcLabel(String key) {
+if (key.equals("qq")) return "QQ音乐歌词";
+if (key.equals("amll")) return "AMLL TTML 歌词";
+if (key.equals("lrclib")) return "LRCLIB 歌词";
+if (key.equals("kugou")) return "酷狗歌词";
+return "网易云歌词";
+}
+
+private static String srcShort(String key) {
+if (key.equals("qq")) return "QQ音乐";
+if (key.equals("amll")) return "AMLL TTML";
+if (key.equals("lrclib")) return "LRCLIB";
+if (key.equals("kugou")) return "酷狗";
+return "网易云";
+}
+
+// ---------------- QQ 音乐 ----------------
+private static class QCand {
+String mid; int group; long diff;
+QCand(String m, int g, long d) { mid = m; group = g; diff = d; }
+}
+
+private static List<QCand> qqCandidates(Track track, Hints hints) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+Map<String, QCand> byMid = new HashMap<>();
+for (String q : hints.queries) {
+String url = "https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?format=json&p=1&n=10&w="
++ URLEncoder.encode(q, "UTF-8");
+JSONObject r = new JSONObject(httpGet(url, "https://y.qq.com/"));
+JSONObject data = r.optJSONObject("data");
+JSONObject song = data == null ? null : data.optJSONObject("song");
+JSONArray list = song == null ? null : song.optJSONArray("list");
+if (list == null) continue;
+for (int i = 0; i < list.length(); i++) {
+JSONObject sj = list.getJSONObject(i);
+String mid = sj.optString("songmid");
+if (mid.isEmpty() || byMid.containsKey(mid)) continue;
+int score = nameScore(sj.optString("songname"), hints.nameCands);
+long diff = wantDur > 0 ? Math.abs(sj.optLong("interval") * 1000L - wantDur) : Long.MAX_VALUE / 2;
+boolean artistHit = false;
+JSONArray sgs = sj.optJSONArray("singer");
+if (sgs != null) {
+for (int a = 0; a < sgs.length(); a++) {
+String an = sgs.getJSONObject(a).optString("name");
+if (an.length() >= 2 && ((track.title != null && track.title.contains(an)) || an.equals(hints.artist))) { artistHit = true; break; }
+}
+}
+int group;
+if (score >= 80) group = 0;
+else if (score == 50 && artistHit) group = 1;
+else if (score == 0 && artistHit && diff <= 5000) group = 2;
+else continue;
+byMid.put(mid, new QCand(mid, group, diff));
+}
+if (!byMid.isEmpty()) break;
+}
+List<QCand> pool = new ArrayList<>(byMid.values());
+Collections.sort(pool, (a, b) -> a.group != b.group ? Integer.compare(a.group, b.group)
+: Long.compare(a.diff, b.diff));
+return pool;
+}
+
+private static String qqLyrics(Track track, Hints hints, int alt) throws Exception {
+List<QCand> pool = qqCandidates(track, hints);
+if (pool.isEmpty()) return null;
+for (int k = 0; k < pool.size(); k++) {
+QCand c = pool.get(Math.floorMod(alt + k, pool.size()));
+try {
+JSONObject r = new JSONObject(httpGet(
+"https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + c.mid
++ "&format=json&nobase64=1&g_tk=5381", "https://y.qq.com/portal/player.html"));
+String text = r.optString("lyric");
+if (text != null && !text.contains("[")) {
+try {
+String dec = new String(Base64.decode(text, Base64.DEFAULT), StandardCharsets.UTF_8);
+if (dec.contains("[")) text = dec;
+} catch (Exception ignored) {}
+}
+if (text != null && text.contains("[")) return text;
+} catch (Exception ignored) {}
+}
+return null;
+}
+
+// ---------------- AMLL TTML（按平台歌曲 ID 查 amll-ttml-db） ----------------
+private static String amllLyrics(Track track, Hints hints, int alt) throws Exception {
+try {
+List<QCand> pool = qqCandidates(track, hints);
+int n = Math.min(pool.size(), 3);
+for (int k = 0; k < n; k++) {
+QCand c = pool.get(Math.floorMod(alt + k, pool.size()));
+String lrc = amllFetch("qq-lyrics/" + c.mid + ".ttml");
+if (lrc != null) return lrc;
+}
+} catch (Exception ignored) {}
+try {
+long id = neteaseBestId(track, hints);
+if (id > 0) {
+String lrc = amllFetch("ncm-lyrics/" + id + ".ttml");
+if (lrc != null) return lrc;
+}
+} catch (Exception ignored) {}
+return null;
+}
+
+private static String amllFetch(String path) {
+String[] bases = {
+"https://cdn.jsdelivr.net/gh/amll-dev/amll-ttml-db@main/",
+"https://raw.githubusercontent.com/amll-dev/amll-ttml-db/main/"
+};
+for (String b : bases) {
+try {
+String ttml = httpGet(b + path, null);
+if (ttml != null && ttml.contains("<tt")) {
+String lrc = ttmlToLrc(ttml);
+if (lrc != null) return lrc;
+}
+} catch (Exception ignored) {}
+}
+return null;
+}
+
+private static long neteaseBestId(Track track, Hints hints) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+long bestId = -1; int bestGroup = 99; long bestDiff = Long.MAX_VALUE;
+for (String q : hints.queries) {
+String url = "https://music.163.com/api/cloudsearch/pc?type=1&limit=10&offset=0&s="
++ URLEncoder.encode(q, "UTF-8");
+JSONObject r = new JSONObject(httpGet(url, "https://music.163.com"));
+JSONObject res = r.optJSONObject("result");
+JSONArray songs = res == null ? null : res.optJSONArray("songs");
+if (songs == null) continue;
+for (int i = 0; i < songs.length(); i++) {
+JSONObject sj = songs.getJSONObject(i);
+long id = sj.optLong("id");
+if (id <= 0) continue;
+int score = nameScore(sj.optString("name"), hints.nameCands);
+long diff = wantDur > 0 ? Math.abs(sj.optLong("dt") - wantDur) : Long.MAX_VALUE / 2;
+boolean artistHit = false;
+JSONArray ars = sj.optJSONArray("ar");
+if (ars != null && track.title != null) {
+for (int a = 0; a < ars.length(); a++) {
+String an = ars.getJSONObject(a).optString("name");
+if (an.length() >= 2 && track.title.contains(an)) { artistHit = true; break; }
+}
+}
+int group;
+if (score >= 80) group = 0;
+else if (score == 50 && artistHit) group = 1;
+else if (score == 0 && artistHit && diff <= 5000) group = 2;
+else continue;
+if (group < bestGroup || (group == bestGroup && diff < bestDiff)) { bestGroup = group; bestDiff = diff; bestId = id; }
+}
+if (bestId > 0) break;
+}
+return bestId;
+}
+
+private static final Pattern TTML_P = Pattern.compile("<p\\b[^>]*?\\bbegin=\"([^\"]+)\"[^>]*>(.*?)</p>", Pattern.DOTALL);
+private static final Pattern TTML_TRANS = Pattern.compile("<span\\b[^>]*(?:x-translation|x-roman)[^>]*>.*?</span>", Pattern.DOTALL);
+
+/** TTML（逐字轴）转行级 LRC：取每行 begin 时间，剥掉翻译/罗马音 span 与全部标签 */
+private static String ttmlToLrc(String ttml) {
+Matcher m = TTML_P.matcher(ttml);
+StringBuilder sb = new StringBuilder();
+int count = 0;
+while (m.find()) {
+long ms = ttmlTime(m.group(1));
+if (ms < 0) continue;
+String inner = TTML_TRANS.matcher(m.group(2)).replaceAll("");
+inner = inner.replaceAll("<[^>]+>", "");
+inner = inner.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"")
+.replace("&apos;", "'").replace("&amp;", "&");
+inner = inner.replaceAll("\\s+", " ").trim();
+if (inner.isEmpty()) continue;
+sb.append(String.format("[%02d:%02d.%03d]", ms / 60000, (ms % 60000) / 1000, ms % 1000))
+.append(inner).append("\n");
+count++;
+}
+return count >= 5 ? sb.toString() : null;
+}
+
+private static long ttmlTime(String s) {
+try {
+s = s.trim();
+if (s.endsWith("s")) return (long) (Double.parseDouble(s.substring(0, s.length() - 1)) * 1000);
+String[] parts = s.split(":");
+double sec = Double.parseDouble(parts[parts.length - 1]);
+long min = parts.length >= 2 ? Long.parseLong(parts[parts.length - 2]) : 0;
+long hr = parts.length >= 3 ? Long.parseLong(parts[parts.length - 3]) : 0;
+return (long) ((hr * 3600 + min * 60) * 1000 + sec * 1000);
+} catch (Exception e) { return -1; }
 }
 
 static String httpGet(String url, String referer) throws Exception {

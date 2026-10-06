@@ -62,6 +62,32 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
+            android:text="🎤 歌词源顺序（从上往下依次尝试）"
+            android:textColor="?attr/gAccent"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/llLyricOrder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/btnLyricOrderReset"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:padding="16dp"
+            android:text="↩ 恢复默认顺序（QQ音乐 → 网易云音乐 → 酷狗音乐 → AMLL TTML → LRCLIB）"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
             android:text="🧹 数据"
             android:textColor="?attr/gAccent"
             android:textSize="14sp"
