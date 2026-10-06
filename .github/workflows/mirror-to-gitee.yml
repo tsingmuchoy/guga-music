@@ -1,0 +1,56 @@
+name: Mirror to Gitee
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  GITEE_USER: tsingmuchoy
+  GITEE_REPO: guga-music
+
+jobs:
+  mirror-git:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push branches and tags to Gitee
+        env:
+          TK: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          git remote add gitee "https://tsingmuchoy:${TK}@gitee.com/${GITEE_USER}/${GITEE_REPO}.git"
+          git push gitee --all
+          git push gitee --tags
+
+  mirror-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    env:
+      TK: ${{ secrets.GITEE_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Create Gitee release and upload assets
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          NAME="${{ github.event.release.name }}"
+          BODY="${{ github.event.release.body }}"
+          curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases" \
+            --data-urlencode "access_token=${TK}" \
+            --data-urlencode "tag_name=${TAG}" \
+            --data-urlencode "name=${NAME}" \
+            --data-urlencode "body=${BODY}" \
+            --data-urlencode "target_commitish=main" || true
+          ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${TK}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))")
+          echo "gitee release id: $ID"
+          mkdir -p /tmp/assets
+          gh release download "$TAG" --repo "${{ github.repository }}" --dir /tmp/assets || true
+          for f in /tmp/assets/*; do
+            [ -f "$f" ] || continue
+            curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${ID}/attach_files" \
+              -F "access_token=${TK}" -F "file=@${f}"
+          done
