@@ -24,6 +24,26 @@ public class UpdateChecker {
         public String version;
         public String notes;
         public String apkUrl;
+        public String sourceName;
+    }
+
+    // ---------------- 更新源（GitHub 主源 / Gitee 备用源，首选连不上自动切换） ----------------
+    public static final String SRC_GITHUB = "github";
+    public static final String SRC_GITEE = "gitee";
+    private static final String GITEE_API =
+            "https://gitee.com/api/v5/repos/tsingmuchoy/guga-music/releases/latest";
+
+    public static String sourcePref(Context ctx) {
+        String v = ctx.getSharedPreferences("update", Context.MODE_PRIVATE).getString("source", SRC_GITHUB);
+        return SRC_GITEE.equals(v) ? SRC_GITEE : SRC_GITHUB;
+    }
+
+    public static void setSourcePref(Context ctx, String src) {
+        ctx.getSharedPreferences("update", Context.MODE_PRIVATE).edit().putString("source", src).apply();
+    }
+
+    public static String sourceName(String src) {
+        return SRC_GITEE.equals(src) ? "Gitee 备用源" : "GitHub";
     }
 
     public interface Cb { void onResult(Info info, String error); }
@@ -52,29 +72,67 @@ public class UpdateChecker {
 
     public static void check(final Context ctx, final Cb cb) {
         new Thread(() -> {
+            String pref = sourcePref(ctx);
+            String other = SRC_GITEE.equals(pref) ? SRC_GITHUB : SRC_GITEE;
             Info found = null;
             String err = null;
             try {
-                String tag = latestTag();
-                if (tag == null) {
-                    err = "没读到最新版本信息";
-                } else if (cmp(tag, currentVersion(ctx)) > 0) {
-                    found = new Info();
-                    found.version = tag;
-                    found.apkUrl = "https://github.com/tsingmuchoy/guga-music/releases/download/v"
-                            + tag + "/guga-music-v" + tag + ".apk";
-                    found.notes = fetchNotes(tag);
-                    if (found.notes == null || found.notes.isEmpty()) {
-                        found.notes = "新版来啦 🎉 点「立即更新」下载安装（完整更新日志可在 GitHub 查看）";
-                    }
+                found = checkSource(ctx, pref);
+            } catch (Exception e1) {
+                try {
+                    found = checkSource(ctx, other);
+                } catch (Exception e2) {
+                    err = e2.getMessage();
                 }
-            } catch (Exception e) {
-                err = e.getMessage();
             }
             final Info f = found;
             final String er = err;
             new Handler(Looper.getMainLooper()).post(() -> cb.onResult(f, er));
         }).start();
+    }
+
+    /** 查一个源：有新版返回 Info，已是最新返回 null，源不可用抛异常（触发切换到另一个源） */
+    private static Info checkSource(Context ctx, String src) throws Exception {
+        String tag;
+        String apkUrl;
+        String notes;
+        if (SRC_GITEE.equals(src)) {
+            JSONObject r = new JSONObject(Lyrics.httpGet(GITEE_API, null));
+            tag = r.optString("tag_name").replaceFirst("^v", "");
+            if (!tag.matches("[0-9]+(\\.[0-9]+)*")) throw new Exception("Gitee 没返回有效版本号");
+            if (cmp(tag, currentVersion(ctx)) <= 0) return null;
+            apkUrl = null;
+            JSONArray assets = r.optJSONArray("assets");
+            if (assets != null) {
+                for (int i = 0; i < assets.length(); i++) {
+                    JSONObject a = assets.getJSONObject(i);
+                    if (a.optString("name").endsWith(".apk")) {
+                        apkUrl = a.optString("browser_download_url");
+                        break;
+                    }
+                }
+            }
+            if (apkUrl == null || apkUrl.isEmpty()) {
+                apkUrl = "https://gitee.com/tsingmuchoy/guga-music/releases/download/v"
+                        + tag + "/guga-music-v" + tag + ".apk";
+            }
+            notes = r.optString("body");
+        } else {
+            tag = latestTag();
+            if (tag == null) throw new Exception("没读到最新版本信息");
+            if (cmp(tag, currentVersion(ctx)) <= 0) return null;
+            apkUrl = "https://github.com/tsingmuchoy/guga-music/releases/download/v"
+                    + tag + "/guga-music-v" + tag + ".apk";
+            notes = fetchNotes(tag);
+        }
+        Info info = new Info();
+        info.version = tag;
+        info.apkUrl = apkUrl;
+        info.sourceName = sourceName(src);
+        info.notes = notes == null || notes.isEmpty()
+                ? "新版来啦 🎉 点「立即更新」下载安装"
+                : notes.length() > 700 ? notes.substring(0, 700) + "…" : notes;
+        return info;
     }
 
     /** 不走 GitHub API（有每小时 60 次限额，手机共享 IP 很容易被限）：
@@ -130,7 +188,8 @@ public class UpdateChecker {
     public static void showUpdateDialog(final Activity act, final Info info) {
         new AlertDialog.Builder(act)
                 .setTitle("发现新版本 v" + info.version + " 🎉")
-                .setMessage(info.notes == null || info.notes.isEmpty() ? "有新版啦，快来更新！" : info.notes)
+                .setMessage((info.notes == null || info.notes.isEmpty() ? "有新版啦，快来更新！" : info.notes)
+                        + (info.sourceName == null ? "" : "\n\n（更新源：" + info.sourceName + "）"))
                 .setPositiveButton("立即更新", (d, w) -> download(act, info))
                 .setNegativeButton("下次再说", null)
                 .show();
@@ -151,7 +210,7 @@ public class UpdateChecker {
                     .putLong("dl_id", id).putString("dl_ver", info.version).apply();
             Toast.makeText(ctx, "已开始下载 📦 下完会自动弹出安装", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            Toast.makeText(ctx, "下载失败，打开 GitHub 手动下载吧", Toast.LENGTH_LONG).show();
+            Toast.makeText(ctx, "下载失败，去更新源手动下载吧", Toast.LENGTH_LONG).show();
             try {
                 ctx.startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://github.com/tsingmuchoy/guga-music/releases/latest")));
