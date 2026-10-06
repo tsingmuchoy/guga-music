@@ -40,10 +40,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Create Gitee release and upload assets
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          NAME: ${{ github.event.release.name }}
+          BODY: ${{ github.event.release.body }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          NAME="${{ github.event.release.name }}"
-          BODY="${{ github.event.release.body }}"
           curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases" \
             --data-urlencode "access_token=${TK}" \
             --data-urlencode "tag_name=${TAG}" \
