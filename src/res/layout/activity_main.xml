@@ -269,23 +269,25 @@
                     android:textColor="?attr/gTextPri"
                     android:textSize="14sp" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/btnMiniToggle"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:gravity="center"
-                    android:text="▶"
-                    android:textColor="?attr/gAccent"
-                    android:textSize="22sp" />
+                    android:contentDescription="播放/暂停"
+                    android:padding="12dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_play"
+                    android:tint="?attr/gAccent" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/btnMiniNext"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:gravity="center"
-                    android:text="⏭"
-                    android:textColor="?attr/gTextPri"
-                    android:textSize="19sp" />
+                    android:contentDescription="下一首"
+                    android:padding="13dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_next"
+                    android:tint="?attr/gTextPri" />
             </LinearLayout>
 
             <View

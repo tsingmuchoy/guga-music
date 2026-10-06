@@ -142,32 +142,35 @@
             android:textColor="?attr/gAccent"
             android:textSize="12sp" />
 
-        <TextView
+        <ImageView
             android:id="@+id/btnPrev"
             android:layout_width="52dp"
             android:layout_height="52dp"
-            android:gravity="center"
-            android:text="⏮"
-            android:textColor="?attr/gTextPri"
-            android:textSize="22sp" />
+            android:contentDescription="上一首"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_prev"
+            android:tint="?attr/gTextPri" />
 
-        <TextView
+        <ImageView
             android:id="@+id/btnToggle"
             android:layout_width="64dp"
             android:layout_height="52dp"
-            android:gravity="center"
-            android:text="▶"
-            android:textColor="?attr/gAccent"
-            android:textSize="28sp" />
+            android:contentDescription="播放/暂停"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_play"
+            android:tint="?attr/gAccent" />
 
-        <TextView
+        <ImageView
             android:id="@+id/btnNext"
             android:layout_width="52dp"
             android:layout_height="52dp"
-            android:gravity="center"
-            android:text="⏭"
-            android:textColor="?attr/gTextPri"
-            android:textSize="22sp" />
+            android:contentDescription="下一首"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_next"
+            android:tint="?attr/gTextPri" />
 
         <TextView
             android:id="@+id/btnQuality"

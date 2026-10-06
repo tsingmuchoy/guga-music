@@ -53,7 +53,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private View rootMain;
     private TextView tvHint, tvUname, tvMid, btnLogin;
     private ImageView ivFace, ivMiniCover;
-    private TextView tvMiniTitle, btnMiniToggle;
+    private TextView tvMiniTitle;
+    private android.widget.ImageView btnMiniToggle;
     private final TextView[] tabViews = new TextView[4];
 
     @Override
@@ -438,7 +439,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
     @Override
     public void onStateChanged(boolean playing) {
-        btnMiniToggle.setText(playing ? "⏸" : "▶");
+        btnMiniToggle.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
     }
 
     @Override

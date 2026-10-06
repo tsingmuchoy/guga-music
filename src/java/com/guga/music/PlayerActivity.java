@@ -19,7 +19,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
 
     private ImageView ivCover;
     private ImageView backdropView;
-    private TextView tvTitle, tvAuthor, tvPos, tvDur, btnToggle, btnMode, btnQuality;
+    private TextView tvTitle, tvAuthor, tvPos, tvDur, btnMode, btnQuality;
+    private android.widget.ImageView btnToggle;
     private SeekBar sb;
     private ListView lvQueue;
     private LyricsView lyView;
@@ -250,7 +251,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
 
     @Override
     public void onStateChanged(boolean playing) {
-        btnToggle.setText(playing ? "⏸" : "▶");
+        btnToggle.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
         if (discSpin != null) {
             if (playing) discSpin.resume();
             else discSpin.pause();
