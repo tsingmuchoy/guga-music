@@ -46,8 +46,10 @@ public class BiliApi {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private final SharedPreferences sp;
+    private final Context appCtx;
 
     public BiliApi(Context ctx) {
+        appCtx = ctx.getApplicationContext();
         sp = ctx.getSharedPreferences("bili", Context.MODE_PRIVATE);
     }
 
@@ -191,30 +193,69 @@ public class BiliApi {
     public void search(String keyword, int page, Cb<List<Track>> cb) {
         run(() -> {
             prepare();
-            Map<String, String> p = new HashMap<>();
-            p.put("search_type", "video");
-            p.put("keyword", keyword);
-            p.put("page", String.valueOf(page));
-            String url = "https://api.bilibili.com/x/web-interface/wbi/search/type?" + Wbi.signQuery(p, mixin());
-            JSONObject j = getJson(url);
-            if (j.getInt("code") != 0) throw new Exception("搜索失败：" + j.optString("message"));
-            List<Track> out = new ArrayList<>();
-            JSONArray arr = j.getJSONObject("data").optJSONArray("result");
-            if (arr != null) {
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject o = arr.getJSONObject(i);
-                    Track t = new Track();
-                    t.bvid = o.optString("bvid");
-                    t.title = stripHtml(o.optString("title"));
-                    String pic = o.optString("pic");
-                    t.cover = pic.startsWith("//") ? "https:" + pic : pic;
-                    t.author = o.optString("author");
-                    t.durationSec = parseDur(o.optString("duration"));
-                    if (!t.bvid.isEmpty()) out.add(t);
-                }
+            try {
+                List<Track> r1 = searchWbi(keyword, page);
+                if (!r1.isEmpty()) return r1;
+                Diag.log(appCtx, "🔍 搜索首试结果为空，走自愈/兜底");
+            } catch (Exception e1) {
+                Diag.log(appCtx, "🔍 搜索首试失败：" + e1.getMessage());
             }
-            return out;
+            // 自愈：buvid 与 WBI 签名密钥强制刷新后重试（多为风控/密钥过期导致的间歇空白）
+            try {
+                sp.edit().remove("buvid3").remove("buvid4").remove("mixin_day").apply();
+                prepare();
+                List<Track> r = searchWbi(keyword, page);
+                if (!r.isEmpty()) {
+                    Diag.log(appCtx, "🔍 搜索刷新凭证后重试成功");
+                    return r;
+                }
+                Diag.log(appCtx, "🔍 搜索刷新凭证后仍为空，走兜底");
+            } catch (Exception e2) {
+                Diag.log(appCtx, "🔍 搜索重试失败：" + e2.getMessage());
+            }
+            // 兜底：非 WBI 老搜索接口（风控较松）
+            List<Track> r = searchLegacy(keyword, page);
+            Diag.log(appCtx, "🔍 搜索走兜底接口，结果 " + r.size() + " 条");
+            return r;
         }, cb);
+    }
+
+    private List<Track> searchWbi(String keyword, int page) throws Exception {
+        Map<String, String> p = new HashMap<>();
+        p.put("search_type", "video");
+        p.put("keyword", keyword);
+        p.put("page", String.valueOf(page));
+        String url = "https://api.bilibili.com/x/web-interface/wbi/search/type?" + Wbi.signQuery(p, mixin());
+        JSONObject j = getJson(url);
+        if (j.getInt("code") != 0) throw new Exception("code " + j.getInt("code") + "：" + j.optString("message"));
+        return parseSearch(j);
+    }
+
+    private List<Track> searchLegacy(String keyword, int page) throws Exception {
+        String url = "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword="
+                + enc(keyword) + "&page=" + page;
+        JSONObject j = getJson(url);
+        if (j.getInt("code") != 0) throw new Exception("搜索失败：" + j.optString("message"));
+        return parseSearch(j);
+    }
+
+    private List<Track> parseSearch(JSONObject j) throws Exception {
+        List<Track> out = new ArrayList<>();
+        JSONArray arr = j.getJSONObject("data").optJSONArray("result");
+        if (arr != null) {
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.getJSONObject(i);
+                Track t = new Track();
+                t.bvid = o.optString("bvid");
+                t.title = stripHtml(o.optString("title"));
+                String pic = o.optString("pic");
+                t.cover = pic.startsWith("//") ? "https:" + pic : pic;
+                t.author = o.optString("author");
+                t.durationSec = parseDur(o.optString("duration"));
+                if (!t.bvid.isEmpty()) out.add(t);
+            }
+        }
+        return out;
     }
 
     /** 取视频字幕（歌词兜底用）：优先中文字幕轨 */
