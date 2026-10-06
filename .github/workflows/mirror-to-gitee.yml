@@ -24,8 +24,13 @@ jobs:
           TK: ${{ secrets.GITEE_TOKEN }}
         run: |
           git remote add gitee "https://tsingmuchoy:${TK}@gitee.com/${GITEE_USER}/${GITEE_REPO}.git"
-          git push gitee --all
-          git push gitee --tags
+          git config http.postBuffer 524288000
+          ok=0
+          for i in 1 2 3 4; do
+            if git -c http.version=HTTP/1.1 push gitee --all && git -c http.version=HTTP/1.1 push gitee --tags; then ok=1; echo "push ok (attempt $i)"; break; fi
+            echo "push attempt $i failed, retry in 20s"; sleep 20
+          done
+          [ "$ok" = "1" ] || exit 1
 
   mirror-release:
     if: github.event_name == 'release'
