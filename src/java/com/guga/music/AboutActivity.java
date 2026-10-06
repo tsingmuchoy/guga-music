@@ -25,6 +25,22 @@ public class AboutActivity extends Activity {
                 android.widget.Toast.makeText(this, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show();
             }
         });
+        findViewById(R.id.tvAdvisorBili).setOnClickListener(v -> {
+            try {
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://space.bilibili.com/432245733")));
+            } catch (Exception e) {
+                android.widget.Toast.makeText(this, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
+        findViewById(R.id.tvAdvisorGithub).setOnClickListener(v -> {
+            try {
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://github.com/MCfywb")));
+            } catch (Exception e) {
+                android.widget.Toast.makeText(this, "没有可用的浏览器", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
         findViewById(R.id.tvGithub).setOnClickListener(v -> {
             try {
                 startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
