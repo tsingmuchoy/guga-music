@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 歌词引擎 v4：QQ音乐 / 网易云 / 酷狗 / AMLL TTML / LRCLIB 按用户设置顺序级联（默认 QQ->网易云->酷狗->AMLL->LRCLIB），B 站字幕兜底（设置可开「优先字幕」先抓字幕）；本地缓存 lyrics_v4 目录 */
+/** 歌词引擎 v4：QQ音乐 / 网易云 / 酷狗 / AMLL TTML / LRCLIB 按用户设置顺序级联（默认 QQ->网易云->酷狗->AMLL->LRCLIB），B 站字幕兜底；本地缓存 lyrics_v4 目录 */
 public class Lyrics {
 
 public static class Line {
@@ -195,35 +195,20 @@ File dir = new File(ctx.getFilesDir(), "lyrics_v4");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, track.bvid + ".lrc");
 File none = new File(dir, track.bvid + ".none");
-boolean subFirst = isSubFirst(ctx);
-Result cachedMusic = null;
 try {
 if (cache.exists()) {
 String content = readFile(cache);
 String src = content.startsWith("#src:") ? content.substring(5, content.indexOf('\n')) : "缓存";
 List<Line> lines = parseLrc(content);
-if (!lines.isEmpty()) {
-if (!subFirst || "视频字幕".equals(src)) return new Result(lines, src);
-cachedMusic = new Result(lines, src);
-}
+if (!lines.isEmpty()) return new Result(lines, src);
 }
 if (none.exists() && System.currentTimeMillis() - none.lastModified() < 3L * 24 * 3600 * 1000) {
-if (cachedMusic != null) return cachedMusic;
 return new Result(new ArrayList<>(), "");
 }
 } catch (Exception ignored) {}
 
 Hints hints = hintsOf(track);
 int alt = ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).getInt("alt_" + track.bvid, 0);
-
-// 优先字幕：开时先抓 B 站字幕（解说/故事类），字幕落空再走音乐源级联
-boolean subTried = false;
-if (subFirst) {
-subTried = true;
-Result sr = trySubtitles(ctx, track, api, cache, true);
-if (sr != null) return sr;
-if (cachedMusic != null) return cachedMusic;
-}
 
 // 按用户设置的顺序逐源尝试（设置页可调；B 站字幕始终最后兜底）
 for (String key : sourceOrder(ctx)) {
@@ -240,25 +225,15 @@ if (r != null) { Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + 
 }
 
 // B 站字幕兜底
-if (!subTried) {
-Result sr = trySubtitles(ctx, track, api, cache, false);
+Result sr = trySubtitles(ctx, track, api, cache);
 if (sr != null) return sr;
-}
 
 try { writeFile(none, ""); } catch (Exception ignored) {}
 Diag.log(ctx, "🎤 歌词未命中：《" + hints.name + "》");
 return new Result(new ArrayList<>(), "");
 }
 
-public static boolean isSubFirst(Context ctx) {
-return ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getBoolean("sub_first", false);
-}
-
-public static void setSubFirst(Context ctx, boolean on) {
-ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("sub_first", on).apply();
-}
-
-private static Result trySubtitles(Context ctx, Track track, BiliApi api, File cache, boolean first) {
+private static Result trySubtitles(Context ctx, Track track, BiliApi api, File cache) {
 try {
 final Object lock = new Object();
 final List<Line>[] box = new List[1];
@@ -283,7 +258,7 @@ sb.append(String.format("[%02d:%02d.%03d]", l.timeMs / 60000, (l.timeMs % 60000)
 .append(l.text).append("\n");
 }
 writeFile(cache, sb.toString());
-Diag.log(ctx, first ? "🎤 歌词命中：视频字幕（优先字幕）" : "🎤 歌词命中：视频字幕");
+Diag.log(ctx, "🎤 歌词命中：视频字幕");
 return new Result(box[0], "视频字幕");
 }
 } catch (Exception ignored) {}

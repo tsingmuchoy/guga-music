@@ -13,7 +13,6 @@ import android.widget.Toast;
 public class SettingsActivity extends Activity {
 
     private TextView btnFollowSystem;
-    private TextView btnSubFirst;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,15 +36,6 @@ public class SettingsActivity extends Activity {
 
         buildLyricOrderRows();
         buildUpdateSourceRows();
-        btnSubFirst = findViewById(R.id.btnSubFirst);
-        refreshSubFirst();
-        btnSubFirst.setOnClickListener(v -> {
-            boolean on = !Lyrics.isSubFirst(this);
-            Lyrics.setSubFirst(this, on);
-            Toast.makeText(this, on ? "优先字幕已开启：先抓 B 站字幕，听解说/故事更搭 📜" : "优先字幕已关闭",
-                    Toast.LENGTH_SHORT).show();
-            refreshSubFirst();
-        });
         findViewById(R.id.btnLyricOrderReset).setOnClickListener(v -> {
             Lyrics.setSourceOrder(this, java.util.Arrays.asList(Lyrics.SRC_KEYS));
             Toast.makeText(this, "歌词源已恢复默认顺序", Toast.LENGTH_SHORT).show();
@@ -71,13 +61,6 @@ public class SettingsActivity extends Activity {
         btnFollowSystem.setText(on
                 ? "🌗 主题跟随系统：开（夜间用所选主题 · 日间瓷白玻璃）"
                 : "🌗 主题跟随系统：关（点开启）");
-    }
-
-    private void refreshSubFirst() {
-        boolean on = Lyrics.isSubFirst(this);
-        btnSubFirst.setText(on
-                ? "📜 优先字幕：开（先抓 B 站字幕 · 没字幕再找歌词源）"
-                : "📜 优先字幕：关（点开启 · 听案件讲解/故事解说时推荐）");
     }
 
     /** 音质五档选择行（样式与主题行一致），档位存 player 偏好 quality_tier */
