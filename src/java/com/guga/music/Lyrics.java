@@ -173,9 +173,10 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 });
 }
 
-// ---------------- 专辑封面（轻量化设计） ----------------
-// 只问网易云一家；结果只存内存（进程级 Map），图片走 ImgLoader 原有 12MB 内存缓存；
-// 不写任何磁盘文件，不建缓存目录，用多久都不涨存储。图只取 400x400 小图。
+// ---------------- 专辑封面（轻量化设计·双源） ----------------
+// 网易云 + QQ 两源汇池统一排序：歌手命中组绝对优先（防同名翻唱抢位，v1.17.0 教训），
+// 组内按歌名分、时长差排；无歌手命中时仅接受「歌名完全一致且时长差≤3秒」。
+// 结果只存内存（进程级 Map），图片走 ImgLoader 原有内存缓存；不写任何磁盘文件。
 public interface CoverCb { void onCover(String url); }
 private static final java.util.Map<String, String> COVER_MEM = new java.util.HashMap<>();
 
@@ -191,28 +192,59 @@ if (track == null || track.bvid == null || !isCoverArt(ctx)) { cb.onCover(null);
 String memo = COVER_MEM.get(track.bvid);
 if (memo != null) { cb.onCover(memo.isEmpty() ? null : memo); return; }
 POOL.execute(() -> {
-String url = null;
-try { url = neteaseCoverArt(track, hintsOf(track)); } catch (Exception ignored) {}
-COVER_MEM.put(track.bvid, url == null ? "" : url);
-if (url != null) Diag.log(ctx, "\uD83D\uDDBC 专辑封面已替换（网易云专辑图）");
-final String f = url;
+CoverCand w = null;
+try { w = pickCoverArt(track, hintsOf(track)); } catch (Exception ignored) {}
+COVER_MEM.put(track.bvid, w == null ? "" : w.url);
+if (w != null) Diag.log(ctx, "\uD83D\uDDBC 专辑封面已替换（" + w.src + "专辑图）");
+final String f = w == null ? null : w.url;
 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onCover(f));
 });
 }
 
-private static String neteaseCoverArt(Track track, Hints hints) throws Exception {
+private static class CoverCand {
+String url; String src; int score; boolean artistHit; long diff;
+CoverCand(String u, String s, int sc, boolean ah, long d) { url = u; src = s; score = sc; artistHit = ah; diff = d; }
+}
+
+/** 封面专用歌名候选：在歌词候选基础上再去掉结尾年份（如「初恋 1990」→「初恋」） */
+private static java.util.List<String> coverCandsOf(Hints hints) {
+java.util.List<String> out = new java.util.ArrayList<>(hints.nameCands);
+for (String c : hints.nameCands) {
+String v = c.replaceAll("\\s*(19|20)\\d{2}\\s*$", "").trim();
+if (!v.isEmpty() && !out.contains(v)) out.add(v);
+}
+return out;
+}
+
+private static CoverCand pickCoverArt(Track track, Hints hints) {
+java.util.List<String> cands = coverCandsOf(hints);
+java.util.Map<String, CoverCand> byUrl = new java.util.LinkedHashMap<>();
+try { collectNetEaseCovers(track, hints, cands, byUrl); } catch (Exception ignored) {}
+try { collectQqCovers(track, hints, cands, byUrl); } catch (Exception ignored) {}
+CoverCand bestHit = null, bestLoose = null;
+for (CoverCand c : byUrl.values()) {
+if (c.artistHit && c.score >= 80) {
+if (bestHit == null || c.score > bestHit.score || (c.score == bestHit.score && c.diff < bestHit.diff)) bestHit = c;
+} else if (c.score == 100 && c.diff <= 3000) {
+if (bestLoose == null || c.diff < bestLoose.diff) bestLoose = c;
+}
+}
+return bestHit != null ? bestHit : bestLoose;
+}
+
+private static void collectNetEaseCovers(Track track, Hints hints, java.util.List<String> cands,
+java.util.Map<String, CoverCand> byUrl) throws Exception {
 long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
-String bestUrl = null; int bestScore = 0; long bestDiff = Long.MAX_VALUE;
 int used = 0;
 for (String q : hints.queries) {
-if (used++ >= 3 || (bestScore == 100 && bestDiff <= 3000)) break;
+if (used++ >= 3) break;
 JSONObject r = new JSONObject(httpGet("https://music.163.com/api/cloudsearch/pc?type=1&limit=10&offset=0&s="
 + URLEncoder.encode(q, "UTF-8"), "https://music.163.com"));
 JSONArray songs = r.optJSONObject("result") == null ? null : r.getJSONObject("result").optJSONArray("songs");
 if (songs == null) continue;
 for (int i = 0; i < songs.length(); i++) {
 JSONObject sj = songs.getJSONObject(i);
-int score = nameScore(sj.optString("name"), hints.nameCands);
+int score = nameScore(sj.optString("name"), cands);
 if (score < 80) continue;
 JSONObject al = sj.optJSONObject("al");
 String pic = al == null ? "" : al.optString("picUrl");
@@ -228,14 +260,44 @@ if (!an.isEmpty() && ((track.title != null && track.title.contains(an))
 || (!hints.artist.isEmpty() && (hints.artist.contains(an) || an.contains(hints.artist))))) { artistHit = true; break; }
 }
 }
-if (!artistHit && diff > 5000) continue;
-if (score > bestScore || (score == bestScore && diff < bestDiff)) {
-bestScore = score; bestDiff = diff; bestUrl = pic;
+String url = pic.contains("?") ? pic : pic + "?param=400y400";
+byUrl.put(url, new CoverCand(url, "网易云", score, artistHit, diff));
 }
 }
 }
-if (bestUrl != null && !bestUrl.contains("?")) bestUrl += "?param=400y400";
-return bestUrl;
+
+private static void collectQqCovers(Track track, Hints hints, java.util.List<String> cands,
+java.util.Map<String, CoverCand> byUrl) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+int used = 0;
+for (String q : hints.queries) {
+if (used++ >= 3) break;
+JSONObject r = new JSONObject(httpGet("https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?format=json&p=1&n=10&w="
++ URLEncoder.encode(q, "UTF-8"), "https://y.qq.com/"));
+JSONObject data = r.optJSONObject("data");
+JSONObject song = data == null ? null : data.optJSONObject("song");
+JSONArray list = song == null ? null : song.optJSONArray("list");
+if (list == null) continue;
+for (int i = 0; i < list.length(); i++) {
+JSONObject sj = list.getJSONObject(i);
+int score = nameScore(sj.optString("songname"), cands);
+if (score < 80) continue;
+String amid = sj.optString("albummid");
+if (amid.isEmpty()) continue;
+long diff = wantDur > 0 ? Math.abs(sj.optLong("interval") * 1000L - wantDur) : Long.MAX_VALUE / 2;
+boolean artistHit = false;
+JSONArray sgs = sj.optJSONArray("singer");
+if (sgs != null) {
+for (int a = 0; a < sgs.length(); a++) {
+String an = sgs.getJSONObject(a).optString("name");
+if (an.length() >= 2 && ((track.title != null && track.title.contains(an))
+|| (!hints.artist.isEmpty() && (hints.artist.contains(an) || an.equals(hints.artist))))) { artistHit = true; break; }
+}
+}
+String url = "https://y.gtimg.cn/music/photo_new/T002R500x500M000" + amid + ".jpg";
+byUrl.put(url, new CoverCand(url, "QQ音乐", score, artistHit, diff));
+}
+}
 }
 
 /** 歌词不对时换下一候选版本：序号 +1、清缓存、重新匹配 */
