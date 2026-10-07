@@ -28,13 +28,13 @@ public class PlaybackSettingsActivity extends Activity {
 
         btnAlbumCover = findViewById(R.id.btnAlbumCover);
         refreshAlbumCover();
-        btnAlbumCover.setOnClickListener(v -> { Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
+        findViewById(R.id.rowAlbumCover).setOnClickListener(v -> { Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
         btnFloatIsland = findViewById(R.id.btnFloatIsland);
         refreshFloatIsland();
-        btnFloatIsland.setOnClickListener(v -> onFloatIslandClicked());
+        findViewById(R.id.rowFloatIsland).setOnClickListener(v -> onFloatIslandClicked());
         btnSbLyricsEntry = findViewById(R.id.btnSbLyricsEntry);
         refreshSbEntry();
-        btnSbLyricsEntry.setOnClickListener(v ->
+        findViewById(R.id.rowSbLyricsEntry).setOnClickListener(v ->
                 startActivity(new Intent(this, SbLyricsSettingsActivity.class)));
 
         buildQualityRows();
@@ -44,7 +44,7 @@ public class PlaybackSettingsActivity extends Activity {
         btnCacheInfo = findViewById(R.id.btnCacheInfo);
         btnTraffic = findViewById(R.id.btnTraffic);
         refreshDataRows();
-        btnMetered.setOnClickListener(v -> {
+        findViewById(R.id.rowMetered).setOnClickListener(v -> {
             android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
             boolean on = pf.getBoolean("metered_cap_on", true);
             int cap = pf.getInt("metered_cap_tier", 1);
@@ -58,7 +58,7 @@ public class PlaybackSettingsActivity extends Activity {
             }
             refreshDataRows();
         });
-        btnCacheCap.setOnClickListener(v -> {
+        findViewById(R.id.rowCacheCap).setOnClickListener(v -> {
             android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
             int cur = pf.getInt("cache_cap_mb", 48);
             int nxt = cur == 16 ? 32 : cur == 32 ? 48 : cur == 48 ? 96 : 16;
@@ -66,12 +66,12 @@ public class PlaybackSettingsActivity extends Activity {
             StreamCache.trim(this);
             refreshDataRows();
         });
-        btnCacheInfo.setOnClickListener(v -> {
+        findViewById(R.id.rowCacheInfo).setOnClickListener(v -> {
             StreamCache.clearAll(this);
             Toast.makeText(this, "音频缓存已清空", Toast.LENGTH_SHORT).show();
             refreshDataRows();
         });
-        btnTraffic.setOnClickListener(v -> {
+        findViewById(R.id.rowTraffic).setOnClickListener(v -> {
             PlayerService svc = PlayerService.get();
             if (svc != null) svc.resetTrafficMonth();
             Toast.makeText(this, "流量统计已清零", Toast.LENGTH_SHORT).show();
@@ -90,21 +90,21 @@ public class PlaybackSettingsActivity extends Activity {
         int cap = pf.getInt("metered_cap_tier", 1);
         if (btnMetered != null) {
             btnMetered.setText(on
-                    ? "📶 流量下自动降档：开（上限 " + PlayerService.QUALITY_NAMES[cap] + "，点切换）"
-                    : "📶 流量下自动降档：关（点开启）");
+                    ? "📶 流量下自动降档：开（上限 " + PlayerService.QUALITY_NAMES[cap] + "）"
+                    : "📶 流量下自动降档：关");
         }
         if (btnCacheCap != null) {
-            btnCacheCap.setText("🎚 音频缓存上限：" + pf.getInt("cache_cap_mb", 48) + " MB（点切换 16/32/48/96）");
+            btnCacheCap.setText("🎚 音频缓存上限：" + pf.getInt("cache_cap_mb", 48) + " MB（可在 16/32/48/96 间切换）");
         }
         if (btnCacheInfo != null) {
-            btnCacheInfo.setText("💾 音频缓存：已用 " + fmtBytes(StreamCache.usedBytes(this)) + "（点此清空）");
+            btnCacheInfo.setText("💾 音频缓存：已用 " + fmtBytes(StreamCache.usedBytes(this)));
         }
         if (btnTraffic != null) {
             PlayerService svc = PlayerService.get();
             btnTraffic.setText(svc == null
                     ? "📈 流量估算：播放服务未运行"
                     : "📈 流量估算：本次约 " + fmtBytes(svc.trafficSessionBytes())
-                            + " · 本月约 " + fmtBytes(svc.trafficMonthBytes()) + "（点清零）");
+                            + " · 本月约 " + fmtBytes(svc.trafficMonthBytes()));
         }
     }
 
@@ -116,9 +116,9 @@ public class PlaybackSettingsActivity extends Activity {
         if (btnFloatIsland == null) return;
         boolean on = islandPref();
         boolean perm = android.provider.Settings.canDrawOverlays(this);
-        btnFloatIsland.setText(!on ? "🫧 悬浮岛（仿原子岛）：关（点开启）"
+        btnFloatIsland.setText(!on ? "🫧 悬浮岛（仿原子岛）：关"
                 : perm ? "🫧 悬浮岛（仿原子岛）：开（在别的 App 上方显示播控胶囊）"
-                : "🫧 悬浮岛（仿原子岛）：已开启，但缺悬浮窗权限（点此去授权）");
+                : "🫧 悬浮岛（仿原子岛）：已开启，但缺悬浮窗权限（去授权）");
     }
 
     private void onFloatIslandClicked() {
@@ -152,7 +152,7 @@ public class PlaybackSettingsActivity extends Activity {
 
     private void refreshSbEntry() {
         if (btnSbLyricsEntry == null) return;
-        btnSbLyricsEntry.setText("🎤 状态栏歌词：" + (sbPref() ? "开" : "关") + "（点进设置：位置/大小/颜色）›");
+        btnSbLyricsEntry.setText("🎤 状态栏歌词：" + (sbPref() ? "开" : "关") + "（位置/大小/颜色）");
     }
 
     private void refreshAlbumCover() {
