@@ -231,6 +231,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     protected void onResume() {
         super.onResume();
         if (ThemeUtil.consumeDirty(this)) { recreate(); return; }
+        UpdateChecker.checkPendingInstall(this);
         PlayerService s = PlayerService.get();
         if (s != null) {
             s.addListener(this);

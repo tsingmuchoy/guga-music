@@ -195,6 +195,62 @@ public class UpdateChecker {
                 .show();
     }
 
+    /** 检查有没有「已下载好但还没装」的新版：有就从当前界面弹窗问装（前台拉起安装器不被系统拦） */
+    public static void checkPendingInstall(final Activity act) {
+        try {
+            SharedPreferences sp = act.getSharedPreferences("update", Context.MODE_PRIVATE);
+            long id = sp.getLong("dl_id", -1);
+            String ver = sp.getString("dl_ver", null);
+            if (id < 0 || ver == null) return;
+            if (cmp(ver, currentVersion(act)) <= 0) {
+                sp.edit().remove("dl_id").remove("dl_ver").apply();
+                return;
+            }
+            DownloadManager dm = (DownloadManager) act.getSystemService(Context.DOWNLOAD_SERVICE);
+            if (dm == null) return;
+            android.database.Cursor c = dm.query(new DownloadManager.Query().setFilterById(id));
+            int status = -1;
+            if (c != null) {
+                if (c.moveToFirst()) status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                c.close();
+            }
+            Diag.log(act, "⬆️ 更新：查到待装下载 id=" + id + " 状态=" + status + " 版本=v" + ver);
+            if (status == DownloadManager.STATUS_FAILED) {
+                sp.edit().remove("dl_id").remove("dl_ver").apply();
+                Toast.makeText(act, "上次新版下载失败了，打开「关于」页点检查更新重试", Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (status != DownloadManager.STATUS_SUCCESSFUL) return;
+            final long fid = id;
+            new AlertDialog.Builder(act)
+                    .setTitle("新版 v" + ver + " 已下载好 📦")
+                    .setMessage("安装包已经下到手机里啦，点「立即安装」完成更新。")
+                    .setPositiveButton("立即安装", (d, w) -> fireInstall(act, dm, fid))
+                    .setNegativeButton("稍后", null)
+                    .show();
+        } catch (Exception ignored) {}
+    }
+
+    /** 拉起系统安装器（下载管理器给的地址）；清掉待装标记防重复弹 */
+    public static void fireInstall(Context ctx, DownloadManager dm, long id) {
+        try {
+            Uri uri = dm.getUriForDownloadedFile(id);
+            ctx.getSharedPreferences("update", Context.MODE_PRIVATE).edit()
+                    .remove("dl_id").remove("dl_ver").apply();
+            if (uri == null) {
+                Diag.log(ctx, "⬆️ 更新：安装包地址为空，拉不起安装器");
+                Toast.makeText(ctx, "安装包地址丢了，去「关于」页重新检查更新", Toast.LENGTH_LONG).show();
+                return;
+            }
+            Intent install = new Intent(Intent.ACTION_VIEW);
+            install.setDataAndType(uri, "application/vnd.android.package-archive");
+            install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            ctx.startActivity(install);
+        } catch (Exception e) {
+            Diag.log(ctx, "⬆️ 更新：拉起安装器失败 " + e);
+        }
+    }
+
     public static void download(Context ctx, Info info) {
         try {
             DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);

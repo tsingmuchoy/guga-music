@@ -16,12 +16,17 @@ public class UpdateReceiver extends BroadcastReceiver {
         if (doneId != wantId) return;
         try {
             DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);
-            Uri uri = dm.getUriForDownloadedFile(doneId);
-            if (uri == null) return;
-            Intent install = new Intent(Intent.ACTION_VIEW);
-            install.setDataAndType(uri, "application/vnd.android.package-archive");
-            install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            ctx.startActivity(install);
-        } catch (Exception ignored) {}
+            android.database.Cursor c = dm.query(new DownloadManager.Query().setFilterById(doneId));
+            int status = -1;
+            if (c != null) {
+                if (c.moveToFirst()) status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                c.close();
+            }
+            Diag.log(ctx, "⬆️ 更新：下载完成广播，状态=" + status);
+            if (status != DownloadManager.STATUS_SUCCESSFUL) return;
+            UpdateChecker.fireInstall(ctx, dm, doneId);
+        } catch (Exception e) {
+            Diag.log(ctx, "⬆️ 更新：完成广播处理失败 " + e);
+        }
     }
 }
