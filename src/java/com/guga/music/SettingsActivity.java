@@ -14,6 +14,7 @@ public class SettingsActivity extends Activity {
 
     private TextView btnFollowSystem;
     private TextView btnAlbumCover;
+    private TextView btnFloatIsland;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,6 +28,9 @@ public class SettingsActivity extends Activity {
         btnAlbumCover = findViewById(R.id.btnAlbumCover);
         refreshAlbumCover();
         btnAlbumCover.setOnClickListener(v -> { Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
+        btnFloatIsland = findViewById(R.id.btnFloatIsland);
+        refreshFloatIsland();
+        btnFloatIsland.setOnClickListener(v -> onFloatIslandClicked());
         refreshFollowSystem();
         btnFollowSystem.setOnClickListener(v -> {
             boolean on = !ThemeUtil.isFollowSystem(this);
@@ -58,6 +62,44 @@ public class SettingsActivity extends Activity {
         });
         findViewById(R.id.btnAbout).setOnClickListener(v ->
                 startActivity(new Intent(this, AboutActivity.class)));
+    }
+
+    private boolean islandPref() {
+        return getSharedPreferences("player", MODE_PRIVATE).getBoolean("float_island", false);
+    }
+
+    private void refreshFloatIsland() {
+        if (btnFloatIsland == null) return;
+        boolean on = islandPref();
+        boolean perm = android.provider.Settings.canDrawOverlays(this);
+        btnFloatIsland.setText(!on ? "🫧 悬浮岛（仿原子岛）：关（点开启）"
+                : perm ? "🫧 悬浮岛（仿原子岛）：开（在别的 App 上方显示播控胶囊）"
+                : "🫧 悬浮岛（仿原子岛）：已开启，但缺悬浮窗权限（点此去授权）");
+    }
+
+    private void onFloatIslandClicked() {
+        if (islandPref() && android.provider.Settings.canDrawOverlays(this)) {
+            getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("float_island", false).apply();
+            PlayerService svc = PlayerService.get();
+            if (svc != null) svc.refreshIsland();
+            refreshFloatIsland();
+            return;
+        }
+        getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("float_island", true).apply();
+        if (!android.provider.Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "悬浮岛需要「显示在其他应用上层」权限，带你去开", Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                Toast.makeText(this, "打不开权限页，请在系统设置里手动给咕嘎音乐开悬浮窗权限", Toast.LENGTH_LONG).show();
+            }
+        } else {
+            PlayerService svc = PlayerService.get();
+            if (svc != null) svc.refreshIsland();
+            Toast.makeText(this, "悬浮岛已开启，放首歌切到别的 App 看看", Toast.LENGTH_SHORT).show();
+        }
+        refreshFloatIsland();
     }
 
     private void refreshAlbumCover() {
@@ -301,5 +343,8 @@ public class SettingsActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshDiag();
+        refreshFloatIsland();
+        PlayerService svc = PlayerService.get();
+        if (svc != null) svc.refreshIsland();
     }
 }

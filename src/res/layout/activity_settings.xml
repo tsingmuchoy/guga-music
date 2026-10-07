@@ -70,6 +70,23 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
+            android:text="🧪 实验功能"
+            android:textColor="?attr/gAccent"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnFloatIsland"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
             android:text="🎤 歌词源顺序（从上往下依次尝试）"
             android:textColor="?attr/gAccent"
             android:textSize="14sp"
