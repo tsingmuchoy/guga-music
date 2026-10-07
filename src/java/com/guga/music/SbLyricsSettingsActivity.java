@@ -3,27 +3,22 @@ package com.guga.music;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
-import android.view.Gravity;
-import android.view.View;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** 状态栏歌词二级设置：总开关 + 实时预览 + 上下/左右/宽度/背景透明度/字体大小 + 字体颜色 */
+/** 状态栏歌词二级设置：总开关 + 五根滑杆 + 字体颜色；本页打开时服务以实时预览模式在顶部显示真歌词条 */
 public class SbLyricsSettingsActivity extends Activity {
 
     private SharedPreferences sp;
-    private TextView btnSbMaster, pvSb;
+    private TextView btnSbMaster;
     private TextView lblY, lblX, lblW, lblBg, lblFont;
     private SeekBar skY, skX, skW, skBg, skFont;
-    private FrameLayout flPreview;
     private LinearLayout llColors;
 
     private static final int[] COLOR_VALS = {
@@ -55,8 +50,6 @@ public class SbLyricsSettingsActivity extends Activity {
 
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         btnSbMaster = findViewById(R.id.btnSbMaster);
-        pvSb = findViewById(R.id.pvSb);
-        flPreview = findViewById(R.id.flPreview);
         lblY = findViewById(R.id.lblSbY);
         lblX = findViewById(R.id.lblSbX);
         lblW = findViewById(R.id.lblSbW);
@@ -77,14 +70,13 @@ public class SbLyricsSettingsActivity extends Activity {
         skW.setProgress(getI("sb_width", 100) - 40);
         skBg.setProgress(getI("sb_bg_alpha", 0));
         skFont.setProgress(getI("sb_font_sp", 13) - 10);
-        bindSeek(skY, v -> { putI("sb_y_off", v - 20); refreshLabels(); applyPreview(); });
-        bindSeek(skX, v -> { putI("sb_x_off", v - 40); refreshLabels(); applyPreview(); });
-        bindSeek(skW, v -> { putI("sb_width", v + 40); refreshLabels(); applyPreview(); });
-        bindSeek(skBg, v -> { putI("sb_bg_alpha", v); refreshLabels(); applyPreview(); });
-        bindSeek(skFont, v -> { putI("sb_font_sp", v + 10); refreshLabels(); applyPreview(); });
+        bindSeek(skY, v -> { putI("sb_y_off", v - 20); refreshLabels(); });
+        bindSeek(skX, v -> { putI("sb_x_off", v - 40); refreshLabels(); });
+        bindSeek(skW, v -> { putI("sb_width", v + 40); refreshLabels(); });
+        bindSeek(skBg, v -> { putI("sb_bg_alpha", v); refreshLabels(); });
+        bindSeek(skFont, v -> { putI("sb_font_sp", v + 10); refreshLabels(); });
         refreshLabels();
         buildColorRows();
-        flPreview.post(this::applyPreview);
     }
 
     private interface IntFn { void go(int v); }
@@ -108,41 +100,6 @@ public class SbLyricsSettingsActivity extends Activity {
     }
 
     private String signed(int v) { return v > 0 ? "+" + v : String.valueOf(v); }
-
-    private int resolvedColor() {
-        if (getB("sb_follow", true)) {
-            PlayerService svc = PlayerService.get();
-            int c = svc != null ? svc.getLastCoverColor() : 0;
-            return c != 0 ? c : 0xFF00E676;
-        }
-        return getI("sb_color", 0xFF00E676);
-    }
-
-    private void applyPreview() {
-        float d = getResources().getDisplayMetrics().density;
-        pvSb.setTextSize(getI("sb_font_sp", 13));
-        pvSb.setTextColor(resolvedColor());
-        pvSb.setShadowLayer(3f, 0f, 1f, 0xCC000000);
-        int bgA = getI("sb_bg_alpha", 0);
-        if (bgA > 0) {
-            GradientDrawable bg = new GradientDrawable();
-            bg.setColor(android.graphics.Color.argb(bgA * 255 / 100, 0, 0, 0));
-            bg.setCornerRadius(999 * d);
-            pvSb.setBackground(bg);
-        } else {
-            pvSb.setBackground(null);
-        }
-        int pw = flPreview.getWidth();
-        if (pw > 0) {
-            int w = (int) (pw * getI("sb_width", 100) / 100.0);
-            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pvSb.getLayoutParams();
-            lp.width = w;
-            lp.gravity = Gravity.CENTER;
-            pvSb.setLayoutParams(lp);
-        }
-        pvSb.setTranslationX(getI("sb_x_off", 0) * d);
-        pvSb.setTranslationY(getI("sb_y_off", 0) * d);
-    }
 
     private void buildColorRows() {
         llColors.removeAllViews();
@@ -177,7 +134,6 @@ public class SbLyricsSettingsActivity extends Activity {
                 poke();
             }
             buildColorRows();
-            applyPreview();
         });
         llColors.addView(tv);
     }
@@ -213,7 +169,19 @@ public class SbLyricsSettingsActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshMaster();
-        applyPreview();
         buildColorRows();
+        PlayerService svc = PlayerService.get();
+        if (svc != null) {
+            svc.setSbPreview(true);
+        } else {
+            Toast.makeText(this, "先回主页播放一首歌，这里就能边调边看实时预览啦", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        PlayerService svc = PlayerService.get();
+        if (svc != null) svc.setSbPreview(false);
+        super.onPause();
     }
 }

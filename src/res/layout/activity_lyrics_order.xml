@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_ambient">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="← 歌词源顺序"
+            android:textColor="?attr/gTextPri"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="从上往下依次尝试，点 ↑ ↓ 调整顺序"
+            android:textColor="?attr/gTextSec"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:id="@+id/llLyricOrder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/btnLyricOrderReset"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:padding="16dp"
+            android:text="↩ 恢复默认顺序（QQ音乐 → 网易云音乐 → 酷狗音乐 → AMLL TTML → LRCLIB）"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+    </LinearLayout>
+</ScrollView>

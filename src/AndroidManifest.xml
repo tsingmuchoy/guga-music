@@ -31,6 +31,11 @@
         <activity android:name=".LyricsActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".SbLyricsSettingsActivity" android:exported="false" />
+        <activity android:name=".ThemeSettingsActivity" android:exported="false" />
+        <activity android:name=".PlaybackSettingsActivity" android:exported="false" />
+        <activity android:name=".LyricsOrderActivity" android:exported="false" />
+        <activity android:name=".UpdateSourceActivity" android:exported="false" />
+        <activity android:name=".DiagSettingsActivity" android:exported="false" />
         <activity android:name=".LoginActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
         <activity android:name=".LocalPlaylistActivity" android:exported="false" />

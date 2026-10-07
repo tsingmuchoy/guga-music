@@ -1139,7 +1139,10 @@ public class PlayerService extends Service {
         return lp;
     }
 
-    // ---------------- 状态栏歌词（实验功能） ----------------
+    // ---------------- 状态栏歌词 ----------------
+    private boolean sbPreview;
+    /** 状态栏歌词设置页打开时置真：App 在前台也显示歌词条，供实时预览 */
+    public void setSbPreview(boolean on) { sbPreview = on; refreshSbLyrics(); }
     /** 开关在设置「🧪 实验功能」；切出 App 后在屏幕顶部（状态栏下沿）逐行显示当前歌词，
      *  绿色粗字带阴影。数据走歌词引擎 v4 按 bvid 取一次，500ms 对一次播放进度。
      *  悬浮岛在时自动下移一颗胶囊的高度错层；真岛忙（焦点被抢）时同样让行。 */
@@ -1148,7 +1151,7 @@ public class PlayerService extends Service {
             Track t = current();
             boolean want = getSharedPreferences("player", MODE_PRIVATE).getBoolean("status_lyrics", false)
                     && android.provider.Settings.canDrawOverlays(this)
-                    && t != null && fgCount == 0 && !islandYield;
+                    && t != null && (fgCount == 0 || sbPreview) && !islandYield;
             if (!want) { hideSb(); return; }
             if (t.bvid != null && !t.bvid.equals(sbBvid) && !t.bvid.equals(sbLoadingBvid)) {
                 hideSb();
@@ -1168,11 +1171,20 @@ public class PlayerService extends Service {
                     } else {
                         sbLines = null;
                         Diag.log(this, "🎤 状态栏歌词：本曲没匹配到歌词，不显示");
-                        hideSb();
+                        if (sbPreview) {
+                            showSb();
+                            if (sbView != null) sbView.setText("🎤 状态栏歌词预览 · 播放时在此处展示歌词");
+                        } else {
+                            hideSb();
+                        }
                     }
                 }));
             }
             if (sbLines != null && t.bvid != null && t.bvid.equals(sbBvid)) showSb();
+            if (sbPreview && sbLines == null) {
+                showSb();
+                if (sbView != null) sbView.setText("🎤 状态栏歌词预览 · 播放时在此处展示歌词");
+            }
             if (sbShown) {
                 applySbStyle();
                 try { sbWm.updateViewLayout(sbView, sbLp()); } catch (Exception ignored) {}

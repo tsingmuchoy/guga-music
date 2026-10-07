@@ -27,26 +27,13 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <FrameLayout
-            android:id="@+id/flPreview"
-            android:layout_width="match_parent"
-            android:layout_height="76dp"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_card">
-
-            <TextView
-                android:id="@+id/pvSb"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:ellipsize="end"
-                android:paddingLeft="12dp"
-                android:paddingRight="12dp"
-                android:paddingTop="2dp"
-                android:paddingBottom="2dp"
-                android:singleLine="true"
-                android:text="预览：歌词会这样显示" />
-        </FrameLayout>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="💡 实时预览：本页打开时，屏幕顶部会显示真正的歌词条，拖滑杆边调边看（需正在播放一首歌）"
+            android:textColor="?attr/gTextSec"
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/lblSbY"

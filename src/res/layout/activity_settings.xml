@@ -19,22 +19,17 @@
             android:textStyle="bold" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="🎨 主题配色"
-            android:textColor="?attr/gAccent"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:id="@+id/llThemes"
+            android:id="@+id/btnEntryTheme"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_card"
+            android:padding="16dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
 
         <TextView
-            android:id="@+id/btnFollowSystem"
+            android:id="@+id/btnEntryPlayback"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
@@ -44,83 +39,32 @@
             android:textSize="15sp" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="🎵 播放"
-            android:textColor="?attr/gAccent"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:id="@+id/llQuality"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <TextView
-            android:id="@+id/btnAlbumCover"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="14dp"
-            android:textColor="?attr/gTextPri"
-            android:textSize="15sp" />
-
-        <TextView
-            android:id="@+id/btnSbLyricsEntry"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="14dp"
-            android:textColor="?attr/gTextPri"
-            android:textSize="15sp" />
-        <TextView
-            android:id="@+id/btnFloatIsland"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="14dp"
-            android:textColor="?attr/gTextPri"
-            android:textSize="15sp" />
-
-
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="🎤 歌词源顺序（从上往下依次尝试）"
-            android:textColor="?attr/gAccent"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="🔄 更新源（选中的源连不上时自动切换到另一个）"
-            android:textColor="?attr/gAccent"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:id="@+id/llUpdateSource"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <LinearLayout
-            android:id="@+id/llLyricOrder"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <TextView
-            android:id="@+id/btnLyricOrderReset"
+            android:id="@+id/btnEntryLyrics"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:background="@drawable/bg_card"
             android:padding="16dp"
-            android:text="↩ 恢复默认顺序（QQ音乐 → 网易云音乐 → 酷狗音乐 → AMLL TTML → LRCLIB）"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/btnEntryUpdate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:padding="16dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/btnEntryDiag"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:padding="16dp"
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
@@ -143,68 +87,6 @@
             android:text="清空播放历史"
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="🩺 播放诊断（出问题时把这里截图给咕嘎）"
-            android:textColor="?attr/gAccent"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tvDiagState"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
-            android:padding="14dp"
-            android:textColor="?attr/gTextSec"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/tvDiagLog"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
-            android:fontFamily="monospace"
-            android:padding="14dp"
-            android:textColor="?attr/gTextSec"
-            android:textSize="11sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/btnDiagRefresh"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:background="@drawable/bg_card"
-                android:gravity="center"
-                android:padding="12dp"
-                android:text="🔄 刷新诊断"
-                android:textColor="?attr/gTextPri"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/btnDiagClear"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="10dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_card"
-                android:gravity="center"
-                android:padding="12dp"
-                android:text="🗑 清空日志"
-                android:textColor="?attr/gTextPri"
-                android:textSize="14sp" />
-        </LinearLayout>
 
         <TextView
             android:id="@+id/btnAbout"
