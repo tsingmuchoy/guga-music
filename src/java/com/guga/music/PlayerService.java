@@ -780,6 +780,7 @@ public class PlayerService extends Service {
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentIntent(content)
+                .setDeleteIntent(act("repost", 4))
                 .setOngoing(true)
                 .addAction(android.R.drawable.ic_media_previous, "上一首", act("prev", 1))
                 .addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
@@ -820,6 +821,14 @@ public class PlayerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && intent.getAction() != null) {
             switch (intent.getAction()) {
+                case "repost":
+                    // 安卓 14+ 允许用户划掉前台服务通知；媒体面（通知中心/锁屏）靠这条通知挂载，
+                    // 划掉后若不回贴，音乐还在放但控制面消失——只要队列还在就立刻重新贴出
+                    if (current() != null) {
+                        Diag.log(this, "（通知被划掉，已重新贴出）");
+                        updateNotification();
+                    }
+                    break;
                 case "toggle": toggle(); break;
                 case "next": next(true); break;
                 case "prev": prev(); break;
