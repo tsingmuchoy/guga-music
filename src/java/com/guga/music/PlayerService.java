@@ -846,6 +846,7 @@ public class PlayerService extends Service {
         final int from = lp.width;
         final int to = (int) ((exp ? 260 : 134) * d);
         if (exp) {
+            if (islandEq != null) islandEq.setVisibility(android.view.View.GONE);
             islandToggle.setVisibility(android.view.View.VISIBLE);
             islandNext.setVisibility(android.view.View.VISIBLE);
             islandToggle.setAlpha(anim ? 0f : 1f);
@@ -862,6 +863,7 @@ public class PlayerService extends Service {
                 islandToggle.setAlpha(1f);
                 islandNext.setAlpha(1f);
             }
+            syncIslandAnim();
             return;
         }
         islandAnim = android.animation.ValueAnimator.ofInt(from, to);
@@ -884,6 +886,7 @@ public class PlayerService extends Service {
                 if (!islandExpanded) {
                     islandToggle.setVisibility(android.view.View.GONE);
                     islandNext.setVisibility(android.view.View.GONE);
+                    syncIslandAnim();
                 }
             }
         });
@@ -898,7 +901,7 @@ public class PlayerService extends Service {
         root.setGravity(android.view.Gravity.CENTER_VERTICAL);
         root.setPadding((int) (9 * d), (int) (5 * d), (int) (5 * d), (int) (5 * d));
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(0xE6121214);
+        bg.setColor(0xFF000000);
         bg.setCornerRadius(999 * d);
         root.setBackground(bg);
         islandCover = new android.widget.ImageView(this);
@@ -913,8 +916,6 @@ public class PlayerService extends Service {
             }
         });
         root.addView(islandCover);
-        islandEq = buildEqBars();
-        root.addView(islandEq);
         islandMini = new android.widget.ImageView(this);
         int ms = (int) (26 * d), mp = (int) (6 * d);
         islandMini.setLayoutParams(new android.widget.LinearLayout.LayoutParams(ms, ms));
@@ -935,6 +936,8 @@ public class PlayerService extends Service {
         tlp.rightMargin = (int) (2 * d);
         islandTitle.setLayoutParams(tlp);
         root.addView(islandTitle);
+        islandEq = buildEqBars();
+        root.addView(islandEq);
         islandToggle = islandBtn(R.drawable.ic_pause);
         islandToggle.setVisibility(android.view.View.GONE);
         islandToggle.setOnClickListener(v -> { toggle(); armCollapse(); });
@@ -974,17 +977,18 @@ public class PlayerService extends Service {
         box.setGravity(android.view.Gravity.BOTTOM);
         android.widget.LinearLayout.LayoutParams blp = new android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT, (int) (14 * d));
-        blp.leftMargin = (int) (7 * d);
+        blp.leftMargin = (int) (2 * d);
+        blp.rightMargin = (int) (5 * d);
         box.setLayoutParams(blp);
         islandBars = new android.view.View[4];
-        int[] hs = {8, 12, 9, 13};
+        int[] hs = {9, 13, 10, 14};
         for (int i = 0; i < 4; i++) {
             android.view.View bar = new android.view.View(this);
             android.widget.LinearLayout.LayoutParams bp = new android.widget.LinearLayout.LayoutParams(
                     (int) (3 * d), (int) (hs[i] * d));
             if (i > 0) bp.leftMargin = (int) (2 * d);
             bar.setLayoutParams(bp);
-            bar.setBackgroundColor(0xFF3CE882);
+            bar.setBackgroundColor(0xFFFF8A00);
             box.addView(bar);
             islandBars[i] = bar;
         }
@@ -997,7 +1001,7 @@ public class PlayerService extends Service {
         try {
             if (!islandShown || islandView == null) return;
             if (playing) {
-                if (islandEq != null) islandEq.setVisibility(android.view.View.VISIBLE);
+                if (islandEq != null) islandEq.setVisibility(islandExpanded ? android.view.View.GONE : android.view.View.VISIBLE);
                 if (islandMini != null) islandMini.setVisibility(android.view.View.GONE);
                 if (discAnim == null) {
                     discAnim = android.animation.ValueAnimator.ofFloat(0f, 360f);
@@ -1060,6 +1064,9 @@ public class PlayerService extends Service {
                 android.graphics.PixelFormat.TRANSLUCENT);
         lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
         lp.y = (int) (2 * d);
+        if (Build.VERSION.SDK_INT >= 30) {
+            lp.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+        }
         return lp;
     }
 
