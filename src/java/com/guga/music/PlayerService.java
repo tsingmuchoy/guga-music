@@ -90,6 +90,8 @@ public class PlayerService extends Service {
     private android.view.View islandEq;
     private android.view.View[] islandBars;
     private android.graphics.Bitmap artForBars;
+    private int lastCoverColor = 0xFFFF8A00;
+    public int getLastCoverColor() { return lastCoverColor; }
     private android.view.WindowManager sbWm;
     private android.widget.TextView sbView;
     private boolean sbShown = false;
@@ -832,6 +834,7 @@ public class PlayerService extends Service {
                 if (islandBars != null && artForBars != sessionArt) {
                     artForBars = sessionArt;
                     int col = extractBarColor(sessionArt);
+                    lastCoverColor = col;
                     for (android.view.View bar : islandBars) {
                         if (bar != null) bar.setBackgroundColor(col);
                     }
@@ -840,6 +843,7 @@ public class PlayerService extends Service {
                 islandCover.setVisibility(android.view.View.GONE);
                 if (islandBars != null && artForBars != null) {
                     artForBars = null;
+                    lastCoverColor = 0xFFFF8A00;
                     for (android.view.View bar : islandBars) {
                         if (bar != null) bar.setBackgroundColor(0xFFFF8A00);
                     }
@@ -1169,6 +1173,10 @@ public class PlayerService extends Service {
                 }));
             }
             if (sbLines != null && t.bvid != null && t.bvid.equals(sbBvid)) showSb();
+            if (sbShown) {
+                applySbStyle();
+                try { sbWm.updateViewLayout(sbView, sbLp()); } catch (Exception ignored) {}
+            }
         } catch (Exception ignored) {}
     }
 
@@ -1207,7 +1215,7 @@ public class PlayerService extends Service {
             if (!sbShown || sbView == null || sbLines == null) return;
             android.view.WindowManager.LayoutParams lp =
                     (android.view.WindowManager.LayoutParams) sbView.getLayoutParams();
-            int wantY = sbBaseY() + (islandShown ? (int) (40 * getResources().getDisplayMetrics().density) : 0);
+            int wantY = sbWantY();
             if (lp.y != wantY) {
                 lp.y = wantY;
                 try { sbWm.updateViewLayout(sbView, lp); } catch (Exception ignored) {}
@@ -1218,6 +1226,27 @@ public class PlayerService extends Service {
                 sbView.setText(idx >= 0 ? sbLines.get(idx).text : "");
             }
         } catch (Exception ignored) {}
+    }
+
+    /** 按二级设置刷新歌词条样式：字号、字体颜色（跟随封面或预设）、背景透明度 */
+    private void applySbStyle() {
+        if (sbView == null) return;
+        android.content.SharedPreferences sp2 = getSharedPreferences("player", MODE_PRIVATE);
+        sbView.setTextSize(sp2.getInt("sb_font_sp", 13));
+        int col = sp2.getBoolean("sb_follow", true) ? lastCoverColor
+                : sp2.getInt("sb_color", 0xFF00E676);
+        sbView.setTextColor(col);
+        int bgA = sp2.getInt("sb_bg_alpha", 0);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(android.graphics.Color.argb(bgA * 255 / 100, 0, 0, 0));
+        bg.setCornerRadius(999f);
+        sbView.setBackground(bg);
+    }
+
+    private int sbWantY() {
+        float d = getResources().getDisplayMetrics().density;
+        int yOff = (int) (getSharedPreferences("player", MODE_PRIVATE).getInt("sb_y_off", 0) * d);
+        return sbBaseY() + (islandShown ? (int) (40 * d) : 0) + yOff;
     }
 
     private void buildSbView() {
@@ -1232,14 +1261,18 @@ public class PlayerService extends Service {
         sbView.setEllipsize(android.text.TextUtils.TruncateAt.END);
         sbView.setShadowLayer(3f, 0f, 1f, 0xCC000000);
         sbView.setPadding((int) (16 * d), (int) (1 * d), (int) (16 * d), (int) (1 * d));
+        applySbStyle();
     }
 
     private android.view.WindowManager.LayoutParams sbLp() {
         int type = Build.VERSION.SDK_INT >= 26
                 ? android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : android.view.WindowManager.LayoutParams.TYPE_PHONE;
+        android.content.SharedPreferences sp3 = getSharedPreferences("player", MODE_PRIVATE);
+        int sbW = (int) (getResources().getDisplayMetrics().widthPixels
+                * sp3.getInt("sb_width", 100) / 100.0);
         android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(
-                android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                sbW,
                 android.view.WindowManager.LayoutParams.WRAP_CONTENT,
                 type,
                 android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -1247,7 +1280,8 @@ public class PlayerService extends Service {
                         | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 android.graphics.PixelFormat.TRANSLUCENT);
         lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
-        lp.y = sbBaseY() + (islandShown ? (int) (40 * getResources().getDisplayMetrics().density) : 0);
+        lp.y = sbWantY();
+        lp.x = (int) (sp3.getInt("sb_x_off", 0) * getResources().getDisplayMetrics().density);
         if (Build.VERSION.SDK_INT >= 30) {
             lp.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
         }

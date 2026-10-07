@@ -30,6 +30,7 @@
         <activity android:name=".PlayerActivity" android:exported="false" />
         <activity android:name=".LyricsActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".SbLyricsSettingsActivity" android:exported="false" />
         <activity android:name=".LoginActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
         <activity android:name=".LocalPlaylistActivity" android:exported="false" />

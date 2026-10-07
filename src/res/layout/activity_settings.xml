@@ -67,6 +67,14 @@
             android:textSize="15sp" />
 
         <TextView
+            android:id="@+id/btnSbLyricsEntry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
@@ -83,13 +91,6 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <TextView
-            android:id="@+id/btnSbLyrics"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="14dp"
-            android:textColor="?attr/gTextPri"
-            android:textSize="15sp" />
 
         <TextView
             android:layout_width="wrap_content"
