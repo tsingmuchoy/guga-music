@@ -90,6 +90,19 @@ public class PlayerService extends Service {
     private android.view.View islandEq;
     private android.view.View[] islandBars;
     private android.graphics.Bitmap artForBars;
+    private android.view.WindowManager sbWm;
+    private android.widget.TextView sbView;
+    private boolean sbShown = false;
+    private java.util.List<Lyrics.Line> sbLines;
+    private String sbBvid;
+    private String sbLoadingBvid;
+    private int sbIdx = -1;
+    private final Runnable sbTicker = new Runnable() {
+        @Override public void run() {
+            tickSbLyrics();
+            if (sbShown) watchdog.postDelayed(this, 500);
+        }
+    };
     private android.animation.ValueAnimator islandAnim;
     private final Runnable islandCollapseTask = () -> setIslandExpanded(false, true);
     private int fgCount = 0;
@@ -1122,6 +1135,123 @@ public class PlayerService extends Service {
         return lp;
     }
 
+    // ---------------- 状态栏歌词（实验功能） ----------------
+    /** 开关在设置「🧪 实验功能」；切出 App 后在屏幕顶部（状态栏下沿）逐行显示当前歌词，
+     *  绿色粗字带阴影。数据走歌词引擎 v4 按 bvid 取一次，500ms 对一次播放进度。
+     *  悬浮岛在时自动下移一颗胶囊的高度错层；真岛忙（焦点被抢）时同样让行。 */
+    public void refreshSbLyrics() {
+        try {
+            Track t = current();
+            boolean want = getSharedPreferences("player", MODE_PRIVATE).getBoolean("status_lyrics", false)
+                    && android.provider.Settings.canDrawOverlays(this)
+                    && t != null && fgCount == 0 && !islandYield;
+            if (!want) { hideSb(); return; }
+            if (t.bvid != null && !t.bvid.equals(sbBvid) && !t.bvid.equals(sbLoadingBvid)) {
+                hideSb();
+                sbLoadingBvid = t.bvid;
+                final String bv = t.bvid;
+                Lyrics.fetchFor(this, t, api, r -> {
+                    if (bv.equals(sbLoadingBvid)) sbLoadingBvid = null;
+                    Track cur = current();
+                    if (cur == null || !bv.equals(cur.bvid)) return;
+                    sbBvid = bv;
+                    if (r != null && r.has()) {
+                        sbLines = r.lines;
+                        sbIdx = -1;
+                        showSb();
+                        tickSbLyrics();
+                    } else {
+                        sbLines = null;
+                        hideSb();
+                    }
+                });
+            }
+            if (sbLines != null && t.bvid != null && t.bvid.equals(sbBvid)) showSb();
+        } catch (Exception ignored) {}
+    }
+
+    private int sbBaseY() {
+        int sb = 0;
+        try {
+            int resId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (resId > 0) sb = getResources().getDimensionPixelSize(resId);
+        } catch (Exception ignored) {}
+        if (sb <= 0) sb = (int) (28 * getResources().getDisplayMetrics().density);
+        return sb + (int) (1 * getResources().getDisplayMetrics().density);
+    }
+
+    private void showSb() {
+        try {
+            if (sbView == null) buildSbView();
+            if (!sbShown) {
+                sbWm.addView(sbView, sbLp());
+                sbShown = true;
+                watchdog.removeCallbacks(sbTicker);
+                watchdog.post(sbTicker);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void hideSb() {
+        try {
+            if (sbShown && sbView != null && sbWm != null) sbWm.removeView(sbView);
+        } catch (Exception ignored) {}
+        sbShown = false;
+        watchdog.removeCallbacks(sbTicker);
+    }
+
+    private void tickSbLyrics() {
+        try {
+            if (!sbShown || sbView == null || sbLines == null) return;
+            android.view.WindowManager.LayoutParams lp =
+                    (android.view.WindowManager.LayoutParams) sbView.getLayoutParams();
+            int wantY = sbBaseY() + (islandShown ? (int) (40 * getResources().getDisplayMetrics().density) : 0);
+            if (lp.y != wantY) {
+                lp.y = wantY;
+                try { sbWm.updateViewLayout(sbView, lp); } catch (Exception ignored) {}
+            }
+            int idx = Lyrics.indexAt(sbLines, getPosition());
+            if (idx != sbIdx) {
+                sbIdx = idx;
+                sbView.setText(idx >= 0 ? sbLines.get(idx).text : "");
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void buildSbView() {
+        sbWm = (android.view.WindowManager) getSystemService(WINDOW_SERVICE);
+        float d = getResources().getDisplayMetrics().density;
+        sbView = new android.widget.TextView(this);
+        sbView.setTextColor(0xFF00E676);
+        sbView.setTextSize(13);
+        sbView.setTypeface(sbView.getTypeface(), android.graphics.Typeface.BOLD);
+        sbView.setGravity(android.view.Gravity.CENTER);
+        sbView.setSingleLine(true);
+        sbView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        sbView.setShadowLayer(3f, 0f, 1f, 0xCC000000);
+        sbView.setPadding((int) (16 * d), (int) (1 * d), (int) (16 * d), (int) (1 * d));
+    }
+
+    private android.view.WindowManager.LayoutParams sbLp() {
+        int type = Build.VERSION.SDK_INT >= 26
+                ? android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : android.view.WindowManager.LayoutParams.TYPE_PHONE;
+        android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(
+                android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                type,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                android.graphics.PixelFormat.TRANSLUCENT);
+        lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+        lp.y = sbBaseY() + (islandShown ? (int) (40 * getResources().getDisplayMetrics().density) : 0);
+        if (Build.VERSION.SDK_INT >= 30) {
+            lp.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+        }
+        return lp;
+    }
+
     // ---------------- 通知 ----------------
     private void createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
@@ -1176,6 +1306,7 @@ public class PlayerService extends Service {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.notify(NID, n);
         refreshIsland();
+        refreshSbLyrics();
     }
 
     private void startForegroundCompat(Notification n) {
@@ -1215,6 +1346,7 @@ public class PlayerService extends Service {
         try { getApplication().unregisterActivityLifecycleCallbacks(lcCallbacks); } catch (Exception ignored) {}
         try { if (islandShown && islandView != null && islandWm != null) islandWm.removeView(islandView); } catch (Exception ignored) {}
         islandShown = false;
+        hideSb();
         try { if (session != null) { session.setActive(false); session.release(); } } catch (Exception ignored) {}
         try { mp.release(); } catch (Exception ignored) {}
         inst = null;

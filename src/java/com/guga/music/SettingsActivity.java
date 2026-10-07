@@ -15,6 +15,7 @@ public class SettingsActivity extends Activity {
     private TextView btnFollowSystem;
     private TextView btnAlbumCover;
     private TextView btnFloatIsland;
+    private TextView btnSbLyrics;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,6 +32,9 @@ public class SettingsActivity extends Activity {
         btnFloatIsland = findViewById(R.id.btnFloatIsland);
         refreshFloatIsland();
         btnFloatIsland.setOnClickListener(v -> onFloatIslandClicked());
+        btnSbLyrics = findViewById(R.id.btnSbLyrics);
+        refreshSbLyricsBtn();
+        btnSbLyrics.setOnClickListener(v -> onSbLyricsClicked());
         refreshFollowSystem();
         btnFollowSystem.setOnClickListener(v -> {
             boolean on = !ThemeUtil.isFollowSystem(this);
@@ -100,6 +104,44 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "悬浮岛已开启，放首歌切到别的 App 看看", Toast.LENGTH_SHORT).show();
         }
         refreshFloatIsland();
+    }
+
+    private boolean sbPref() {
+        return getSharedPreferences("player", MODE_PRIVATE).getBoolean("status_lyrics", false);
+    }
+
+    private void refreshSbLyricsBtn() {
+        if (btnSbLyrics == null) return;
+        boolean on = sbPref();
+        boolean perm = android.provider.Settings.canDrawOverlays(this);
+        btnSbLyrics.setText(!on ? "🎤 状态栏歌词：关（点开启）"
+                : perm ? "🎤 状态栏歌词：开（切出 App 后在顶部逐行显示）"
+                : "🎤 状态栏歌词：已开启，但缺悬浮窗权限（点此去授权）");
+    }
+
+    private void onSbLyricsClicked() {
+        if (sbPref() && android.provider.Settings.canDrawOverlays(this)) {
+            getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("status_lyrics", false).apply();
+            PlayerService svc = PlayerService.get();
+            if (svc != null) svc.refreshSbLyrics();
+            refreshSbLyricsBtn();
+            return;
+        }
+        getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("status_lyrics", true).apply();
+        if (!android.provider.Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "状态栏歌词需要「显示在其他应用上层」权限，带你去开", Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                Toast.makeText(this, "打不开权限页，请在系统设置里手动给咕嘎音乐开悬浮窗权限", Toast.LENGTH_LONG).show();
+            }
+        } else {
+            PlayerService svc = PlayerService.get();
+            if (svc != null) svc.refreshSbLyrics();
+            Toast.makeText(this, "状态栏歌词已开启，放首歌切到桌面看看", Toast.LENGTH_SHORT).show();
+        }
+        refreshSbLyricsBtn();
     }
 
     private void refreshAlbumCover() {
@@ -344,7 +386,8 @@ public class SettingsActivity extends Activity {
         super.onResume();
         refreshDiag();
         refreshFloatIsland();
+        refreshSbLyricsBtn();
         PlayerService svc = PlayerService.get();
-        if (svc != null) svc.refreshIsland();
+        if (svc != null) { svc.refreshIsland(); svc.refreshSbLyrics(); }
     }
 }
