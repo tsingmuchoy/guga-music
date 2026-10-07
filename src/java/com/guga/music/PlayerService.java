@@ -108,7 +108,7 @@ public class PlayerService extends Service {
     private int fgCount = 0;
     private final android.app.Application.ActivityLifecycleCallbacks lcCallbacks = new android.app.Application.ActivityLifecycleCallbacks() {
         @Override public void onActivityStarted(android.app.Activity a) { fgCount++; refreshIsland(); }
-        @Override public void onActivityStopped(android.app.Activity a) { if (fgCount > 0) fgCount--; refreshIsland(); }
+        @Override public void onActivityStopped(android.app.Activity a) { if (fgCount > 0) fgCount--; refreshIsland(); refreshSbLyrics(); }
         @Override public void onActivityCreated(android.app.Activity a, android.os.Bundle b) {}
         @Override public void onActivityResumed(android.app.Activity a) {}
         @Override public void onActivityPaused(android.app.Activity a) {}
@@ -1150,7 +1150,7 @@ public class PlayerService extends Service {
                 hideSb();
                 sbLoadingBvid = t.bvid;
                 final String bv = t.bvid;
-                Lyrics.fetchFor(this, t, api, r -> {
+                Lyrics.fetchFor(this, t, api, r -> watchdog.post(() -> {
                     if (bv.equals(sbLoadingBvid)) sbLoadingBvid = null;
                     Track cur = current();
                     if (cur == null || !bv.equals(cur.bvid)) return;
@@ -1158,13 +1158,15 @@ public class PlayerService extends Service {
                     if (r != null && r.has()) {
                         sbLines = r.lines;
                         sbIdx = -1;
+                        Diag.log(this, "🎤 状态栏歌词：取到 " + r.lines.size() + " 行（" + r.source + "）");
                         showSb();
                         tickSbLyrics();
                     } else {
                         sbLines = null;
+                        Diag.log(this, "🎤 状态栏歌词：本曲没匹配到歌词，不显示");
                         hideSb();
                     }
-                });
+                }));
             }
             if (sbLines != null && t.bvid != null && t.bvid.equals(sbBvid)) showSb();
         } catch (Exception ignored) {}
