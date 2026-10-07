@@ -89,6 +89,7 @@ public class PlayerService extends Service {
     private android.animation.ValueAnimator eqAnim;
     private android.view.View islandEq;
     private android.view.View[] islandBars;
+    private android.graphics.Bitmap artForBars;
     private android.animation.ValueAnimator islandAnim;
     private final Runnable islandCollapseTask = () -> setIslandExpanded(false, true);
     private int fgCount = 0;
@@ -815,8 +816,21 @@ public class PlayerService extends Service {
             if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
                 islandCover.setImageBitmap(sessionArt);
                 islandCover.setVisibility(android.view.View.VISIBLE);
+                if (islandBars != null && artForBars != sessionArt) {
+                    artForBars = sessionArt;
+                    int col = extractBarColor(sessionArt);
+                    for (android.view.View bar : islandBars) {
+                        if (bar != null) bar.setBackgroundColor(col);
+                    }
+                }
             } else {
                 islandCover.setVisibility(android.view.View.GONE);
+                if (islandBars != null && artForBars != null) {
+                    artForBars = null;
+                    for (android.view.View bar : islandBars) {
+                        if (bar != null) bar.setBackgroundColor(0xFFFF8A00);
+                    }
+                }
             }
             if (!islandShown) {
                 islandExpanded = false;
@@ -967,6 +981,36 @@ public class PlayerService extends Service {
         iv.setImageResource(res);
         iv.setColorFilter(0xFFFFFFFF);
         return iv;
+    }
+
+    /** 律动条颜色跟着封面走：把封面缩到 12x12，按饱和度加权平均取主色，
+     *  再把明度/饱和拉到黑底上够亮的档位；取不到鲜艳色就回退原子岛橙 */
+    private int extractBarColor(android.graphics.Bitmap bmp) {
+        try {
+            android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(bmp, 12, 12, true);
+            double rS = 0, gS = 0, bS = 0, wS = 0;
+            float[] hsv = new float[3];
+            for (int y = 0; y < 12; y++) {
+                for (int x = 0; x < 12; x++) {
+                    int c = small.getPixel(x, y);
+                    android.graphics.Color.colorToHSV(c, hsv);
+                    if (hsv[1] < 0.25f || hsv[2] < 0.15f || hsv[2] > 0.98f) continue;
+                    double w = hsv[1] * (0.4 + hsv[2]);
+                    rS += android.graphics.Color.red(c) * w;
+                    gS += android.graphics.Color.green(c) * w;
+                    bS += android.graphics.Color.blue(c) * w;
+                    wS += w;
+                }
+            }
+            if (small != bmp) small.recycle();
+            if (wS <= 0) return 0xFFFF8A00;
+            android.graphics.Color.RGBToHSV((int) (rS / wS), (int) (gS / wS), (int) (bS / wS), hsv);
+            hsv[1] = Math.max(hsv[1], 0.55f);
+            hsv[2] = Math.max(hsv[2], 0.78f);
+            return android.graphics.Color.HSVToColor(hsv);
+        } catch (Exception e) {
+            return 0xFFFF8A00;
+        }
     }
 
     /** 4 根小竖条按不同相位/速度正弦起伏，冒充节拍律动（样式动画，非真节拍检测） */
