@@ -84,6 +84,11 @@ public class PlayerService extends Service {
     private android.widget.TextView islandTitle;
     private boolean islandShown = false;
     private boolean islandExpanded = false;
+    private boolean islandYield = false;
+    private android.animation.ValueAnimator discAnim;
+    private android.animation.ValueAnimator eqAnim;
+    private android.view.View islandEq;
+    private android.view.View[] islandBars;
     private android.animation.ValueAnimator islandAnim;
     private final Runnable islandCollapseTask = () -> setIslandExpanded(false, true);
     private int fgCount = 0;
@@ -636,9 +641,13 @@ public class PlayerService extends Service {
     private final AudioManager.OnAudioFocusChangeListener focusListener = f -> {
         if (f == AudioManager.AUDIOFOCUS_GAIN) {
             focusHeld = true;
+            islandYield = false;
+            refreshIsland();
         } else if (f == AudioManager.AUDIOFOCUS_LOSS || f == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
             boolean wasHeld = focusHeld;
             focusHeld = false;
+            islandYield = true;
+            refreshIsland();
             if (playing && wasHeld) {
                 Diag.log(this, "焦点被抢，自动暂停");
                 try { mp.pause(); } catch (Exception ignored) {}
@@ -786,7 +795,7 @@ public class PlayerService extends Service {
         try {
             boolean want = getSharedPreferences("player", MODE_PRIVATE).getBoolean("float_island", false)
                     && android.provider.Settings.canDrawOverlays(this)
-                    && current() != null && fgCount == 0;
+                    && current() != null && fgCount == 0 && !islandYield;
             if (!want) {
                 if (islandShown && islandView != null && islandWm != null) {
                     try { islandWm.removeView(islandView); } catch (Exception ignored) {}
@@ -795,6 +804,7 @@ public class PlayerService extends Service {
                 islandExpanded = false;
                 watchdog.removeCallbacks(islandCollapseTask);
                 if (islandAnim != null) islandAnim.cancel();
+                stopIslandAnims();
                 return;
             }
             if (islandView == null) buildIslandView();
@@ -812,11 +822,11 @@ public class PlayerService extends Service {
                 islandExpanded = false;
                 islandToggle.setVisibility(android.view.View.GONE);
                 islandNext.setVisibility(android.view.View.GONE);
-                islandMini.setVisibility(android.view.View.VISIBLE);
                 islandWm.addView(islandView, islandLp());
                 islandShown = true;
                 Diag.log(this, "🫧 悬浮岛显示");
             }
+            syncIslandAnim();
         } catch (Exception ignored) {}
     }
 
@@ -834,11 +844,10 @@ public class PlayerService extends Service {
         android.view.WindowManager.LayoutParams lp =
                 (android.view.WindowManager.LayoutParams) islandView.getLayoutParams();
         final int from = lp.width;
-        final int to = (int) ((exp ? 252 : 126) * d);
+        final int to = (int) ((exp ? 260 : 134) * d);
         if (exp) {
             islandToggle.setVisibility(android.view.View.VISIBLE);
             islandNext.setVisibility(android.view.View.VISIBLE);
-            islandMini.setVisibility(android.view.View.GONE);
             islandToggle.setAlpha(anim ? 0f : 1f);
             islandNext.setAlpha(anim ? 0f : 1f);
         }
@@ -849,7 +858,6 @@ public class PlayerService extends Service {
             if (!exp) {
                 islandToggle.setVisibility(android.view.View.GONE);
                 islandNext.setVisibility(android.view.View.GONE);
-                islandMini.setVisibility(android.view.View.VISIBLE);
             } else {
                 islandToggle.setAlpha(1f);
                 islandNext.setAlpha(1f);
@@ -876,7 +884,6 @@ public class PlayerService extends Service {
                 if (!islandExpanded) {
                     islandToggle.setVisibility(android.view.View.GONE);
                     islandNext.setVisibility(android.view.View.GONE);
-                    islandMini.setVisibility(android.view.View.VISIBLE);
                 }
             }
         });
@@ -906,6 +913,8 @@ public class PlayerService extends Service {
             }
         });
         root.addView(islandCover);
+        islandEq = buildEqBars();
+        root.addView(islandEq);
         islandMini = new android.widget.ImageView(this);
         int ms = (int) (26 * d), mp = (int) (6 * d);
         islandMini.setLayoutParams(new android.widget.LinearLayout.LayoutParams(ms, ms));
@@ -957,13 +966,92 @@ public class PlayerService extends Service {
         return iv;
     }
 
+    /** 4 根小竖条按不同相位/速度正弦起伏，冒充节拍律动（样式动画，非真节拍检测） */
+    private android.view.View buildEqBars() {
+        float d = getResources().getDisplayMetrics().density;
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        box.setGravity(android.view.Gravity.BOTTOM);
+        android.widget.LinearLayout.LayoutParams blp = new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, (int) (14 * d));
+        blp.leftMargin = (int) (7 * d);
+        box.setLayoutParams(blp);
+        islandBars = new android.view.View[4];
+        int[] hs = {8, 12, 9, 13};
+        for (int i = 0; i < 4; i++) {
+            android.view.View bar = new android.view.View(this);
+            android.widget.LinearLayout.LayoutParams bp = new android.widget.LinearLayout.LayoutParams(
+                    (int) (3 * d), (int) (hs[i] * d));
+            if (i > 0) bp.leftMargin = (int) (2 * d);
+            bar.setLayoutParams(bp);
+            bar.setBackgroundColor(0xFF3CE882);
+            box.addView(bar);
+            islandBars[i] = bar;
+        }
+        box.setVisibility(android.view.View.GONE);
+        return box;
+    }
+
+    /** 播放中：封面唱片匀速自转 + 律动条起伏；暂停：动画冻结、律动条让位给状态图标 */
+    private void syncIslandAnim() {
+        try {
+            if (!islandShown || islandView == null) return;
+            if (playing) {
+                if (islandEq != null) islandEq.setVisibility(android.view.View.VISIBLE);
+                if (islandMini != null) islandMini.setVisibility(android.view.View.GONE);
+                if (discAnim == null) {
+                    discAnim = android.animation.ValueAnimator.ofFloat(0f, 360f);
+                    discAnim.setDuration(12000);
+                    discAnim.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                    discAnim.setInterpolator(new android.view.animation.LinearInterpolator());
+                    discAnim.addUpdateListener(a -> { if (islandCover != null) islandCover.setRotation((Float) a.getAnimatedValue()); });
+                    discAnim.start();
+                } else if (discAnim.isPaused()) {
+                    discAnim.resume();
+                }
+                if (eqAnim == null) {
+                    eqAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+                    eqAnim.setDuration(880);
+                    eqAnim.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                    eqAnim.setInterpolator(new android.view.animation.LinearInterpolator());
+                    final double[] ph = {0.0, 0.23, 0.47, 0.71};
+                    final double[] sp = {1.0, 1.31, 0.83, 1.13};
+                    eqAnim.addUpdateListener(a -> {
+                        if (islandBars == null) return;
+                        float fr = (Float) a.getAnimatedValue();
+                        for (int i = 0; i < islandBars.length; i++) {
+                            if (islandBars[i] == null) continue;
+                            double v = Math.abs(Math.sin(2 * Math.PI * (fr * sp[i] + ph[i])));
+                            islandBars[i].setScaleY((float) (0.25 + 0.75 * v));
+                        }
+                    });
+                    eqAnim.start();
+                } else if (eqAnim.isPaused()) {
+                    eqAnim.resume();
+                }
+            } else {
+                if (islandEq != null) islandEq.setVisibility(android.view.View.GONE);
+                if (islandMini != null) islandMini.setVisibility(android.view.View.VISIBLE);
+                if (discAnim != null && discAnim.isRunning()) discAnim.pause();
+                if (eqAnim != null && eqAnim.isRunning()) eqAnim.pause();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void stopIslandAnims() {
+        try {
+            if (discAnim != null && discAnim.isRunning()) discAnim.pause();
+            if (eqAnim != null && eqAnim.isRunning()) eqAnim.pause();
+        } catch (Exception ignored) {}
+    }
+
     private android.view.WindowManager.LayoutParams islandLp() {
         float d = getResources().getDisplayMetrics().density;
         int type = Build.VERSION.SDK_INT >= 26
                 ? android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : android.view.WindowManager.LayoutParams.TYPE_PHONE;
         android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(
-                (int) (126 * d),
+                (int) (134 * d),
                 android.view.WindowManager.LayoutParams.WRAP_CONTENT,
                 type,
                 android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
