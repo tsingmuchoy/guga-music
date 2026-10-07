@@ -1277,6 +1277,7 @@ public class PlayerService extends Service {
                 type,
                 android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         | android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 android.graphics.PixelFormat.TRANSLUCENT);
         lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
