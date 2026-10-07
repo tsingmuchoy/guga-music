@@ -1107,7 +1107,15 @@ public class PlayerService extends Service {
                         | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 android.graphics.PixelFormat.TRANSLUCENT);
         lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
-        lp.y = (int) (2 * d);
+        // 胶囊顶到状态栏下沿：状态栏那条带是 SystemUI 的地盘，悬浮窗伸进去会被
+        // 系统图标盖住且点不动（实测）；贴着下沿是「位置最高且可点」的极限
+        int sb = 0;
+        try {
+            int resId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (resId > 0) sb = getResources().getDimensionPixelSize(resId);
+        } catch (Exception ignored) {}
+        if (sb <= 0) sb = (int) (28 * d);
+        lp.y = sb + (int) (2 * d);
         if (Build.VERSION.SDK_INT >= 30) {
             lp.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
         }
