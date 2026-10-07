@@ -138,13 +138,16 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
 
     private void refreshQuality() {
         PlayerService s = PlayerService.get();
-        if (s != null && btnQuality != null) btnQuality.setText(QUALITY_SHORT[s.getQualityTier()]);
-        if (s != null) styleQualityChips(s.getQualityTier());
+        if (s == null) return;
+        // 显示实际在播的档位；实际档位未知（加载中）时先显示生效的请求档位
+        int disp = s.getActualTier() >= 0 ? s.getActualTier() : s.getEffectiveTier();
+        if (btnQuality != null) btnQuality.setText(QUALITY_SHORT[disp]);
+        styleQualityChips(disp);
     }
 
     private void buildQualityChips() {
         PlayerService s = PlayerService.get();
-        int cur = s == null ? 2 : s.getQualityTier();
+        int cur = s == null ? 2 : s.getEffectiveTier();
         for (int i = 0; i < 5; i++) {
             final int tier = i;
             TextView chip = new TextView(this);
@@ -159,9 +162,9 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             chip.setOnClickListener(v -> {
                 PlayerService svc = PlayerService.get();
                 if (svc != null) {
-                    svc.setQualityTier(tier);
+                    svc.setSessionTier(tier); // 播放页切档 = 临时请求，不改设置里的默认档位（军师建议）
                     svc.applyQualityChange();
-                    Toast.makeText(this, "已切到「" + PlayerService.QUALITY_NAMES[tier] + "」🎵", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "已临时切到「" + PlayerService.QUALITY_NAMES[tier] + "」🎵（默认设置未改动）", Toast.LENGTH_SHORT).show();
                 }
                 refreshQuality();
                 llQualityChips.postDelayed(() -> llQualityChips.setVisibility(View.GONE), 350);
@@ -173,12 +176,15 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleQualityChips(int cur) {
+        PlayerService svc2 = PlayerService.get();
+        boolean[] avail = svc2 == null ? null : svc2.getAvailTiers();
         for (int i = 0; i < 5; i++) {
             if (chipViews[i] == null) continue;
             boolean on = i == cur;
             chipViews[i].setBackgroundResource(on ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
             chipViews[i].setTextColor(ThemeUtil.color(this, on ? R.attr.gOnAccent : R.attr.gTextPri));
             chipViews[i].setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            chipViews[i].setAlpha(avail != null && !avail[i] ? 0.35f : 1f); // 本首没有的档位压暗
         }
     }
 
@@ -187,7 +193,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             llQualityChips.setVisibility(View.GONE);
         } else {
             PlayerService s = PlayerService.get();
-            if (s != null) styleQualityChips(s.getQualityTier());
+            if (s != null) styleQualityChips(s.getActualTier() >= 0 ? s.getActualTier() : s.getEffectiveTier());
             llQualityChips.setVisibility(View.VISIBLE);
             llQualityChips.setAlpha(0f);
             llQualityChips.animate().alpha(1f).setDuration(160).start();
@@ -260,6 +266,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     @Override
     public void onStateChanged(boolean playing) {
         btnToggle.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
+        refreshQuality(); // 流一就绪就把音质显示刷新成实际档位
         if (discSpin != null) {
             if (playing) discSpin.resume();
             else discSpin.pause();

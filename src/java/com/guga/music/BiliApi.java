@@ -426,11 +426,16 @@ public class BiliApi {
                             if (c.rank == minRank && (pick == null || c.bandwidth > pick.bandwidth)) pick = c;
                         }
                     }
-                    return new String[]{pick.baseUrl, pick.backupUrl, pick.kind};
+                    StringBuilder av = new StringBuilder();
+                    for (int r2 = 0; r2 <= 4; r2++) {
+                        for (StreamCand c : cands) if (c.rank == r2) { if (av.length() > 0) av.append(','); av.append(r2); break; }
+                    }
+                    // urls[3]=实际选中的档位，urls[4]=本曲可用档位列表（逗号分隔）
+                    return new String[]{pick.baseUrl, pick.backupUrl, pick.kind, String.valueOf(pick.rank), av.toString()};
                 }
             }
             JSONArray durl = d.optJSONArray("durl");
-            if (durl != null && durl.length() > 0) return new String[]{durl.getJSONObject(0).getString("url"), null, "aac"};
+            if (durl != null && durl.length() > 0) return new String[]{durl.getJSONObject(0).getString("url"), null, "aac", "-1", ""};
             throw new Exception("该视频没有可播放的音频流");
         }, cb);
     }

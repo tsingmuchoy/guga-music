@@ -55,6 +55,9 @@ public class PlayerService extends Service {
     private Track refetchTrack = null;
     private int activeTier = 2;              // 本首歌实际请求的音质档位（降档重试会改它）
     private String curStreamKind = "aac";    // 本次取到的实际流类型：aac / flac / dolby
+    private int sessionTier = -1;            // 播放页临时请求的档位（只存内存，重启即失，不写设置）
+    private int actualTier = -1;             // 本首歌实际在播的档位（-1=尚未取到流）
+    private boolean[] availTiers = null;     // 本首歌可用的档位集合（null=未知）
     private boolean downgradeTried = false;  // 高音质流报错后降到 192K 的重试是否已用
     private boolean handlingError = false;   // 正在处理一条报错时，吞掉播放器连环补发的旧报错
     private boolean restartPaused = false;   // 音质原地重载后保持暂停（原本是暂停状态时）
@@ -186,7 +189,26 @@ public class PlayerService extends Service {
     public void setQualityTier(int tier) {
         getSharedPreferences("player", MODE_PRIVATE).edit()
                 .putInt("quality_tier", Math.max(0, Math.min(4, tier))).apply();
+        sessionTier = -1; // 改默认设置时，清掉播放页的临时档位
     }
+
+    /** 本次生效的请求档位：播放页临时档位优先于设置里的默认档位 */
+    public int getEffectiveTier() {
+        return sessionTier >= 0 ? sessionTier : getQualityTier();
+    }
+
+    /** 播放页切档：只记在内存里的临时请求，不写设置；重启 App 后回到默认档位 */
+    public void setSessionTier(int tier) {
+        sessionTier = Math.max(0, Math.min(4, tier));
+    }
+
+    public boolean hasSessionTier() { return sessionTier >= 0; }
+
+    /** 本首歌实际在播的档位（-1=还没取到流） */
+    public int getActualTier() { return actualTier; }
+
+    /** 本首歌可用的档位集合（null=未知） */
+    public boolean[] getAvailTiers() { return availTiers; }
 
     /** 设置里切换音质后调用：当前歌曲原地以新档位重载，进度与播放/暂停状态都保持 */
     public void applyQualityChange() {
@@ -200,7 +222,7 @@ public class PlayerService extends Service {
                     .putInt("pos", pos).putString("pos_bvid", t.bvid).apply();
         }
         restartPaused = !playing;
-        Diag.log(this, "🔀 音质切换为「" + QUALITY_NAMES[getQualityTier()] + "」，当前歌曲原地重载（进度 " + (pos / 1000) + "s）");
+        Diag.log(this, "🔀 音质切换为「" + QUALITY_NAMES[getEffectiveTier()] + "」，当前歌曲原地重载（进度 " + (pos / 1000) + "s）");
         startTrack();
     }
 
@@ -314,8 +336,10 @@ public class PlayerService extends Service {
         backupTried = false;
         refetchTried = false;
         refetchTrack = t;
-        activeTier = getQualityTier();
+        activeTier = getEffectiveTier();
         curStreamKind = "aac";
+        actualTier = -1;
+        availTiers = null;
         downgradeTried = false;
         cancelWatchdog();
         try { mp.reset(); } catch (Exception ignored) {}
@@ -370,6 +394,17 @@ public class PlayerService extends Service {
                 Diag.log(PlayerService.this, "🔗 取址完成（" + ((System.currentTimeMillis() - fetchStart) + 500) / 1000 + " 秒）");
                 backupUrl = urls.length > 1 ? urls[1] : null;
                 curStreamKind = urls.length > 2 && urls[2] != null ? urls[2] : "aac";
+                if (urls.length > 3 && urls[3] != null) {
+                    try { actualTier = Integer.parseInt(urls[3]); } catch (Exception ignored) {}
+                }
+                if (urls.length > 4 && urls[4] != null && !urls[4].isEmpty()) {
+                    boolean[] av2 = new boolean[5];
+                    for (String part : urls[4].split(",")) {
+                        try { int rr = Integer.parseInt(part.trim()); if (rr >= 0 && rr <= 4) av2[rr] = true; }
+                        catch (Exception ignored) {}
+                    }
+                    availTiers = av2;
+                }
                 if ("flac".equals(curStreamKind) && flacBad.contains(t.bvid) && !downgradeTried) {
                     downgradeTried = true;
                     activeTier = BiliApi.TIER_192K;
@@ -465,7 +500,7 @@ public class PlayerService extends Service {
                 + "当前：" + (t == null ? "无" : t.title) + "\n"
                 + "prepared=" + prepared + " preparing=" + preparing
                 + " playing=" + playing + " 连败=" + failStreak
-                + "\n音质档位=" + QUALITY_NAMES[getQualityTier()] + " 实际流=" + curStreamKind;
+                + "\n音质档位=" + QUALITY_NAMES[getEffectiveTier()] + " 实际流=" + curStreamKind + (actualTier >= 0 ? "（实际" + QUALITY_NAMES[actualTier] + "）" : "");
     }
 
     // ---------------- 状态持久化（防系统杀服务后队列丢失） ----------------
