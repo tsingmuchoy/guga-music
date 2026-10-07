@@ -78,8 +78,8 @@ jobs:
             [ -f "$f" ] || continue
             ok=0
             for i in 1 2 3; do
-              resp=$(curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${ID}/attach_files" \
-                -F "access_token=${TK}" -F "file=@${f}")
+              resp=$(curl -s --connect-timeout 20 --max-time 120 -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${ID}/attach_files" \
+                -F "access_token=${TK}" -F "file=@${f}" || true)
               echo "$resp" | head -c 200; echo
               if echo "$resp" | grep -q '"id"'; then ok=1; break; fi
               echo "upload attempt $i failed, retry in 15s"
