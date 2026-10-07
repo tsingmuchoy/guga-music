@@ -49,5 +49,46 @@
             android:paddingTop="14dp"
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="📶 省流量与缓存"
+            android:textColor="?attr/gAccent"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnMetered"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/btnCacheCap"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/btnCacheInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/btnTraffic"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:textColor="?attr/gTextPri"
+            android:textSize="15sp" />
     </LinearLayout>
 </ScrollView>

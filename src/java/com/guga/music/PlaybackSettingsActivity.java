@@ -14,6 +14,10 @@ public class PlaybackSettingsActivity extends Activity {
     private TextView btnAlbumCover;
     private TextView btnFloatIsland;
     private TextView btnSbLyricsEntry;
+    private TextView btnMetered;
+    private TextView btnCacheCap;
+    private TextView btnCacheInfo;
+    private TextView btnTraffic;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,6 +38,74 @@ public class PlaybackSettingsActivity extends Activity {
                 startActivity(new Intent(this, SbLyricsSettingsActivity.class)));
 
         buildQualityRows();
+
+        btnMetered = findViewById(R.id.btnMetered);
+        btnCacheCap = findViewById(R.id.btnCacheCap);
+        btnCacheInfo = findViewById(R.id.btnCacheInfo);
+        btnTraffic = findViewById(R.id.btnTraffic);
+        refreshDataRows();
+        btnMetered.setOnClickListener(v -> {
+            android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
+            boolean on = pf.getBoolean("metered_cap_on", true);
+            int cap = pf.getInt("metered_cap_tier", 1);
+            // 循环：关 -> 开·64K -> 开·132K -> 开·192K -> 关
+            if (!on) {
+                pf.edit().putBoolean("metered_cap_on", true).putInt("metered_cap_tier", 0).apply();
+            } else if (cap < 2) {
+                pf.edit().putInt("metered_cap_tier", cap + 1).apply();
+            } else {
+                pf.edit().putBoolean("metered_cap_on", false).apply();
+            }
+            refreshDataRows();
+        });
+        btnCacheCap.setOnClickListener(v -> {
+            android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
+            int cur = pf.getInt("cache_cap_mb", 48);
+            int nxt = cur == 16 ? 32 : cur == 32 ? 48 : cur == 48 ? 96 : 16;
+            pf.edit().putInt("cache_cap_mb", nxt).apply();
+            StreamCache.trim(this);
+            refreshDataRows();
+        });
+        btnCacheInfo.setOnClickListener(v -> {
+            StreamCache.clearAll(this);
+            Toast.makeText(this, "音频缓存已清空", Toast.LENGTH_SHORT).show();
+            refreshDataRows();
+        });
+        btnTraffic.setOnClickListener(v -> {
+            PlayerService svc = PlayerService.get();
+            if (svc != null) svc.resetTrafficMonth();
+            Toast.makeText(this, "流量统计已清零", Toast.LENGTH_SHORT).show();
+            refreshDataRows();
+        });
+    }
+
+    private String fmtBytes(long b) {
+        if (b < 1024 * 1024) return Math.max(1, b / 1024) + " KB";
+        return String.format(java.util.Locale.CHINA, "%.1f MB", b / 1048576.0);
+    }
+
+    private void refreshDataRows() {
+        android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
+        boolean on = pf.getBoolean("metered_cap_on", true);
+        int cap = pf.getInt("metered_cap_tier", 1);
+        if (btnMetered != null) {
+            btnMetered.setText(on
+                    ? "📶 流量下自动降档：开（上限 " + PlayerService.QUALITY_NAMES[cap] + "，点切换）"
+                    : "📶 流量下自动降档：关（点开启）");
+        }
+        if (btnCacheCap != null) {
+            btnCacheCap.setText("🎚 音频缓存上限：" + pf.getInt("cache_cap_mb", 48) + " MB（点切换 16/32/48/96）");
+        }
+        if (btnCacheInfo != null) {
+            btnCacheInfo.setText("💾 音频缓存：已用 " + fmtBytes(StreamCache.usedBytes(this)) + "（点此清空）");
+        }
+        if (btnTraffic != null) {
+            PlayerService svc = PlayerService.get();
+            btnTraffic.setText(svc == null
+                    ? "📈 流量估算：播放服务未运行"
+                    : "📈 流量估算：本次约 " + fmtBytes(svc.trafficSessionBytes())
+                            + " · 本月约 " + fmtBytes(svc.trafficMonthBytes()) + "（点清零）");
+        }
     }
 
     private boolean islandPref() {
@@ -145,6 +217,7 @@ public class PlaybackSettingsActivity extends Activity {
         super.onResume();
         refreshFloatIsland();
         refreshSbEntry();
+        refreshDataRows();
         PlayerService svc = PlayerService.get();
         if (svc != null) { svc.refreshIsland(); svc.refreshSbLyrics(); }
     }

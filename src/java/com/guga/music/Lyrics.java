@@ -355,7 +355,7 @@ if (r != null) { Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + 
 Result sr = trySubtitles(ctx, track, api, cache);
 if (sr != null) return sr;
 
-try { writeFile(none, ""); } catch (Exception ignored) {}
+try { writeFile(none, ""); trimLyricsDir(none); } catch (Exception ignored) {}
 Diag.log(ctx, "🎤 歌词未命中：《" + hints.name + "》");
 return new Result(new ArrayList<>(), "");
 }
@@ -385,6 +385,7 @@ sb.append(String.format("[%02d:%02d.%03d]", l.timeMs / 60000, (l.timeMs % 60000)
 .append(l.text).append("\n");
 }
 writeFile(cache, sb.toString());
+trimLyricsDir(cache);
 Diag.log(ctx, "🎤 歌词命中：视频字幕");
 return new Result(box[0], "视频字幕");
 }
@@ -396,7 +397,7 @@ private static Result acceptLrc(File cache, String lrc, String src) {
 if (lrc == null) return null;
 List<Line> lines = parseLrc(lrc);
 if (lines.size() < 5) return null;
-try { writeFile(cache, "#src:" + src + "\n" + lrc); } catch (Exception ignored) {}
+try { writeFile(cache, "#src:" + src + "\n" + lrc); trimLyricsDir(cache); } catch (Exception ignored) {}
 return new Result(lines, src);
 }
 
@@ -826,6 +827,19 @@ String line;
 while ((line = r.readLine()) != null) sb.append(line);
 r.close();
 return sb.toString();
+}
+
+/** 歌词缓存上限：目录文件超 1000 个（约 500 首）时删最旧的，防越用越大 */
+private static void trimLyricsDir(File anyInDir) {
+try {
+File dir = anyInDir == null ? null : anyInDir.getParentFile();
+if (dir == null) return;
+File[] fs = dir.listFiles();
+if (fs == null || fs.length <= 1000) return;
+java.util.Arrays.sort(fs, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+int excess = fs.length - 1000;
+for (int i = 0; i < excess; i++) fs[i].delete();
+} catch (Exception ignored) {}
 }
 
 private static String readFile(File f) throws Exception {

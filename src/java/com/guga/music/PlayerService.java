@@ -177,6 +177,11 @@ public class PlayerService extends Service {
                 return true;
             }
             handlingError = true;
+            if (curTee != null) { noTee = true; killTee(); }
+            if (curFromCache && curCacheKey != null) {
+                StreamCache.deleteKey(this, curCacheKey);
+                curFromCache = false;
+            }
             cancelWatchdog();
             Diag.log(this, "✖ 播放器报错 what=" + what + " extra=" + extra);
             // 高音质流（FLAC/杜比）报错：多半是设备解码不支持，先降到 192K AAC 重取一次，别直接跳歌
@@ -205,6 +210,7 @@ public class PlayerService extends Service {
             onPlayError("播放失败（错误码 " + what + "/" + extra + "），已自动跳下一首");
             return true;
         });
+        watchdog.postDelayed(trafficTicker, 1000);
         initSession();
         try { getApplication().registerActivityLifecycleCallbacks(lcCallbacks); } catch (Exception ignored) {}
         createChannel();
@@ -227,6 +233,28 @@ public class PlayerService extends Service {
         int m = (getMode() + 1) % 3;
         getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
     }
+    // ---- v1.23.0 省流量：旋转缓存 + 流量统计 ----
+    private TeeDataSource curTee;
+    private String curCacheKey;
+    private boolean curFromCache;
+    private boolean noTee;
+    private long trafficSession = 0;
+    private long trafficDirty = 0;
+    private static final int[] TRAFFIC_KBPS = {64, 132, 192, 1000, 640};
+    private final Runnable trafficTicker = new Runnable() {
+        @Override public void run() {
+            try {
+                if (playing && prepared && !curFromCache) {
+                    int t = actualTier >= 0 ? actualTier : activeTier;
+                    long add = TRAFFIC_KBPS[Math.max(0, Math.min(4, t))] * 1000L / 8;
+                    trafficSession += add;
+                    trafficDirty += add;
+                }
+            } catch (Exception ignored) {}
+            watchdog.postDelayed(this, 1000);
+        }
+    };
+
     public static final String[] QUALITY_NAMES = {
             "64K 省流", "132K 标准", "192K 高清", "Hi-Res 无损（需大会员）", "杜比全景声（需大会员）"};
 
@@ -387,7 +415,11 @@ public class PlayerService extends Service {
         backupTried = false;
         refetchTried = false;
         refetchTrack = t;
-        activeTier = getEffectiveTier();
+        killTee();
+        curFromCache = false;
+        noTee = false;
+        activeTier = resolveActiveTier();
+        ImgLoader.meteredSmall = isMeteredNet();
         curStreamKind = "aac";
         actualTier = -1;
         availTiers = null;
@@ -463,6 +495,32 @@ public class PlayerService extends Service {
                     fetchAndPlay(t, token);
                     return;
                 }
+                final int tierKey = actualTier >= 0 ? actualTier : activeTier;
+                curCacheKey = StreamCache.key(t.bvid, tierKey);
+                java.io.File hit = noTee ? null : StreamCache.hitFile(PlayerService.this, curCacheKey);
+                if (hit != null) {
+                    curFromCache = true;
+                    Diag.log(PlayerService.this, "💾 本地缓存播放（0 流量）");
+                    if (!tryStreamFile(hit)) {
+                        preparing = false;
+                        onPlayError("播放器异常");
+                    }
+                    return;
+                }
+                curFromCache = false;
+                if (!noTee) {
+                    curTee = new TeeDataSource(urls[0], streamHeaders(),
+                            StreamCache.partFile(PlayerService.this, curCacheKey),
+                            new TeeDataSource.Done() {
+                                @Override public void onComplete(java.io.File f) {
+                                    StreamCache.finish(PlayerService.this, curCacheKey);
+                                    Diag.log(PlayerService.this, "💾 已缓存（再播/循环 0 流量）：" + t.title);
+                                }
+                                @Override public void onFail() {}
+                            });
+                    if (tryStreamTee(curTee)) return;
+                    killTee();
+                }
                 if (!tryStream(urls[0])) {
                     preparing = false;
                     onPlayError("播放器异常");
@@ -484,13 +542,114 @@ public class PlayerService extends Service {
         });
     }
 
-    private boolean tryStream(String url) {
+    private Map<String, String> streamHeaders() {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", "https://www.bilibili.com");
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        return headers;
+    }
+
+    private void killTee() {
+        if (curTee != null) {
+            curTee.abort();
+            curTee = null;
+        }
+    }
+
+    private boolean tryStreamFile(java.io.File f) {
+        try {
+            killTee();
+            mp.reset();
+            mp.setDataSource(f.getAbsolutePath());
+            mp.prepareAsync();
+            handlingError = false;
+            prepareStartAt = System.currentTimeMillis();
+            armStall();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean tryStreamTee(TeeDataSource ds) {
         try {
             mp.reset();
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Referer", "https://www.bilibili.com");
-            headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-            mp.setDataSource(getApplicationContext(), android.net.Uri.parse(url), headers);
+            mp.setDataSource(ds);
+            mp.prepareAsync();
+            handlingError = false;
+            prepareStartAt = System.currentTimeMillis();
+            armStall();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 当前是否计费网络（流量） */
+    public boolean isMeteredNet() {
+        try {
+            android.net.ConnectivityManager cm =
+                    (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            return cm != null && cm.isActiveNetworkMetered();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 省流量总闸开着且在流量网络：降档/跳封面等策略的总条件 */
+    public boolean meteredSaveOn() {
+        return getSharedPreferences("player", MODE_PRIVATE).getBoolean("metered_cap_on", true)
+                && isMeteredNet();
+    }
+
+    /** 本次请求档位：流量网络下按设置上限自动降档 */
+    private int resolveActiveTier() {
+        int req = getEffectiveTier();
+        android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
+        if (pf.getBoolean("metered_cap_on", true) && isMeteredNet()) {
+            int cap = pf.getInt("metered_cap_tier", 1);
+            int eff = Math.min(req, cap);
+            if (eff < req) {
+                Diag.log(this, "📶 流量网络：音质自动降为「" + QUALITY_NAMES[eff] + "」（省流量上限）");
+            }
+            return eff;
+        }
+        return req;
+    }
+
+    // ---- 流量估算统计（按实际档位×时长，缓存命中记 0） ----
+    private String trafficMonthKey() {
+        return "m_" + new java.text.SimpleDateFormat("yyyyMM", java.util.Locale.CHINA)
+                .format(new java.util.Date());
+    }
+
+    private void flushTraffic() {
+        if (trafficDirty <= 0) return;
+        android.content.SharedPreferences tp = getSharedPreferences("traffic", MODE_PRIVATE);
+        String k = trafficMonthKey();
+        tp.edit().putLong(k, tp.getLong(k, 0) + trafficDirty).apply();
+        trafficDirty = 0;
+    }
+
+    public long trafficSessionBytes() { return trafficSession; }
+
+    public long trafficMonthBytes() {
+        flushTraffic();
+        return getSharedPreferences("traffic", MODE_PRIVATE).getLong(trafficMonthKey(), 0);
+    }
+
+    public void resetTrafficMonth() {
+        trafficDirty = 0;
+        trafficSession = 0;
+        getSharedPreferences("traffic", MODE_PRIVATE).edit()
+                .putLong(trafficMonthKey(), 0).apply();
+    }
+
+    private boolean tryStream(String url) {
+        try {
+            killTee();
+            mp.reset();
+            mp.setDataSource(getApplicationContext(), android.net.Uri.parse(url), streamHeaders());
             mp.prepareAsync();
             handlingError = false;
             prepareStartAt = System.currentTimeMillis();
@@ -639,6 +798,7 @@ public class PlayerService extends Service {
 
     private void setPlaying(boolean p) {
         playing = p;
+        if (!p) flushTraffic();
         for (Listener l : listeners) l.onStateChanged(p);
         publishState();
     }
@@ -778,7 +938,9 @@ public class PlayerService extends Service {
                 updateNotification();
             });
         }
-        Lyrics.fetchCover(this, t, url -> {
+        if (meteredSaveOn()) {
+            Diag.log(this, "📶 流量下跳过专辑封面匹配（省流量）");
+        } else Lyrics.fetchCover(this, t, url -> {
             if (url == null) return;
             ImgLoader.loadBitmap(url, b -> {
                 Track cur = current();

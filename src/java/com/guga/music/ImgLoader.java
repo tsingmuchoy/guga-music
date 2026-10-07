@@ -23,6 +23,8 @@ public class ImgLoader {
         @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
     };
     private static final ExecutorService POOL = Executors.newFixedThreadPool(4);
+    /** 流量网络时列表图取小图（由播放服务按网络状态更新） */
+    public static volatile boolean meteredSmall = false;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     public static void load(ImageView iv, String url) {
@@ -73,6 +75,9 @@ public class ImgLoader {
         // B 站封面大量是 http 地址，新系统默认拦截明文流量，统一升级 https
         if (url.startsWith("http://")) url = "https://" + url.substring(7);
         else if (url.startsWith("//")) url = "https:" + url;
+        if (!disc && meteredSmall && url.contains("hdslb.com") && !url.contains("@")) {
+            url = url + "@512w";
+        }
         final String furl = url;
         final int accent = disc ? ThemeUtil.color(iv.getContext(), R.attr.gAccent) : 0;
         String key = disc ? furl + "#disc" + accent : furl;
