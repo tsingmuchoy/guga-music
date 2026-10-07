@@ -971,7 +971,7 @@ public class PlayerService extends Service {
                         | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 android.graphics.PixelFormat.TRANSLUCENT);
         lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
-        lp.y = (int) (10 * d);
+        lp.y = (int) (2 * d);
         return lp;
     }
 
