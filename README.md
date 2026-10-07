@@ -5,7 +5,7 @@
 
 > 由 **清木** 与 AI 助手「小咕嘎」共同打造的个人项目。非官方应用，与哔哩哔哩、网易云音乐均无隶属关系。
 
-> 🎖 **军师**：风月无边1028（[MCfywb](https://github.com/MCfywb)，B 站 [space.bilibili.com/432245733](https://space.bilibili.com/432245733)）——音质五档、歌词多源、双更新源等关键建议均出自军师，特此鸣谢！
+> 🎖 **军师**：MC风月无边（[GitHub](https://github.com/MCfywb)，B 站 [space.bilibili.com/432245733](https://space.bilibili.com/432245733)）——音质五档、歌词多源、双更新源等关键建议均出自军师，特此鸣谢！
 
 ## ✨ 功能
 

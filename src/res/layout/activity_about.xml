@@ -126,7 +126,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:lineSpacingMultiplier="1.35"
-                android:text="军师：风月无边1028（MCfywb）\n\n音质五档、自动深色、歌词多源、双更新源……咕嘎音乐的好多关键主意都出自军师之口，特此鸣谢！"
+                android:text="军师：MC风月无边\n\n音质五档、自动深色、歌词多源、双更新源……咕嘎音乐的好多关键主意都出自军师之口，特此鸣谢！"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
 

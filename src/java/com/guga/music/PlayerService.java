@@ -11,7 +11,10 @@ import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.media.MediaMetadata;
 import android.media.MediaPlayer;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -71,6 +74,10 @@ public class PlayerService extends Service {
     private final Random random = new Random();
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private AudioManager audioMgr;
+    private MediaSession session;
+    private android.graphics.Bitmap sessionArt;
+    private String sessionArtBvid;
+    private boolean sessionArtAlbum = false;
     private AudioFocusRequest focusReq;
     private boolean focusHeld = false;
 
@@ -156,6 +163,7 @@ public class PlayerService extends Service {
             onPlayError("播放失败（错误码 " + what + "/" + extra + "），已自动跳下一首");
             return true;
         });
+        initSession();
         createChannel();
         startForegroundCompat(buildNotification("咕嘎音乐", "点一首歌开始听吧"));
         restoreState();
@@ -228,7 +236,7 @@ public class PlayerService extends Service {
 
     public int getPosition() { try { return prepared ? mp.getCurrentPosition() : 0; } catch (Exception e) { return 0; } }
     public int getDuration() { try { return prepared ? mp.getDuration() : 0; } catch (Exception e) { return 0; } }
-    public void seekTo(int ms) { if (prepared) mp.seekTo(ms); }
+    public void seekTo(int ms) { if (prepared) { mp.seekTo(ms); publishState(); } }
 
     public void playQueue(List<Track> tracks, int start) {
         Track target = tracks != null && start >= 0 && start < tracks.size() ? tracks.get(start) : null;
@@ -589,10 +597,13 @@ public class PlayerService extends Service {
     private void setPlaying(boolean p) {
         playing = p;
         for (Listener l : listeners) l.onStateChanged(p);
+        publishState();
     }
 
     private void fireTrack(Track t) {
         for (Listener l : listeners) l.onTrackChanged(t);
+        publishMetadata();
+        refreshSessionArt(t);
     }
 
     private void fireError(String msg) {
@@ -644,6 +655,105 @@ public class PlayerService extends Service {
         } catch (Exception ignored) {}
     }
 
+    // ---------------- 媒体会话（系统媒体面：锁屏 / 蓝牙 / 原子随身听等） ----------------
+    private void initSession() {
+        try {
+            session = new MediaSession(this, "GugaMusic");
+            session.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
+                    | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+            Intent open = new Intent(this, PlayerActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            int fl = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+            session.setSessionActivity(PendingIntent.getActivity(this, 9, open, fl));
+            session.setCallback(new MediaSession.Callback() {
+                @Override public void onPlay() { if (!playing) toggle(); }
+                @Override public void onPause() { if (playing) toggle(); }
+                @Override public void onSkipToNext() { next(true); }
+                @Override public void onSkipToPrevious() { prev(); }
+                @Override public void onSeekTo(long pos) { seekTo((int) Math.max(0, pos)); }
+                @Override public void onStop() { if (playing) toggle(); }
+            });
+            session.setActive(true);
+            Diag.log(this, "🎛 媒体会话已建立（锁屏/蓝牙/系统媒体面）");
+        } catch (Exception ignored) {}
+    }
+
+    private void publishMetadata() {
+        if (session == null) return;
+        Track t = current();
+        if (t == null) return;
+        try {
+            MediaMetadata.Builder mb = new MediaMetadata.Builder()
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, t.title)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, t.title)
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, t.author)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, t.author)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, t.author)
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩");
+            if (t.durationSec > 0) mb.putLong(MediaMetadata.METADATA_KEY_DURATION, t.durationSec * 1000L);
+            if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
+                mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, sessionArt);
+                mb.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, sessionArt);
+            }
+            session.setMetadata(mb.build());
+        } catch (Exception ignored) {}
+    }
+
+    private void publishState() {
+        if (session == null) return;
+        try {
+            int st = playing ? PlaybackState.STATE_PLAYING
+                    : preparing ? PlaybackState.STATE_BUFFERING : PlaybackState.STATE_PAUSED;
+            long acts = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
+                    | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_SKIP_TO_NEXT
+                    | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_SEEK_TO;
+            session.setPlaybackState(new PlaybackState.Builder()
+                    .setState(st, getPosition(), playing ? 1.0f : 0.0f)
+                    .setActions(acts).build());
+        } catch (Exception ignored) {}
+    }
+
+    /** 会话封面：先上视频封面，专辑原图匹配到后替换（与播放页同口径，同样受封面开关控制）。
+     *  位图压到 480px 内：会话元数据走 Binder，大图有超限风险。 */
+    private void refreshSessionArt(final Track t) {
+        sessionArt = null;
+        sessionArtBvid = null;
+        sessionArtAlbum = false;
+        if (t == null || t.bvid == null) return;
+        final String bv = t.bvid;
+        if (t.cover != null && !t.cover.isEmpty()) {
+            ImgLoader.loadBitmap(t.cover, b -> {
+                Track cur = current();
+                if (b == null || cur == null || !bv.equals(cur.bvid) || sessionArtAlbum) return;
+                sessionArt = scaleArt(b);
+                sessionArtBvid = bv;
+                publishMetadata();
+                updateNotification();
+            });
+        }
+        Lyrics.fetchCover(this, t, url -> {
+            if (url == null) return;
+            ImgLoader.loadBitmap(url, b -> {
+                Track cur = current();
+                if (b == null || cur == null || !bv.equals(cur.bvid)) return;
+                sessionArt = scaleArt(b);
+                sessionArtBvid = bv;
+                sessionArtAlbum = true;
+                publishMetadata();
+                updateNotification();
+            });
+        });
+    }
+
+    private android.graphics.Bitmap scaleArt(android.graphics.Bitmap b) {
+        if (b == null) return null;
+        int w = b.getWidth(), h = b.getHeight();
+        int max = Math.max(w, h);
+        if (max <= 480) return b;
+        float s = 480f / max;
+        return android.graphics.Bitmap.createScaledBitmap(b, Math.round(w * s), Math.round(h * s), true);
+    }
+
     // ---------------- 通知 ----------------
     private void createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
@@ -675,6 +785,18 @@ public class PlayerService extends Service {
                 .addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                         playing ? "暂停" : "播放", act("toggle", 2))
                 .addAction(android.R.drawable.ic_media_next, "下一首", act("next", 3));
+        if (session != null) {
+            try {
+                b.setStyle(new Notification.MediaStyle()
+                        .setMediaSession(session.getSessionToken())
+                        .setShowActionsInCompactView(0, 1, 2));
+                b.setVisibility(Notification.VISIBILITY_PUBLIC);
+                Track ct = current();
+                if (sessionArt != null && ct != null && ct.bvid != null && ct.bvid.equals(sessionArtBvid)) {
+                    b.setLargeIcon(sessionArt);
+                }
+            } catch (Exception ignored) {}
+        }
         return b.build();
     }
 
@@ -712,6 +834,7 @@ public class PlayerService extends Service {
     @Override
     public void onDestroy() {
         Diag.log(this, "⚠️ 服务被销毁（多半是系统杀后台）");
+        try { if (session != null) { session.setActive(false); session.release(); } } catch (Exception ignored) {}
         try { mp.release(); } catch (Exception ignored) {}
         inst = null;
         super.onDestroy();

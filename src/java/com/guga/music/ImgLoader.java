@@ -34,6 +34,37 @@ public class ImgLoader {
         loadInternal(iv, url, true);
     }
 
+    public interface BmpCb { void onBitmap(Bitmap b); }
+
+    /** 只取位图不绑 View（给媒体会话/通知大图用），走同一内存缓存 */
+    public static void loadBitmap(String url, BmpCb cb) {
+        if (url == null || url.isEmpty()) { cb.onBitmap(null); return; }
+        if (url.startsWith("http://")) url = "https://" + url.substring(7);
+        else if (url.startsWith("//")) url = "https:" + url;
+        final String furl = url;
+        Bitmap hit = CACHE.get(furl);
+        if (hit != null) { cb.onBitmap(hit); return; }
+        POOL.execute(() -> {
+            Bitmap src = null;
+            try {
+                src = CACHE.get(furl);
+                if (src == null) {
+                    HttpURLConnection c = (HttpURLConnection) new URL(furl).openConnection();
+                    c.setConnectTimeout(10000);
+                    c.setReadTimeout(10000);
+                    c.setRequestProperty("User-Agent", "Mozilla/5.0");
+                    c.setRequestProperty("Referer", "https://www.bilibili.com");
+                    InputStream in = c.getInputStream();
+                    src = BitmapFactory.decodeStream(in);
+                    in.close();
+                    if (src != null) CACHE.put(furl, src);
+                }
+            } catch (Exception ignored) {}
+            final Bitmap out = src;
+            MAIN.post(() -> cb.onBitmap(out));
+        });
+    }
+
     private static void loadInternal(ImageView iv, String url, boolean disc) {
         if (url == null || url.isEmpty()) {
             iv.setImageBitmap(null);
