@@ -27,7 +27,7 @@ public class DiagSettingsActivity extends Activity {
         if (st == null || lg == null) return;
         PlayerService svc = PlayerService.get();
         st.setText(svc == null ? "播放服务未运行（先回主页点一首歌再回来）" : svc.debugState());
-        lg.setText(Diag.read(this));
+        lg.setText(Diag.readDisplay(this));
     }
 
     @Override
