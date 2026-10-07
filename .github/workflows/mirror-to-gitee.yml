@@ -45,18 +45,45 @@ jobs:
           NAME: ${{ github.event.release.name }}
           BODY: ${{ github.event.release.body }}
         run: |
-          curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases" \
-            --data-urlencode "access_token=${TK}" \
-            --data-urlencode "tag_name=${TAG}" \
-            --data-urlencode "name=${NAME}" \
-            --data-urlencode "body=${BODY}" \
-            --data-urlencode "target_commitish=main" || true
-          ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${TK}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))")
+          # Gitee 接口在负载高时会返回 null/空响应：创建与查询都带重试，
+          # 解析做空值兜底，拿不到发行版 id 就明确失败（旧版直接 .get 崩在 null 上）
+          for i in 1 2 3; do
+            code=$(curl -s -o /tmp/rel.json -w '%{http_code}' -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases" \
+              --data-urlencode "access_token=${TK}" \
+              --data-urlencode "tag_name=${TAG}" \
+              --data-urlencode "name=${NAME}" \
+              --data-urlencode "body=${BODY}" \
+              --data-urlencode "target_commitish=main" || echo 000)
+            echo "create attempt $i http=$code"
+            [ "$code" = "201" ] && break
+            sleep 15
+          done
+          ID=""
+          for i in 1 2 3 4 5 6; do
+            ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${TK}" | python3 -c "import json,sys
+          try:
+            d=json.load(sys.stdin)
+            print((d or {}).get('id','') if isinstance(d,dict) else '')
+          except Exception:
+            print('')")
+            [ -n "$ID" ] && break
+            echo "release not visible yet (attempt $i), wait 15s"
+            sleep 15
+          done
           echo "gitee release id: $ID"
+          [ -n "$ID" ] || { echo "FAILED: no gitee release id"; exit 1; }
           mkdir -p /tmp/assets
           gh release download "$TAG" --repo "${{ github.repository }}" --dir /tmp/assets || true
           for f in /tmp/assets/*; do
             [ -f "$f" ] || continue
-            curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${ID}/attach_files" \
-              -F "access_token=${TK}" -F "file=@${f}"
+            ok=0
+            for i in 1 2 3; do
+              resp=$(curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${ID}/attach_files" \
+                -F "access_token=${TK}" -F "file=@${f}")
+              echo "$resp" | head -c 200; echo
+              if echo "$resp" | grep -q '"id"'; then ok=1; break; fi
+              echo "upload attempt $i failed, retry in 15s"
+              sleep 15
+            done
+            [ "$ok" = "1" ] || { echo "FAILED uploading $f"; exit 1; }
           done
