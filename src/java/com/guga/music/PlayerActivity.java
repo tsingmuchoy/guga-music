@@ -146,32 +146,36 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         styleQualityChips(disp);
     }
 
-    /** v1.24.1 主题渐变落地：播放键渐变椭圆底、进度条渐变填充+圆钮、加入歌单渐变字 */
+    /** 主题渐变落地（v1.24.2 瘦身：播放键只字形渐变不要大圆底；进度条压回 4dp 细线 + 12dp 小圆钮） */
     private void setupGradientChrome() {
         float den = getResources().getDisplayMetrics().density;
-        android.graphics.drawable.GradientDrawable playBg = ThemeUtil.accentGradient(this, 999);
-        btnToggle.setBackground(playBg);
-        btnToggle.setImageTintList(android.content.res.ColorStateList.valueOf(
-                ThemeUtil.color(this, R.attr.gOnAccent)));
+        btnToggle.setBackground(null);
+        btnToggle.setImageTintList(null);
+        btnToggle.setImageDrawable(ThemeUtil.gradientIcon(this, R.drawable.ic_play, 30));
         sb.setProgressTintList(null);
         sb.setThumbTintList(null);
+        int barH = (int) (4 * den);
         android.graphics.drawable.GradientDrawable track = new android.graphics.drawable.GradientDrawable();
         track.setColor(0x33FFFFFF);
-        track.setCornerRadius(3 * den);
-        track.setSize(-1, (int) (5 * den));
+        track.setCornerRadius(2 * den);
+        track.setSize(-1, barH);
         android.graphics.drawable.GradientDrawable fill = new android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, ThemeUtil.gradColors(this));
-        fill.setCornerRadius(3 * den);
-        fill.setSize(-1, (int) (5 * den));
+        fill.setCornerRadius(2 * den);
+        fill.setSize(-1, barH);
         android.graphics.drawable.ClipDrawable clip = new android.graphics.drawable.ClipDrawable(
                 fill, android.view.Gravity.LEFT, android.graphics.drawable.ClipDrawable.HORIZONTAL);
         android.graphics.drawable.LayerDrawable ld = new android.graphics.drawable.LayerDrawable(
                 new android.graphics.drawable.Drawable[]{track, clip});
         ld.setId(0, android.R.id.background);
         ld.setId(1, android.R.id.progress);
+        ld.setLayerHeight(0, barH);
+        ld.setLayerHeight(1, barH);
+        ld.setLayerGravity(0, android.view.Gravity.CENTER_VERTICAL);
+        ld.setLayerGravity(1, android.view.Gravity.CENTER_VERTICAL);
         sb.setProgressDrawable(ld);
         android.graphics.drawable.GradientDrawable thumb = ThemeUtil.accentGradient(this, 999);
-        thumb.setSize((int) (15 * den), (int) (15 * den));
+        thumb.setSize((int) (12 * den), (int) (12 * den));
         sb.setThumb(thumb);
         ThemeUtil.gradientText((TextView) findViewById(R.id.btnAddList));
     }
@@ -298,7 +302,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
 
     @Override
     public void onStateChanged(boolean playing) {
-        btnToggle.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
+        btnToggle.setImageDrawable(ThemeUtil.gradientIcon(this, playing ? R.drawable.ic_pause : R.drawable.ic_play, 30));
         refreshQuality(); // 流一就绪就把音质显示刷新成实际档位
         if (discSpin != null) {
             if (playing) discSpin.resume();

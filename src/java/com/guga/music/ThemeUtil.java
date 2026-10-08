@@ -104,16 +104,48 @@ public class ThemeUtil {
         return g;
     }
 
-    /** 文字渐变：给 TextView 的画笔挂主题渐变着色器（宽度按文本实测） */
+    /** 文字渐变：给 TextView 的画笔挂主题渐变着色器；按 gravity 算文本起始 x，短标签也从色带起点着色 */
     public static void gradientText(TextView tv) {
         if (tv == null) return;
         CharSequence t = tv.getText();
         float w = tv.getPaint().measureText(t == null ? "" : t.toString());
-        if (w <= 0) w = tv.getWidth();
         if (w <= 0) return;
-        tv.getPaint().setShader(new LinearGradient(0, 0, w, 0,
-                effective(tv.getContext()).grad, null, Shader.TileMode.CLAMP));
+        float start = tv.getPaddingLeft();
+        int avail = tv.getWidth() - tv.getPaddingLeft() - tv.getPaddingRight();
+        if (avail > w) {
+            int g = tv.getGravity() & android.view.Gravity.HORIZONTAL_GRAVITY_MASK;
+            if (g == android.view.Gravity.CENTER_HORIZONTAL) start += (avail - w) / 2f;
+            else if (g == android.view.Gravity.RIGHT || g == android.view.Gravity.END) start += avail - w;
+        }
+        LinearGradient lg = new LinearGradient(0, 0, w, 0,
+                effective(tv.getContext()).grad, null, Shader.TileMode.CLAMP);
+        if (start != 0) {
+            android.graphics.Matrix m = new android.graphics.Matrix();
+            m.setTranslate(start, 0);
+            lg.setLocalMatrix(m);
+        }
+        tv.getPaint().setShader(lg);
         tv.invalidate();
+    }
+
+    /** 渐变图标：把矢量图标的形状填成主题渐变（播放/暂停键用，保持字形本身着色、无底圆） */
+    public static android.graphics.drawable.Drawable gradientIcon(android.content.Context c, int resId, int sizeDp) {
+        int px = (int) (sizeDp * c.getResources().getDisplayMetrics().density);
+        android.graphics.drawable.Drawable icon = c.getDrawable(resId);
+        android.graphics.Bitmap shape = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas sc = new android.graphics.Canvas(shape);
+        icon.setTint(0xFFFFFFFF);
+        icon.setBounds(0, 0, px, px);
+        icon.draw(sc);
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas oc = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new LinearGradient(0, 0, px, px, effective(c).grad, null, Shader.TileMode.CLAMP));
+        oc.drawRect(0, 0, px, px, p);
+        p.setShader(null);
+        p.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+        oc.drawBitmap(shape, 0, 0, p);
+        return new android.graphics.drawable.BitmapDrawable(c.getResources(), out);
     }
 
     /** 还原纯色文字（列表复用时给非当前项用） */
