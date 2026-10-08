@@ -241,9 +241,47 @@ public class PlayerService extends Service {
     private long trafficSession = 0;
     private long trafficDirty = 0;
     private static final int[] TRAFFIC_KBPS = {64, 132, 192, 1000, 640};
+    private boolean playbackCbRegistered = false;
+
+    /** 系统「当前活跃播放」列表非空 = 有应用正在出声（暂停的播放器不在活跃列表里）。
+     *  顺带注册一次播放变化回调：对方停播的那一刻事件驱动地恢复，比轮询更及时。
+     *  查不到一律保守认为有，宁可不恢复也不误恢复。 */
+    private boolean otherAudioActive() {
+        try {
+            if (audioMgr == null) return true;
+            if (!playbackCbRegistered) {
+                playbackCbRegistered = true;
+                audioMgr.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
+                    @Override
+                    public void onPlaybackConfigChanged(
+                            java.util.List<android.media.AudioPlaybackConfiguration> configs) {
+                        if (islandYield && !playing && (configs == null || configs.isEmpty())) {
+                            islandYield = false;
+                            Diag.log(PlayerService.this, "🫧 对方已停播（未归还焦点），悬浮岛自动恢复");
+                            refreshIsland();
+                            refreshSbLyrics();
+                        }
+                    }
+                }, watchdog);
+            }
+            java.util.List<android.media.AudioPlaybackConfiguration> cs =
+                    audioMgr.getActivePlaybackConfigurations();
+            if (cs == null) return true;
+            return !cs.isEmpty();
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
     private final Runnable trafficTicker = new Runnable() {
         @Override public void run() {
             try {
+                if (islandYield && !playing && !otherAudioActive()) {
+                    islandYield = false;
+                    Diag.log(PlayerService.this, "🫧 对方已停播（未归还焦点），悬浮岛自动恢复");
+                    refreshIsland();
+                    refreshSbLyrics();
+                }
                 if (playing && prepared && !curFromCache) {
                     int t = actualTier >= 0 ? actualTier : activeTier;
                     long add = TRAFFIC_KBPS[Math.max(0, Math.min(4, t))] * 1000L / 8;
@@ -798,6 +836,11 @@ public class PlayerService extends Service {
 
     private void setPlaying(boolean p) {
         playing = p;
+        if (p && islandYield) {
+            islandYield = false;
+            refreshIsland();
+            refreshSbLyrics();
+        }
         if (!p) flushTraffic();
         for (Listener l : listeners) l.onStateChanged(p);
         publishState();
@@ -817,13 +860,17 @@ public class PlayerService extends Service {
     private final AudioManager.OnAudioFocusChangeListener focusListener = f -> {
         if (f == AudioManager.AUDIOFOCUS_GAIN) {
             focusHeld = true;
+            if (islandYield) Diag.log(this, "🫧 焦点回来了，悬浮岛恢复显示");
             islandYield = false;
             refreshIsland();
+            refreshSbLyrics();
         } else if (f == AudioManager.AUDIOFOCUS_LOSS || f == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
             boolean wasHeld = focusHeld;
             focusHeld = false;
+            if (!islandYield) Diag.log(this, "🫧 焦点被其他应用占用，悬浮岛让行隐藏");
             islandYield = true;
             refreshIsland();
+            refreshSbLyrics();
             if (playing && wasHeld) {
                 Diag.log(this, "焦点被抢，自动暂停");
                 try { mp.pause(); } catch (Exception ignored) {}
@@ -858,7 +905,14 @@ public class PlayerService extends Service {
                 r = audioMgr.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC,
                         AudioManager.AUDIOFOCUS_GAIN);
             }
-            if (r == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) focusHeld = true;
+            if (r == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                focusHeld = true;
+                if (islandYield) {
+                    islandYield = false;
+                    refreshIsland();
+                    refreshSbLyrics();
+                }
+            }
         } catch (Exception ignored) {}
     }
 
