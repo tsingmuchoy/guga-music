@@ -1,25 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 基础（默认 = 琥珀夜） -->
+    <!-- 基础（默认 = 哔哩粉）；所有主题共用同一套玻璃属性（gGlassHi/Lo、gHiLine、gRim），只换色板 -->
     <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#121417</item>
-        <item name="android:statusBarColor">#121417</item>
-        <item name="android:navigationBarColor">#121417</item>
-        <item name="android:colorAccent">#F5A623</item>
+        <item name="android:windowBackground">#171218</item>
+        <item name="android:statusBarColor">#171218</item>
+        <item name="android:navigationBarColor">#171218</item>
+        <item name="android:colorAccent">#FB7299</item>
         <item name="android:fontFamily">sans</item>
-        <item name="gBg">#121417</item>
-        <item name="gElevated">#1B1E23</item>
-        <item name="gSurface">#202329</item>
+        <item name="gBg">#171218</item>
+        <item name="gElevated">#211A22</item>
+        <item name="gSurface">#2A2029</item>
         <item name="gStroke">#3AFFFFFF</item>
         <item name="gTextPri">#F4F5F7</item>
         <item name="gTextSec">#9BA1A9</item>
         <item name="gTextFaint">#6B7078</item>
-        <item name="gAccent">#F5A623</item>
-        <item name="gOnAccent">#1A1206</item>
+        <item name="gAccent">#FB7299</item>
+        <item name="gOnAccent">#2A0E18</item>
         <item name="gGlassHi">#40FFFFFF</item>
         <item name="gGlassLo">#29FFFFFF</item>
-        <item name="gGlow1">#45F5A623</item>
-        <item name="gGlow2">#26FB7299</item>
+        <item name="gGlow1">#4DFB7299</item>
+        <item name="gGlow2">#2656B6F7</item>
         <item name="gHiLine">#59FFFFFF</item>
         <item name="gRim">#59FFFFFF</item>
         <item name="gBarHi">#F2353331</item>
@@ -27,22 +27,7 @@
         <item name="gBottomShade">#33000000</item>
     </style>
 
-    <style name="ThemeAmber" parent="AppTheme" />
-
-    <style name="ThemePink" parent="AppTheme">
-        <item name="android:windowBackground">#171218</item>
-        <item name="android:statusBarColor">#171218</item>
-        <item name="android:navigationBarColor">#171218</item>
-        <item name="android:colorAccent">#FB7299</item>
-        <item name="gBg">#171218</item>
-        <item name="gElevated">#211A22</item>
-        <item name="gSurface">#2A2029</item>
-        <item name="gAccent">#FB7299</item>
-        <item name="gGlow1">#4DFB7299</item>
-        <item name="gGlow2">#2656B6F7</item>
-        <item name="gHiLine">#59FFFFFF</item>
-        <item name="gOnAccent">#2A0E18</item>
-    </style>
+    <style name="ThemePink" parent="AppTheme" />
 
     <style name="ThemeSky" parent="AppTheme">
         <item name="android:windowBackground">#0E1520</item>
@@ -74,28 +59,63 @@
         <item name="gOnAccent">#06301E</item>
     </style>
 
-    <style name="ThemePorcelain" parent="AppTheme">
-        <item name="android:windowBackground">#EDF0F4</item>
-        <item name="android:statusBarColor">#EDF0F4</item>
-        <item name="android:navigationBarColor">#EDF0F4</item>
-        <item name="android:colorAccent">#FF8A3D</item>
-        <item name="gBg">#EDF0F4</item>
-        <item name="gElevated">#F7F8FA</item>
-        <item name="gSurface">#FFFFFF</item>
-        <item name="gStroke">#1A14283C</item>
-        <item name="gTextPri">#17191D</item>
-        <item name="gTextSec">#5A616B</item>
-        <item name="gTextFaint">#9AA0A6</item>
-        <item name="gAccent">#FF8A3D</item>
-        <item name="gOnAccent">#FFFFFF</item>
-        <item name="gGlassHi">#CCFFFFFF</item>
-        <item name="gGlassLo">#73FFFFFF</item>
-        <item name="gGlow1">#66FFB37A</item>
-        <item name="gGlow2">#404CC3FF</item>
-        <item name="gHiLine">#E6FFFFFF</item>
-        <item name="gRim">#40000000</item>
-        <item name="gBarHi">#FCFFFFFF</item>
-        <item name="gBarLo">#F5F1ECE2</item>
-        <item name="gBottomShade">#1A000000</item>
+    <style name="ThemeGrape" parent="AppTheme">
+        <item name="android:windowBackground">#150A24</item>
+        <item name="android:statusBarColor">#150A24</item>
+        <item name="android:navigationBarColor">#150A24</item>
+        <item name="android:colorAccent">#B26BFF</item>
+        <item name="gBg">#150A24</item>
+        <item name="gElevated">#201233</item>
+        <item name="gSurface">#2A1845</item>
+        <item name="gAccent">#B26BFF</item>
+        <item name="gGlow1">#66B26BFF</item>
+        <item name="gGlow2">#40FF4FD8</item>
+        <item name="gHiLine">#59FFFFFF</item>
+        <item name="gOnAccent">#1B0530</item>
+    </style>
+
+    <style name="ThemeAurora" parent="AppTheme">
+        <item name="android:windowBackground">#060D1F</item>
+        <item name="android:statusBarColor">#060D1F</item>
+        <item name="android:navigationBarColor">#060D1F</item>
+        <item name="android:colorAccent">#3DFFA2</item>
+        <item name="gBg">#060D1F</item>
+        <item name="gElevated">#0B1730</item>
+        <item name="gSurface">#111F3E</item>
+        <item name="gAccent">#3DFFA2</item>
+        <item name="gGlow1">#663DFFA2</item>
+        <item name="gGlow2">#407A5CFF</item>
+        <item name="gHiLine">#59FFFFFF</item>
+        <item name="gOnAccent">#04331F</item>
+    </style>
+
+    <style name="ThemeMatcha" parent="AppTheme">
+        <item name="android:windowBackground">#10160B</item>
+        <item name="android:statusBarColor">#10160B</item>
+        <item name="android:navigationBarColor">#10160B</item>
+        <item name="android:colorAccent">#B5E048</item>
+        <item name="gBg">#10160B</item>
+        <item name="gElevated">#18220F</item>
+        <item name="gSurface">#202D14</item>
+        <item name="gAccent">#B5E048</item>
+        <item name="gGlow1">#66A8E063</item>
+        <item name="gGlow2">#40FFE9A3</item>
+        <item name="gHiLine">#59FFFFFF</item>
+        <item name="gOnAccent">#243306</item>
+    </style>
+
+    <style name="ThemeRainbow" parent="AppTheme">
+        <item name="android:windowBackground">#0D0D15</item>
+        <item name="android:statusBarColor">#0D0D15</item>
+        <item name="android:navigationBarColor">#0D0D15</item>
+        <item name="android:colorAccent">#FF6B6B</item>
+        <item name="gBg">#0D0D15</item>
+        <item name="gElevated">#161422</item>
+        <item name="gSurface">#1E1B2C</item>
+        <item name="gAccent">#FF6B6B</item>
+        <item name="gGlow1">#66FF5E5E</item>
+        <item name="gGlow2">#40B26BFF</item>
+        <item name="gHiLine">#59FFFFFF</item>
+        <item name="gOnAccent">#2B0D0D</item>
     </style>
 </resources>

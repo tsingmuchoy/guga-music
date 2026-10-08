@@ -3,7 +3,6 @@ package com.guga.music;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.util.TypedValue;
 
 public class ThemeUtil {
@@ -18,19 +17,28 @@ public class ThemeUtil {
     }
 
     public static final Def[] DEFS = {
-            new Def("amber", "琥珀夜", R.style.ThemeAmber, 0xFF121417, 0xFF202329, 0xFFF5A623),
             new Def("pink", "哔哩粉", R.style.ThemePink, 0xFF171218, 0xFF2A2029, 0xFFFB7299),
             new Def("sky", "天空蓝", R.style.ThemeSky, 0xFF0E1520, 0xFF1B2839, 0xFF56B6F7),
             new Def("mint", "薄荷绿", R.style.ThemeMint, 0xFF0D1712, 0xFF192920, 0xFF4CC38A),
-            new Def("porcelain", "瓷白玻璃", R.style.ThemePorcelain, 0xFFEDF0F4, 0xFFFFFFFF, 0xFFFF8A3D),
+            new Def("grape", "紫电葡萄", R.style.ThemeGrape, 0xFF150A24, 0xFF2A1845, 0xFFB26BFF),
+            new Def("aurora", "极光穹顶", R.style.ThemeAurora, 0xFF060D1F, 0xFF111F3E, 0xFF3DFFA2),
+            new Def("matcha", "抹茶玄米", R.style.ThemeMatcha, 0xFF10160B, 0xFF202D14, 0xFFB5E048),
+            new Def("rainbow", "彩虹桥", R.style.ThemeRainbow, 0xFF0D0D15, 0xFF1E1B2C, 0xFFFF6B6B),
     };
+
+    /** 已下线主题（琥珀夜/瓷白）的存量设置一律回退到默认哔哩粉 */
+    private static boolean valid(String id) {
+        for (Def d : DEFS) if (d.id.equals(id)) return true;
+        return false;
+    }
 
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences("ui", Context.MODE_PRIVATE);
     }
 
     public static String currentId(Context c) {
-        return prefs(c).getString("theme_id", "amber");
+        String id = prefs(c).getString("theme_id", "pink");
+        return valid(id) ? id : "pink";
     }
 
     public static Def current(Context c) {
@@ -39,30 +47,9 @@ public class ThemeUtil {
         return DEFS[0];
     }
 
-    // ---------------- 跟随系统（自动深色） ----------------
-    public static boolean isFollowSystem(Context c) {
-        return prefs(c).getBoolean("follow_system", false);
-    }
-
-    public static void setFollowSystem(Context c, boolean on) {
-        prefs(c).edit().putBoolean("follow_system", on).putBoolean("theme_dirty", true).apply();
-    }
-
-    public static boolean isNight(Context c) {
-        int mask = c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        return mask == Configuration.UI_MODE_NIGHT_YES;
-    }
-
-    /**
-     * 实际生效的主题 id：
-     * 跟随系统开时——夜间用所选深色主题（选的是瓷白则回退琥珀夜），日间固定瓷白玻璃；
-     * 关闭时就是所选主题本身。
-     */
+    /** 实际生效的主题 id = 所选主题（瓷白下线后不再有日间浅色主题，跟随系统一并收口） */
     public static String effectiveId(Context c) {
-        String sel = currentId(c);
-        if (!isFollowSystem(c)) return sel;
-        if (isNight(c)) return "porcelain".equals(sel) ? "amber" : sel;
-        return "porcelain";
+        return currentId(c);
     }
 
     public static Def effective(Context c) {
@@ -77,10 +64,10 @@ public class ThemeUtil {
 
     public static boolean consumeDirty(Context c) {
         boolean d = prefs(c).getBoolean("theme_dirty", false);
-        // 跟随系统时，系统日夜切换也会让已应用主题过期 -> 视为 dirty 触发重建
-        if (!d && isFollowSystem(c)) {
+        // 所选主题与已应用的不一致（如存量主题被下线回退）也要重建
+        if (!d) {
             String applied = prefs(c).getString("applied_id", "");
-            if (!effectiveId(c).equals(applied)) d = true;
+            if (!applied.isEmpty() && !effectiveId(c).equals(applied)) d = true;
         }
         if (d) prefs(c).edit().putBoolean("theme_dirty", false).apply();
         return d;

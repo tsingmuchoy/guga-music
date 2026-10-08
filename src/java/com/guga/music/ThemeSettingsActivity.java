@@ -12,8 +12,6 @@ import android.widget.Toast;
 /** 二级设置：主题配色（从主设置页拆出） */
 public class ThemeSettingsActivity extends Activity {
 
-    private TextView btnFollowSystem;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         ThemeUtil.apply(this);
@@ -21,22 +19,6 @@ public class ThemeSettingsActivity extends Activity {
         setContentView(R.layout.activity_theme_settings);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         buildThemeRows();
-        btnFollowSystem = findViewById(R.id.btnFollowSystem);
-        refreshFollowSystem();
-        btnFollowSystem.setOnClickListener(v -> {
-            boolean on = !ThemeUtil.isFollowSystem(this);
-            ThemeUtil.setFollowSystem(this, on);
-            Toast.makeText(this, on ? "已开启跟随系统（夜间深色 · 日间瓷白）" : "已关闭跟随系统",
-                    Toast.LENGTH_SHORT).show();
-            recreate();
-        });
-    }
-
-    private void refreshFollowSystem() {
-        boolean on = ThemeUtil.isFollowSystem(this);
-        btnFollowSystem.setText(on
-                ? "🌗 主题跟随系统：开（夜间用所选主题 · 日间瓷白玻璃）"
-                : "🌗 主题跟随系统：关（点开启）");
     }
 
     private void buildThemeRows() {
