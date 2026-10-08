@@ -103,6 +103,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
                 Toast.makeText(this, "播放模式：" + modeName(s.getMode()), Toast.LENGTH_SHORT).show();
             }
         });
+        setupGradientChrome();
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar b, int prog, boolean fromUser) {
                 if (fromUser) tvPos.setText(Track.fmtDur(prog / 1000));
@@ -141,8 +142,38 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         if (s == null) return;
         // 显示实际在播的档位；实际档位未知（加载中）时先显示生效的请求档位
         int disp = s.getActualTier() >= 0 ? s.getActualTier() : s.getEffectiveTier();
-        if (btnQuality != null) btnQuality.setText(QUALITY_SHORT[disp]);
+        if (btnQuality != null) { btnQuality.setText(QUALITY_SHORT[disp]); ThemeUtil.gradientText(btnQuality); }
         styleQualityChips(disp);
+    }
+
+    /** v1.24.1 主题渐变落地：播放键渐变椭圆底、进度条渐变填充+圆钮、加入歌单渐变字 */
+    private void setupGradientChrome() {
+        float den = getResources().getDisplayMetrics().density;
+        android.graphics.drawable.GradientDrawable playBg = ThemeUtil.accentGradient(this, 999);
+        btnToggle.setBackground(playBg);
+        btnToggle.setImageTintList(android.content.res.ColorStateList.valueOf(
+                ThemeUtil.color(this, R.attr.gOnAccent)));
+        sb.setProgressTintList(null);
+        sb.setThumbTintList(null);
+        android.graphics.drawable.GradientDrawable track = new android.graphics.drawable.GradientDrawable();
+        track.setColor(0x33FFFFFF);
+        track.setCornerRadius(3 * den);
+        track.setSize(-1, (int) (5 * den));
+        android.graphics.drawable.GradientDrawable fill = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, ThemeUtil.gradColors(this));
+        fill.setCornerRadius(3 * den);
+        fill.setSize(-1, (int) (5 * den));
+        android.graphics.drawable.ClipDrawable clip = new android.graphics.drawable.ClipDrawable(
+                fill, android.view.Gravity.LEFT, android.graphics.drawable.ClipDrawable.HORIZONTAL);
+        android.graphics.drawable.LayerDrawable ld = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{track, clip});
+        ld.setId(0, android.R.id.background);
+        ld.setId(1, android.R.id.progress);
+        sb.setProgressDrawable(ld);
+        android.graphics.drawable.GradientDrawable thumb = ThemeUtil.accentGradient(this, 999);
+        thumb.setSize((int) (15 * den), (int) (15 * den));
+        sb.setThumb(thumb);
+        ThemeUtil.gradientText((TextView) findViewById(R.id.btnAddList));
     }
 
     private void buildQualityChips() {
@@ -182,6 +213,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             if (chipViews[i] == null) continue;
             boolean on = i == cur;
             chipViews[i].setBackgroundResource(on ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+            if (on) chipViews[i].setBackground(ThemeUtil.accentGradient(this, 19));
             chipViews[i].setTextColor(ThemeUtil.color(this, on ? R.attr.gOnAccent : R.attr.gTextPri));
             chipViews[i].setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
             chipViews[i].setAlpha(avail != null && !avail[i] ? 0.35f : 1f); // 本首没有的档位压暗
@@ -208,6 +240,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     private void refreshMode() {
         PlayerService s = PlayerService.get();
         btnMode.setText(s == null ? "顺序" : modeName(s.getMode()).replace("播放", ""));
+        ThemeUtil.gradientText(btnMode);
     }
 
     @Override
@@ -296,7 +329,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             ImgLoader.load(cv.findViewById(R.id.ivCover), t.cover);
             TextView title = cv.findViewById(R.id.tvTitle);
             title.setText(t.title);
-            title.setTextColor(ThemeUtil.color(PlayerActivity.this, p == s.getIndex() ? R.attr.gAccent : R.attr.gTextPri));
+            if (p == s.getIndex()) ThemeUtil.gradientText(title);
+            else ThemeUtil.plainText(title, ThemeUtil.color(PlayerActivity.this, R.attr.gTextPri));
             ((TextView) cv.findViewById(R.id.tvSub)).setText((t.author == null ? "" : t.author) + " · " + Track.fmtDur(t.durationSec));
             return cv;
         }

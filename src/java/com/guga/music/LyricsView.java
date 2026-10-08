@@ -38,6 +38,13 @@ public class LyricsView extends View {
         pHint.setTextAlign(Paint.Align.CENTER);
     }
 
+    @Override
+    protected void onSizeChanged(int w, int h, int ow, int oh) {
+        super.onSizeChanged(w, h, ow, oh);
+        if (w > 0) pCur.setShader(new android.graphics.LinearGradient(0, 0, w, 0,
+                ThemeUtil.gradColors(getContext()), null, android.graphics.Shader.TileMode.CLAMP));
+    }
+
     public void setLines(List<Lyrics.Line> l, String src) {
         lines = l == null ? new ArrayList<>() : l;
         cur = -1;

@@ -122,7 +122,8 @@ public class LyricsActivity extends Activity {
             TextView tv = (TextView) cv;
             tv.setText(lines.get(p).text);
             boolean cur = p == curIdx;
-            tv.setTextColor(ThemeUtil.color(LyricsActivity.this, cur ? R.attr.gAccent : R.attr.gTextSec));
+            if (cur) ThemeUtil.gradientText(tv);
+            else ThemeUtil.plainText(tv, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec));
             tv.setTextSize(cur ? 17 : 15);
             tv.setTypeface(null, cur ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
             return cv;
