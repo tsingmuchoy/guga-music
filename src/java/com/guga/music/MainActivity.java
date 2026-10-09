@@ -81,6 +81,16 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         Haptics.attachScrollRatchet(findViewById(R.id.svMine));
         Haptics.attachScrollRatchet(findViewById(R.id.svStats));
         UpdateChecker.autoCheck(this);
+        // 更新包下载完成且 App 正开着：立刻弹「立即安装」（深色卡），不用等下次打开
+        try {
+            android.content.IntentFilter dlFilter =
+                    new android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(dlDoneReceiver, dlFilter, RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(dlDoneReceiver, dlFilter);
+            }
+        } catch (Exception ignored) {}
         api = new BiliApi(this);
         history = new HistoryDb(this);
         PlayerService.ensureStarted(this);
@@ -280,6 +290,21 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             return;
         }
         super.onBackPressed();
+    }
+
+    /** 更新包下载完成广播：是我们等的那个包就立刻走待安装弹窗 */
+    private final android.content.BroadcastReceiver dlDoneReceiver = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context ctx, android.content.Intent intent) {
+            long id = intent.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+            long want = getSharedPreferences("update", MODE_PRIVATE).getLong("dl_id", -2);
+            if (id >= 0 && id == want) UpdateChecker.checkPendingInstall(MainActivity.this);
+        }
+    };
+
+    @Override
+    protected void onDestroy() {
+        try { unregisterReceiver(dlDoneReceiver); } catch (Exception ignored) {}
+        super.onDestroy();
     }
 
     @Override

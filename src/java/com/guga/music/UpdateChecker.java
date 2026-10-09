@@ -175,10 +175,11 @@ public class UpdateChecker {
         return "";
     }
 
-    /** 打开 App 时的静默自动检查：一天最多一次，有新版才弹窗 */
+    /** 打开 App 时的自动检查：每次打开都查（军师提议），有新版才弹窗、用户自行决定更不更；
+     *  2 分钟内重复触发（主题重建等）不重复查，防无谓请求 */
     public static void autoCheck(final Activity act) {
         SharedPreferences sp = act.getSharedPreferences("update", Context.MODE_PRIVATE);
-        if (System.currentTimeMillis() - sp.getLong("last_check", 0) < 20L * 3600 * 1000) return;
+        if (System.currentTimeMillis() - sp.getLong("last_check", 0) < 120_000) return;
         sp.edit().putLong("last_check", System.currentTimeMillis()).apply();
         check(act, (info, err) -> {
             if (info != null && !act.isFinishing()) showUpdateDialog(act, info);
