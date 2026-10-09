@@ -122,6 +122,56 @@
                 android:visibility="gone" />
         </LinearLayout>
 
+        <!-- 历史页上半：播放统计独立滚动区（仅历史标签显示，与下方历史列表各占一半、各自滚动） -->
+        <LinearLayout
+            android:id="@+id/llStatsPane"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <include layout="@layout/view_stats_header" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:scrollbars="vertical">
+
+                <LinearLayout
+                    android:id="@+id/llStatTop"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </ScrollView>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginLeft="16dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginRight="16dp"
+                android:background="#33FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="16dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="2dp"
+                android:drawablePadding="6dp"
+                android:drawableStart="@drawable/ic_tab_history"
+                android:drawableTint="?attr/gAccent"
+                android:text="播放历史"
+                android:textColor="?attr/gTextPri"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
         <!-- 内容区（可滚到悬浮栏下方） -->
         <FrameLayout
             android:layout_width="match_parent"

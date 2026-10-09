@@ -128,29 +128,4 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
-    <LinearLayout
-        android:id="@+id/llStatTop"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:orientation="vertical" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="14dp"
-        android:background="#33FFFFFF" />
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:layout_marginBottom="2dp"
-        android:text="播放历史"
-        android:drawableStart="@drawable/ic_tab_history"
-        android:drawablePadding="6dp"
-        android:drawableTint="?attr/gAccent"
-        android:textColor="?attr/gTextPri"
-        android:textSize="15sp"
-        android:textStyle="bold" />
 </LinearLayout>

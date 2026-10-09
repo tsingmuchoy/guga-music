@@ -423,9 +423,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         else searchFooter.setText("— 全部加载完 · 共 " + displayTracks.size() + " 条 —");
     }
 
-    // ---------------- 播放统计（内嵌历史页顶部，与历史列表以分割线分开） ----------------
+    // ---------------- 播放统计（历史页上半独立滚动区，与下方历史列表分栏） ----------------
     private View statsHeaderView;
-    private boolean statsAttached;
     private StatsDb statsDb;
     private int statPeriod = 1;
     private final TextView[] statChips = new TextView[5];
@@ -436,22 +435,16 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private void attachStatsHeader() {
         if (statsDb == null) statsDb = new StatsDb(this);
         if (statsHeaderView == null) buildStatsHeader();
-        if (!statsAttached) {
-            lvMain.addHeaderView(statsHeaderView);
-            statsAttached = true;
-        }
+        statsHeaderView.setVisibility(View.VISIBLE);
         refreshStatsHeader();
     }
 
     private void detachStatsHeader() {
-        if (statsAttached && statsHeaderView != null) {
-            lvMain.removeHeaderView(statsHeaderView);
-            statsAttached = false;
-        }
+        if (statsHeaderView != null) statsHeaderView.setVisibility(View.GONE);
     }
 
     private void buildStatsHeader() {
-        statsHeaderView = android.view.LayoutInflater.from(this).inflate(R.layout.view_stats_header, lvMain, false);
+        statsHeaderView = findViewById(R.id.llStatsPane);
         statPeriod = getSharedPreferences("ui", MODE_PRIVATE).getInt("stats_period", 1);
         LinearLayout box = statsHeaderView.findViewById(R.id.llStatPeriods);
         float den = getResources().getDisplayMetrics().density;
