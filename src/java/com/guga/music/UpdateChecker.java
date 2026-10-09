@@ -265,6 +265,13 @@ public class UpdateChecker {
             ctx.getSharedPreferences("update", Context.MODE_PRIVATE).edit()
                     .putLong("dl_id", id).putString("dl_ver", info.version).apply();
             Toast.makeText(ctx, "已开始下载 📦 下完会自动弹出安装", Toast.LENGTH_LONG).show();
+            // 同版本在另一源的直链（两边文件名与路径规则一致）：下载停滞时自动换源
+            String altUrl = info.apkUrl != null && info.apkUrl.contains("gitee.com")
+                    ? "https://github.com/tsingmuchoy/guga-music/releases/download/v"
+                            + info.version + "/guga-music-v" + info.version + ".apk"
+                    : "https://gitee.com/tsingmuchoy/guga-music/releases/download/v"
+                            + info.version + "/guga-music-v" + info.version + ".apk";
+            startDownloadWatchdog(ctx, info.version, altUrl);
         } catch (Exception e) {
             Toast.makeText(ctx, "下载失败，去更新源手动下载吧", Toast.LENGTH_LONG).show();
             try {
@@ -272,5 +279,84 @@ public class UpdateChecker {
                         Uri.parse("https://github.com/tsingmuchoy/guga-music/releases/latest")));
             } catch (Exception ignored) {}
         }
+    }
+
+    // ---------------- 下载看门狗：一个源卡住就自动换另一个源 ----------------
+    // GitHub 下载服务器在国外、国内直连常被限速卡死；Gitee 在国内一般快但也偶有抽风。
+    // 每 4 秒看一次进度：失败、或 25 秒字节数没涨，就取消当前下载、改用备用源直链重下（只换一次）。
+    private static Handler dlWatchdog;
+    private static Runnable dlWatchTask;
+    private static long dlLastBytes;
+    private static long dlLastGrowAt;
+    private static boolean dlSwitched;
+
+    private static void startDownloadWatchdog(Context ctx, final String ver, final String altUrl) {
+        stopDownloadWatchdog();
+        final Context app = ctx.getApplicationContext();
+        dlWatchdog = new Handler(Looper.getMainLooper());
+        dlLastBytes = -1;
+        dlLastGrowAt = System.currentTimeMillis();
+        dlSwitched = false;
+        dlWatchTask = new Runnable() {
+            @Override public void run() {
+                try {
+                    SharedPreferences sp = app.getSharedPreferences("update", Context.MODE_PRIVATE);
+                    long id = sp.getLong("dl_id", -1);
+                    if (id < 0) { stopDownloadWatchdog(); return; }
+                    DownloadManager dm = (DownloadManager) app.getSystemService(Context.DOWNLOAD_SERVICE);
+                    if (dm == null) { stopDownloadWatchdog(); return; }
+                    android.database.Cursor c = dm.query(new DownloadManager.Query().setFilterById(id));
+                    int status = -1;
+                    long bytes = 0;
+                    if (c != null) {
+                        if (c.moveToFirst()) {
+                            status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                            bytes = c.getLong(c.getColumnIndexOrThrow(
+                                    DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                        }
+                        c.close();
+                    }
+                    if (status == DownloadManager.STATUS_SUCCESSFUL || status == -1) {
+                        stopDownloadWatchdog();
+                        return;
+                    }
+                    long now = System.currentTimeMillis();
+                    if (bytes > dlLastBytes) {
+                        dlLastBytes = bytes;
+                        dlLastGrowAt = now;
+                    }
+                    boolean failed = status == DownloadManager.STATUS_FAILED;
+                    if ((failed || now - dlLastGrowAt > 25000) && !dlSwitched) {
+                        dlSwitched = true;
+                        dm.remove(id);
+                        DownloadManager.Request req = new DownloadManager.Request(Uri.parse(altUrl));
+                        req.setTitle("咕嘎音乐 v" + ver);
+                        req.setDescription("新版安装包下载中（已切换下载源）…");
+                        req.setMimeType("application/vnd.android.package-archive");
+                        req.setDestinationInExternalFilesDir(app, Environment.DIRECTORY_DOWNLOADS,
+                                "guga-music-v" + ver + ".apk");
+                        req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                        long nid = dm.enqueue(req);
+                        sp.edit().putLong("dl_id", nid).putString("dl_ver", ver).apply();
+                        dlLastBytes = -1;
+                        dlLastGrowAt = now;
+                        Diag.log(app, "⬆️ 更新：下载停滞/失败，已自动切换下载源重试");
+                        Toast.makeText(app, "下载较慢，已自动切换下载源重试 🐧", Toast.LENGTH_LONG).show();
+                        dlWatchdog.postDelayed(this, 4000);
+                        return;
+                    }
+                    if (failed) { stopDownloadWatchdog(); return; }
+                    dlWatchdog.postDelayed(this, 4000);
+                } catch (Exception e) {
+                    stopDownloadWatchdog();
+                }
+            }
+        };
+        dlWatchdog.postDelayed(dlWatchTask, 4000);
+    }
+
+    private static void stopDownloadWatchdog() {
+        if (dlWatchdog != null && dlWatchTask != null) dlWatchdog.removeCallbacks(dlWatchTask);
+        dlWatchTask = null;
     }
 }

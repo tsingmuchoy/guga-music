@@ -529,22 +529,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             rank.setTextColor(ThemeUtil.color(this, i < 3 ? R.attr.gAccent : R.attr.gTextFaint));
             if (i < 3) rank.setTypeface(null, android.graphics.Typeface.BOLD);
             row.addView(rank);
-            ImageView cover = new ImageView(this);
-            int cs = (int) (44 * den);
-            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(cs, cs);
-            cover.setLayoutParams(clp);
-            cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            ImgLoader.load(cover, r.cover);
-            cover.setTag(r.bvid);
-            Track ct = new Track();
-            ct.bvid = r.bvid;
-            ct.title = r.title;
-            ct.author = r.author;
-            ct.cover = r.cover;
-            Lyrics.fetchCover(this, ct, url -> {
-                if (url != null && r.bvid.equals(cover.getTag())) ImgLoader.load(cover, url);
-            });
-            row.addView(cover);
             LinearLayout mid = new LinearLayout(this);
             LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
             mlp.leftMargin = (int) (10 * den);
