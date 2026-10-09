@@ -110,16 +110,7 @@ public class PlayerService extends Service {
     };
     private android.animation.ValueAnimator islandAnim;
     private final Runnable islandCollapseTask = () -> setIslandExpanded(false, true);
-    private int fgCount = 0;
-    private final android.app.Application.ActivityLifecycleCallbacks lcCallbacks = new android.app.Application.ActivityLifecycleCallbacks() {
-        @Override public void onActivityStarted(android.app.Activity a) { fgCount++; refreshIsland(); }
-        @Override public void onActivityStopped(android.app.Activity a) { if (fgCount > 0) fgCount--; refreshIsland(); refreshSbLyrics(); }
-        @Override public void onActivityCreated(android.app.Activity a, android.os.Bundle b) {}
-        @Override public void onActivityResumed(android.app.Activity a) {}
-        @Override public void onActivityPaused(android.app.Activity a) {}
-        @Override public void onActivitySaveInstanceState(android.app.Activity a, android.os.Bundle b) {}
-        @Override public void onActivityDestroyed(android.app.Activity a) {}
-    };
+    // 前台计数在 GugaApp（Application）里维护：startedCount==0 表示本 App 在后台
     private android.graphics.Bitmap sessionArt;
     private String sessionArtBvid;
     private boolean sessionArtAlbum = false;
@@ -216,7 +207,7 @@ public class PlayerService extends Service {
         });
         watchdog.postDelayed(trafficTicker, 1000);
         initSession();
-        try { getApplication().registerActivityLifecycleCallbacks(lcCallbacks); } catch (Exception ignored) {}
+        
         createChannel();
         startForegroundCompat(buildNotification("咕嘎音乐", "点一首歌开始听吧"));
         restoreState();
@@ -1053,7 +1044,7 @@ public class PlayerService extends Service {
         try {
             boolean want = getSharedPreferences("player", MODE_PRIVATE).getBoolean("float_island", false)
                     && android.provider.Settings.canDrawOverlays(this)
-                    && current() != null && fgCount == 0 && !islandYield;
+                    && current() != null && GugaApp.startedCount == 0 && !islandYield;
             if (!want) {
                 if (islandShown && islandView != null && islandWm != null) {
                     try { islandWm.removeView(islandView); } catch (Exception ignored) {}
@@ -1393,7 +1384,7 @@ public class PlayerService extends Service {
             Track t = current();
             boolean want = getSharedPreferences("player", MODE_PRIVATE).getBoolean("status_lyrics", false)
                     && android.provider.Settings.canDrawOverlays(this)
-                    && t != null && (fgCount == 0 || sbPreview) && !islandYield;
+                    && t != null && (GugaApp.startedCount == 0 || sbPreview) && !islandYield;
             if (!want) { hideSb(); return; }
             if (t.bvid != null && !t.bvid.equals(sbBvid) && !t.bvid.equals(sbLoadingBvid)) {
                 hideSb();
@@ -1634,7 +1625,7 @@ public class PlayerService extends Service {
     @Override
     public void onDestroy() {
         Diag.log(this, "⚠️ 服务被销毁（多半是系统杀后台）");
-        try { getApplication().unregisterActivityLifecycleCallbacks(lcCallbacks); } catch (Exception ignored) {}
+        
         try { if (islandShown && islandView != null && islandWm != null) islandWm.removeView(islandView); } catch (Exception ignored) {}
         islandShown = false;
         hideSb();

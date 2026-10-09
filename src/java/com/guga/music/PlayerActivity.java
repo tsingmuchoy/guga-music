@@ -73,6 +73,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         buildQualityChips();
         sb = findViewById(R.id.sbProgress);
         lvQueue = findViewById(R.id.lvQueue);
+        tvQueueTitle = findViewById(R.id.tvQueueTitle);
+        tvQueueEmpty = findViewById(R.id.tvQueueEmpty);
         lyView = findViewById(R.id.lyView);
         api = new BiliApi(getApplicationContext());
         lyView.setOnClickListener(v -> {
@@ -152,6 +154,23 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     }
 
     /** 主题渐变落地（v1.24.2 瘦身：播放键只字形渐变不要大圆底；进度条压回 4dp 细线 + 12dp 小圆钮） */
+    private TextView tvQueueTitle, tvQueueEmpty;
+
+    private void refreshQueueMeta() {
+        PlayerService s = PlayerService.get();
+        int n = s == null ? 0 : s.getQueue().size();
+        if (tvQueueTitle != null) tvQueueTitle.setText("播放队列" + (n > 0 ? " · " + n + " 首" : ""));
+        if (tvQueueEmpty != null) tvQueueEmpty.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
+        if (lvQueue != null) lvQueue.setVisibility(n == 0 ? View.GONE : View.VISIBLE);
+    }
+
+    private void scrollQueueToCurrent() {
+        PlayerService s = PlayerService.get();
+        if (s == null || lvQueue == null) return;
+        final int idx = s.getIndex();
+        if (idx >= 0 && idx < s.getQueue().size()) lvQueue.post(() -> lvQueue.setSelection(idx));
+    }
+
     // ---------------- 播放队列上滑面板 ----------------
     private View llQueueSheet, llSheetHead;
     private int sheetMinH, sheetMaxH;
@@ -386,6 +405,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             refreshQuality();
             onStateChanged(s.isPlaying());
             queueAdapter.notifyDataSetChanged();
+            refreshQueueMeta();
+            scrollQueueToCurrent();
         }
         handler.post(ticker);
     }
@@ -416,6 +437,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         sb.setProgress(0);
         tvPos.setText("00:00");
         queueAdapter.notifyDataSetChanged();
+        refreshQueueMeta();
+        scrollQueueToCurrent();
     }
 
     @Override
@@ -454,6 +477,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             if (p == s.getIndex()) ThemeUtil.gradientText(title);
             else ThemeUtil.plainText(title, ThemeUtil.color(PlayerActivity.this, R.attr.gTextPri));
             ((TextView) cv.findViewById(R.id.tvSub)).setText((t.author == null ? "" : t.author) + " · " + Track.fmtDur(t.durationSec));
+            cv.setBackgroundResource(p == s.getIndex() ? R.drawable.bg_row_current : 0);
             return cv;
         }
     };
