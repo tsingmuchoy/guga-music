@@ -208,11 +208,20 @@ public class LyricsActivity extends Activity {
             TextView tvr = cv.findViewById(R.id.tvLyricRoma);
             boolean sr = Lyrics.isShowRoma(LyricsActivity.this) && line.roma != null && !line.roma.isEmpty();
             tvr.setVisibility(sr ? View.VISIBLE : View.GONE);
-            if (sr) tvr.setText(line.roma);
+            if (sr) {
+                tvr.setText(line.roma);
+                // 当前行：原词/罗马音/译文一起亮（副行提亮+略放大），非当前行恢复原淡色
+                tvr.setTextColor(ThemeUtil.color(LyricsActivity.this, cur ? R.attr.gTextSec : R.attr.gTextFaint));
+                tvr.setTextSize(cur ? 12.5f : 11.5f);
+            }
             TextView tvt = cv.findViewById(R.id.tvLyricTrans);
             boolean st = Lyrics.isShowTrans(LyricsActivity.this) && line.trans != null && !line.trans.isEmpty();
             tvt.setVisibility(st ? View.VISIBLE : View.GONE);
-            if (st) tvt.setText(line.trans);
+            if (st) {
+                tvt.setText(line.trans);
+                tvt.setTextColor(ThemeUtil.color(LyricsActivity.this, cur ? R.attr.gTextPri : R.attr.gTextSec));
+                tvt.setTextSize(cur ? 13.5f : 12.5f);
+            }
             return cv;
         }
     };
