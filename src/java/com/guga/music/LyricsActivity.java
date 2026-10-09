@@ -167,11 +167,39 @@ public class LyricsActivity extends Activity {
         root.setBackgroundResource(R.drawable.bg_dialog);
         root.setPadding((int) (22 * dp), (int) (20 * dp), (int) (22 * dp), (int) (16 * dp));
         TextView title = new TextView(this);
-        title.setText("歌词偏移（绑定这支视频）");
+        title.setText("调整歌词行为");
         title.setTextColor(android.graphics.Color.WHITE);
         title.setTextSize(16.5f);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         root.addView(title);
+        // 显示歌词翻译开关（与参考面板同款布局；与设置页的同一开关互通）
+        android.widget.LinearLayout trow = new android.widget.LinearLayout(this);
+        trow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        trow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        android.widget.LinearLayout.LayoutParams tlp = new android.widget.LinearLayout.LayoutParams(-1, -2);
+        tlp.topMargin = (int) (14 * dp);
+        root.addView(trow, tlp);
+        TextView tlab = new TextView(this);
+        tlab.setText("显示歌词翻译");
+        tlab.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+        tlab.setTextSize(15);
+        tlab.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+        trow.addView(tlab);
+        android.widget.Switch swTrans = new android.widget.Switch(this);
+        swTrans.setChecked(Lyrics.isShowTrans(this));
+        swTrans.setOnCheckedChangeListener((v, on) -> {
+            Lyrics.setShowTrans(this, on);
+            adapter.notifyDataSetChanged();
+        });
+        trow.addView(swTrans);
+        TextView sec = new TextView(this);
+        sec.setText("歌词偏移（绑定这支视频）");
+        sec.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+        sec.setTextSize(15);
+        sec.setGravity(android.view.Gravity.CENTER);
+        android.widget.LinearLayout.LayoutParams selp = new android.widget.LinearLayout.LayoutParams(-1, -2);
+        selp.topMargin = (int) (18 * dp);
+        root.addView(sec, selp);
         final TextView val = new TextView(this);
         val.setText(fmtOff(curOffsetMs));
         val.setTextColor(ThemeUtil.color(this, R.attr.gAccent));
@@ -182,21 +210,21 @@ public class LyricsActivity extends Activity {
         vlp.bottomMargin = (int) (2 * dp);
         root.addView(val, vlp);
         TextView hint = new TextView(this);
-        hint.setText("正数 = 歌词延后出现 · 负数 = 提前；拖动即时生效");
+        hint.setText("向右滑动歌词快进 · 向左滑动歌词延后；拖动即时生效");
         hint.setTextColor(0xFFC9C9D4);
         hint.setTextSize(12);
         hint.setGravity(android.view.Gravity.CENTER);
         root.addView(hint);
         final android.widget.SeekBar sb = new android.widget.SeekBar(this);
         sb.setMax(200);
-        sb.setProgress(curOffsetMs / 100 + 100);
+        sb.setProgress(100 - curOffsetMs / 100);
         android.widget.LinearLayout.LayoutParams slp = new android.widget.LinearLayout.LayoutParams(-1, -2);
         slp.topMargin = (int) (10 * dp);
         root.addView(sb, slp);
         sb.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(android.widget.SeekBar s, int prog, boolean fromUser) {
                 if (!fromUser) return;
-                applyOffset((prog - 100) * 100);
+                applyOffset((100 - prog) * 100); // 与参考面板一致：右=快进（提前）、左=延后
                 val.setText(fmtOff(curOffsetMs));
             }
             @Override public void onStartTrackingTouch(android.widget.SeekBar s) {}
@@ -217,7 +245,7 @@ public class LyricsActivity extends Activity {
             b.setOnClickListener(v -> {
                 int ms = Math.max(-10000, Math.min(10000, curOffsetMs + dv));
                 applyOffset(ms);
-                sb.setProgress(ms / 100 + 100);
+                sb.setProgress(100 - ms / 100);
                 val.setText(fmtOff(curOffsetMs));
             });
             qrow.addView(b);
