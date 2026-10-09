@@ -46,6 +46,12 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private boolean searchLoading;
     private boolean searchMore = true;
     private TextView searchFooter;
+    private android.widget.LinearLayout llSortChips;
+    private TextView btnStatsEntry;
+    private static final String[][] SORTS = {
+            {"综合", ""}, {"最多播放", "click"}, {"最新发布", "pubdate"}, {"最多弹幕", "dm"}, {"最多收藏", "stow"}};
+    private final TextView[] sortChips = new TextView[SORTS.length];
+    private String searchOrder = "";
     private final List<BiliApi.FavFolder> folders = new ArrayList<>();
     private View llFavSwitch;
     private TextView chipFavBili, chipFavLocal, btnNewLocal;
@@ -89,6 +95,12 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         searchFooter.setTextColor(ThemeUtil.color(this, R.attr.gTextFaint));
         searchFooter.setVisibility(View.GONE);
         lvMain.addFooterView(searchFooter);
+        buildSortChips();
+        btnStatsEntry = findViewById(R.id.btnStatsEntry);
+        btnStatsEntry.setOnClickListener(v -> {
+            Haptics.tick(this);
+            startActivity(new Intent(this, StatsActivity.class));
+        });
         lvMain.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
             @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
             @Override public void onScroll(android.widget.AbsListView v, int first, int visible, int total) {
@@ -283,6 +295,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             tabViews[k].setTextColor(ThemeUtil.color(this, k == i ? R.attr.gAccent : R.attr.gTextSec));
         }
         llSearchBar.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
+        if (llSortChips != null) llSortChips.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
+        if (btnStatsEntry != null) btnStatsEntry.setVisibility(i == 2 ? View.VISIBLE : View.GONE);
         svMine.setVisibility(i == 3 ? View.VISIBLE : View.GONE);
         lvMain.setVisibility(i == 3 ? View.GONE : View.VISIBLE);
         btnFavBack.setVisibility(i == 1 && favShowingTracks ? View.VISIBLE : View.GONE);
@@ -332,7 +346,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         searchPage = 1;
         searchMore = true;
         searchLoading = true;
-        api.search(kw, 1, new BiliApi.Cb<List<Track>>() {
+        api.search(kw, 1, searchOrder, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
                 searchLoading = false;
                 if (tab != 0) return;
@@ -358,7 +372,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         searchLoading = true;
         updateSearchFooter();
         final int next = searchPage + 1;
-        api.search(searchKw, next, new BiliApi.Cb<List<Track>>() {
+        api.search(searchKw, next, searchOrder, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
                 searchLoading = false;
                 if (tab != 0) { updateSearchFooter(); return; }
@@ -379,12 +393,60 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
     private void updateSearchFooter() {
         if (searchFooter == null) return;
-        if (tab != 0 || displayTracks.isEmpty() || (!searchLoading && searchMore)) {
+        if (tab != 0 || displayTracks.isEmpty() || searchKw.isEmpty()) {
             searchFooter.setVisibility(View.GONE);
             return;
         }
         searchFooter.setVisibility(View.VISIBLE);
-        searchFooter.setText(searchLoading ? "加载中…" : "— 没有更多了 —");
+        if (searchLoading) searchFooter.setText("加载中…");
+        else if (searchMore) searchFooter.setText("第 " + searchPage + " 页 · 已加载 " + displayTracks.size() + " 条 · 继续下滑加载更多");
+        else searchFooter.setText("— 全部加载完 · 共 " + displayTracks.size() + " 条 —");
+    }
+
+    /** 搜索排序条：B 站官方五种排序，用户自选并记住；切换后自动按当前词重搜 */
+    private void buildSortChips() {
+        llSortChips = findViewById(R.id.llSortChips);
+        searchOrder = getSharedPreferences("ui", MODE_PRIVATE).getString("search_order", "");
+        float den = getResources().getDisplayMetrics().density;
+        for (int i = 0; i < SORTS.length; i++) {
+            final String ord = SORTS[i][1];
+            TextView chip = new TextView(this);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                    0, (int) (34 * den), 1);
+            lp.setMargins(3, 0, 3, 0);
+            chip.setLayoutParams(lp);
+            chip.setGravity(android.view.Gravity.CENTER);
+            chip.setText(SORTS[i][0]);
+            chip.setTextSize(12.5f);
+            chip.setSingleLine(true);
+            chip.setOnClickListener(v -> {
+                if (!ord.equals(searchOrder)) {
+                    Haptics.tick(this);
+                    searchOrder = ord;
+                    getSharedPreferences("ui", MODE_PRIVATE).edit().putString("search_order", ord).apply();
+                    styleSortChips();
+                    if (!searchKw.isEmpty()) doSearch(searchKw);
+                }
+            });
+            sortChips[i] = chip;
+            llSortChips.addView(chip);
+        }
+        styleSortChips();
+    }
+
+    private void styleSortChips() {
+        for (int i = 0; i < SORTS.length; i++) {
+            boolean on = SORTS[i][1].equals(searchOrder);
+            if (on) {
+                sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
+                sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gOnAccent));
+                sortChips[i].setTypeface(null, android.graphics.Typeface.BOLD);
+            } else {
+                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
+                sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+                sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
+            }
+        }
     }
 
     // ---------------- 收藏 ----------------

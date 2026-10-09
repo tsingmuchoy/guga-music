@@ -9,7 +9,7 @@ import android.widget.Toast;
 /** 设置主页（v1.22.0 起）：只放入口行，各分组进二级页（主题/播放/歌词源/更新源/诊断） */
 public class SettingsActivity extends Activity {
 
-    private TextView eTheme, ePlayback, eLyrics, eUpdate, eDiag, eStats, eHaptics;
+    private TextView eTheme, ePlayback, eLyrics, eUpdate, eDiag, eHaptics;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,9 +27,7 @@ public class SettingsActivity extends Activity {
         eLyrics.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, LyricsOrderActivity.class)); });
         eUpdate.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, UpdateSourceActivity.class)); });
         eDiag.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, DiagSettingsActivity.class)); });
-        eStats = findViewById(R.id.btnEntryStats);
         eHaptics = findViewById(R.id.btnHaptics);
-        eStats.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, StatsActivity.class)); });
         eHaptics.setOnClickListener(v -> {
             boolean on = !Haptics.isOn(this);
             Haptics.setOn(this, on);
@@ -63,7 +61,6 @@ public class SettingsActivity extends Activity {
         eLyrics.setText("🎤 歌词源顺序 ›");
         eUpdate.setText("🔄 版本与更新：" + UpdateChecker.sourceName(UpdateChecker.sourcePref(this)) + " ›");
         eDiag.setText("🩺 播放诊断 ›");
-        eStats.setText("📊 播放统计 ›");
         eHaptics.setText("📳 触感反馈：" + (Haptics.isOn(this) ? "开" : "关") + " ›");
     }
 

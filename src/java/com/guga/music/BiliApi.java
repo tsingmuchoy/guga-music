@@ -190,19 +190,19 @@ public class BiliApi {
         }, cb);
     }
 
-    public void search(String keyword, int page, Cb<List<Track>> cb) {
+    public void search(String keyword, int page, String order, Cb<List<Track>> cb) {
         run(() -> {
             prepare();
             if (page > 1) {
                 // 翻页续接：单次尝试 + 老接口兜底，不走凭证自愈（返回空即没有更多）
                 try {
-                    return searchWbi(keyword, page);
+                    return searchWbi(keyword, page, order);
                 } catch (Exception e) {
-                    return searchLegacy(keyword, page);
+                    return searchLegacy(keyword, page, order);
                 }
             }
             try {
-                List<Track> r1 = searchWbi(keyword, page);
+                List<Track> r1 = searchWbi(keyword, page, order);
                 if (!r1.isEmpty()) return r1;
                 Diag.log(appCtx, "🔍 搜索首试结果为空，走自愈/兜底");
             } catch (Exception e1) {
@@ -212,7 +212,7 @@ public class BiliApi {
             try {
                 sp.edit().remove("buvid3").remove("buvid4").remove("mixin_day").apply();
                 prepare();
-                List<Track> r = searchWbi(keyword, page);
+                List<Track> r = searchWbi(keyword, page, order);
                 if (!r.isEmpty()) {
                     Diag.log(appCtx, "🔍 搜索刷新凭证后重试成功");
                     return r;
@@ -222,27 +222,29 @@ public class BiliApi {
                 Diag.log(appCtx, "🔍 搜索重试失败：" + e2.getMessage());
             }
             // 兜底：非 WBI 老搜索接口（风控较松）
-            List<Track> r = searchLegacy(keyword, page);
+            List<Track> r = searchLegacy(keyword, page, order);
             Diag.log(appCtx, "🔍 搜索走兜底接口，结果 " + r.size() + " 条");
             return r;
         }, cb);
     }
 
-    private List<Track> searchWbi(String keyword, int page) throws Exception {
+    private List<Track> searchWbi(String keyword, int page, String order) throws Exception {
         Map<String, String> p = new HashMap<>();
         p.put("search_type", "video");
         p.put("keyword", keyword);
         p.put("page", String.valueOf(page));
         p.put("page_size", "50");
+        if (order != null && !order.isEmpty()) p.put("order", order);
         String url = "https://api.bilibili.com/x/web-interface/wbi/search/type?" + Wbi.signQuery(p, mixin());
         JSONObject j = getJson(url);
         if (j.getInt("code") != 0) throw new Exception("code " + j.getInt("code") + "：" + j.optString("message"));
         return parseSearch(j);
     }
 
-    private List<Track> searchLegacy(String keyword, int page) throws Exception {
+    private List<Track> searchLegacy(String keyword, int page, String order) throws Exception {
         String url = "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword="
-                + enc(keyword) + "&page=" + page + "&page_size=50";
+                + enc(keyword) + "&page=" + page + "&page_size=50"
+                + (order == null || order.isEmpty() ? "" : "&order=" + order);
         JSONObject j = getJson(url);
         if (j.getInt("code") != 0) throw new Exception("搜索失败：" + j.optString("message"));
         return parseSearch(j);

@@ -69,16 +69,6 @@
             android:textSize="15sp" />
 
         <TextView
-            android:id="@+id/btnEntryStats"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
-            android:padding="16dp"
-            android:textColor="?attr/gTextPri"
-            android:textSize="15sp" />
-
-        <TextView
             android:id="@+id/btnHaptics"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
