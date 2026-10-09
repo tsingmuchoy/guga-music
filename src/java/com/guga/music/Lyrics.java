@@ -521,6 +521,9 @@ out.add(c);
 public static LrcPack fetchBoundPack(MCand c) {
 try {
 if (c.src.equals("qq")) {
+LrcPack mp = null;
+try { mp = qqPackMusicu(c.ref); } catch (Throwable ignored) {}
+if (mp != null) return mp;
 JSONObject r = new JSONObject(httpGet(
 "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + c.ref
 + "&format=json&nobase64=1&g_tk=5381", "https://y.qq.com/portal/player.html"));
@@ -1242,11 +1245,72 @@ Collections.sort(pool, (a, b) -> a.group != b.group ? Integer.compare(a.group, b
 return pool;
 }
 
+private static String b64Text(String b64) {
+if (b64 == null || b64.length() == 0) return null;
+try {
+String t = new String(Base64.decode(b64, Base64.DEFAULT), StandardCharsets.UTF_8);
+if (!t.contains("[")) return null;
+int cnt = 0;
+for (int i = 0; i + 1 < t.length(); i++) if (t.charAt(i) == '\n' && t.charAt(i + 1) == '[') cnt++;
+if (cnt < 3 && !t.startsWith("[")) return null;
+return t;
+} catch (Exception e) { return null; }
+}
+private static String httpPostJson(String url, String json) {
+java.net.HttpURLConnection c = null;
+try {
+c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+c.setConnectTimeout(6000); c.setReadTimeout(8000);
+c.setRequestMethod("POST"); c.setDoOutput(true);
+c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+c.setRequestProperty("Referer", "https://y.qq.com/");
+c.setRequestProperty("Content-Type", "application/json");
+byte[] payload = json.getBytes(StandardCharsets.UTF_8);
+c.setRequestProperty("Content-Length", String.valueOf(payload.length));
+java.io.OutputStream os = c.getOutputStream(); os.write(payload); os.close();
+if (c.getResponseCode() != 200) return null;
+java.io.InputStream in = c.getInputStream();
+java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+byte[] buf = new byte[8192]; int n;
+while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+in.close();
+return new String(bos.toByteArray(), StandardCharsets.UTF_8);
+} catch (Exception e) { return null; }
+finally { if (c != null) c.disconnect(); }
+}
+private static LrcPack qqPackMusicu(String mid) {
+try {
+JSONObject param = new JSONObject();
+param.put("songMID", mid); param.put("songID", 0); param.put("index", 0);
+param.put("crypt", 0); param.put("lrc_t", 0); param.put("qrc", 0); param.put("qrc_t", 0);
+param.put("roma", 1); param.put("roma_t", 0); param.put("trans", 1); param.put("trans_t", 0); param.put("type", 1);
+JSONObject reqO = new JSONObject();
+reqO.put("module", "music.musichallSong.PlayLyricInfo"); reqO.put("method", "GetPlayLyricInfo"); reqO.put("param", param);
+JSONObject comm = new JSONObject();
+comm.put("g_tk", 5381); comm.put("uin", 0); comm.put("format", "json"); comm.put("ct", 20); comm.put("cv", 0);
+JSONObject root = new JSONObject(); root.put("comm", comm); root.put("req", reqO);
+String body = httpPostJson("https://u.y.qq.com/cgi-bin/musicu.fcg", root.toString());
+if (body == null) return null;
+JSONObject data = new JSONObject(body).optJSONObject("req");
+if (data == null) return null;
+data = data.optJSONObject("data");
+if (data == null) return null;
+String lyric = b64Text(data.optString("lyric", ""));
+if (lyric == null) return null;
+LrcPack p = new LrcPack(lyric);
+String trans = b64Text(data.optString("trans", ""));
+if (trans != null) p.trans = trans;
+return p;
+} catch (Exception e) { return null; }
+}
 private static LrcPack qqLyrics(Track track, Hints hints, int alt) throws Exception {
 List<QCand> pool = qqCandidates(track, hints);
 if (pool.isEmpty()) return null;
 for (int k = 0; k < pool.size(); k++) {
 QCand c = pool.get(Math.floorMod(alt + k, pool.size()));
+LrcPack mp = null;
+try { mp = qqPackMusicu(c.mid); } catch (Exception ignored) {}
+if (mp != null) return mp;
 try {
 JSONObject r = new JSONObject(httpGet(
 "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + c.mid
