@@ -39,7 +39,6 @@
         <activity android:name=".DiagSettingsActivity" android:exported="false" />
         <activity android:name=".LoginActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
-        <activity android:name=".StatsActivity" android:exported="false" />
         <activity android:name=".LocalPlaylistActivity" android:exported="false" />
 
         <receiver
