@@ -47,6 +47,9 @@ public class PlayerService extends Service {
     private MediaPlayer mp;
     private BiliApi api;
     private HistoryDb history;
+    private StatsDb statsDb;
+    private Track statTrack;
+    private int statPendingSec;
     private final List<Track> queue = new ArrayList<>();
     private int index = -1;
     private boolean playing = false;
@@ -136,6 +139,7 @@ public class PlayerService extends Service {
         Diag.log(this, "服务创建");
         api = new BiliApi(getApplicationContext());
         history = new HistoryDb(getApplicationContext());
+        statsDb = new StatsDb(getApplicationContext());
         audioMgr = (AudioManager) getSystemService(AUDIO_SERVICE);
         mp = new MediaPlayer();
         mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
@@ -287,6 +291,10 @@ public class PlayerService extends Service {
                     long add = TRAFFIC_KBPS[Math.max(0, Math.min(4, t))] * 1000L / 8;
                     trafficSession += add;
                     trafficDirty += add;
+                }
+                if (playing && prepared) {
+                    statPendingSec++;
+                    if (statPendingSec >= 15) flushStats();
                 }
             } catch (Exception ignored) {}
             watchdog.postDelayed(this, 1000);
@@ -486,6 +494,7 @@ public class PlayerService extends Service {
                     t.durationSec = full.durationSec;
                     fireTrack(t);
                     history.add(t);
+                    statPlay(t);
                     fetchAndPlay(t, token);
                 }
                 @Override public void onErr(String msg) {
@@ -501,6 +510,7 @@ public class PlayerService extends Service {
             });
         } else {
             history.add(t);
+            statPlay(t);
             fetchAndPlay(t, token);
         }
     }
@@ -659,6 +669,22 @@ public class PlayerService extends Service {
     private String trafficMonthKey() {
         return "m_" + new java.text.SimpleDateFormat("yyyyMM", java.util.Locale.CHINA)
                 .format(new java.util.Date());
+    }
+
+    /** 播放统计：新一首开始时记 +1 次，并把上一首累计的秒数结清 */
+    private void statPlay(final Track t) {
+        flushStats();
+        statTrack = t;
+        statPendingSec = 0;
+        new Thread(() -> { try { statsDb.recordPlay(t); } catch (Exception ignored) {} }).start();
+    }
+
+    private void flushStats() {
+        final Track t = statTrack;
+        final int sec = statPendingSec;
+        statPendingSec = 0;
+        if (statsDb == null || t == null || sec <= 0) return;
+        new Thread(() -> { try { statsDb.addSeconds(t, sec); } catch (Exception ignored) {} }).start();
     }
 
     private void flushTraffic() {
@@ -841,7 +867,7 @@ public class PlayerService extends Service {
             refreshIsland();
             refreshSbLyrics();
         }
-        if (!p) flushTraffic();
+        if (!p) { flushTraffic(); flushStats(); }
         for (Listener l : listeners) l.onStateChanged(p);
         publishState();
     }

@@ -9,7 +9,7 @@ import android.widget.Toast;
 /** 设置主页（v1.22.0 起）：只放入口行，各分组进二级页（主题/播放/歌词源/更新源/诊断） */
 public class SettingsActivity extends Activity {
 
-    private TextView eTheme, ePlayback, eLyrics, eUpdate, eDiag;
+    private TextView eTheme, ePlayback, eLyrics, eUpdate, eDiag, eStats, eHaptics;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,19 +22,32 @@ public class SettingsActivity extends Activity {
         eLyrics = findViewById(R.id.btnEntryLyrics);
         eUpdate = findViewById(R.id.btnEntryUpdate);
         eDiag = findViewById(R.id.btnEntryDiag);
-        eTheme.setOnClickListener(v -> startActivity(new Intent(this, ThemeSettingsActivity.class)));
-        ePlayback.setOnClickListener(v -> startActivity(new Intent(this, PlaybackSettingsActivity.class)));
-        eLyrics.setOnClickListener(v -> startActivity(new Intent(this, LyricsOrderActivity.class)));
-        eUpdate.setOnClickListener(v -> startActivity(new Intent(this, UpdateSourceActivity.class)));
-        eDiag.setOnClickListener(v -> startActivity(new Intent(this, DiagSettingsActivity.class)));
+        eTheme.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, ThemeSettingsActivity.class)); });
+        ePlayback.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, PlaybackSettingsActivity.class)); });
+        eLyrics.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, LyricsOrderActivity.class)); });
+        eUpdate.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, UpdateSourceActivity.class)); });
+        eDiag.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, DiagSettingsActivity.class)); });
+        eStats = findViewById(R.id.btnEntryStats);
+        eHaptics = findViewById(R.id.btnHaptics);
+        eStats.setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, StatsActivity.class)); });
+        eHaptics.setOnClickListener(v -> {
+            boolean on = !Haptics.isOn(this);
+            Haptics.setOn(this, on);
+            if (on) Haptics.press(this);
+            refreshSummaries();
+            Toast.makeText(this, on ? "触感反馈已开启 📳" : "触感反馈已关闭", Toast.LENGTH_SHORT).show();
+        });
         refreshSummaries();
 
         findViewById(R.id.btnClearHistory).setOnClickListener(v -> {
+            Haptics.tick(this);
             new HistoryDb(this).clear();
             Toast.makeText(this, "播放历史已清空", Toast.LENGTH_SHORT).show();
         });
-        findViewById(R.id.btnAbout).setOnClickListener(v ->
-                startActivity(new Intent(this, AboutActivity.class)));
+        findViewById(R.id.btnAbout).setOnClickListener(v -> {
+            Haptics.tick(this);
+            startActivity(new Intent(this, AboutActivity.class));
+        });
     }
 
     private void refreshSummaries() {
@@ -48,8 +61,10 @@ public class SettingsActivity extends Activity {
                 : getSharedPreferences("player", MODE_PRIVATE).getBoolean("lowq", false) ? 0 : 2;
         ePlayback.setText("🎵 播放：" + PlayerService.QUALITY_NAMES[tier] + " ›");
         eLyrics.setText("🎤 歌词源顺序 ›");
-        eUpdate.setText("🔄 更新源：" + UpdateChecker.sourceName(UpdateChecker.sourcePref(this)) + " ›");
+        eUpdate.setText("🔄 版本与更新：" + UpdateChecker.sourceName(UpdateChecker.sourcePref(this)) + " ›");
         eDiag.setText("🩺 播放诊断 ›");
+        eStats.setText("📊 播放统计 ›");
+        eHaptics.setText("📳 触感反馈：" + (Haptics.isOn(this) ? "开" : "关") + " ›");
     }
 
     @Override

@@ -72,6 +72,7 @@ public class ThemeSettingsActivity extends Activity {
             row.setOnClickListener(v -> {
                 if (!d.id.equals(ThemeUtil.currentId(this))) {
                     ThemeUtil.setTheme(this, d.id);
+                    Haptics.press(this);
                     Toast.makeText(this, "已切换到「" + d.name + "」", Toast.LENGTH_SHORT).show();
                     recreate();
                 }

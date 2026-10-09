@@ -17,6 +17,27 @@ public class UpdateSourceActivity extends Activity {
         setContentView(R.layout.activity_update_source);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         buildUpdateSourceRows();
+        initUpdateCard();
+    }
+
+    /** 版本与更新卡（v1.25.0 起从「关于」页迁入，与更新源同页管理） */
+    private void initUpdateCard() {
+        final TextView tvHint = findViewById(R.id.tvUpdateHint);
+        tvHint.setText("当前版本 v" + UpdateChecker.currentVersion(this) + " · 打开 App 时也会每天自动检查一次");
+        findViewById(R.id.tvUpdate).setOnClickListener(v -> {
+            Haptics.tick(this);
+            tvHint.setText("正在检查更新…");
+            UpdateChecker.check(this, (info, err) -> {
+                if (info != null) {
+                    tvHint.setText("发现新版本 v" + info.version + " 🎉");
+                    UpdateChecker.showUpdateDialog(this, info);
+                } else if (err != null) {
+                    tvHint.setText("检查失败（网络原因），稍后再试");
+                } else {
+                    tvHint.setText("已是最新版啦 ✅ 当前 v" + UpdateChecker.currentVersion(this));
+                }
+            });
+        });
     }
 
     /** 更新源选择行：GitHub 主源 / Gitee 备用源，检查更新时首选失败自动切换 */
@@ -59,6 +80,7 @@ public class UpdateSourceActivity extends Activity {
             row.setOnClickListener(v -> {
                 if (!key.equals(UpdateChecker.sourcePref(this))) {
                     UpdateChecker.setSourcePref(this, key);
+                    Haptics.press(this);
                     Toast.makeText(this, "更新源已切到 " + UpdateChecker.sourceName(key), Toast.LENGTH_SHORT).show();
                     buildUpdateSourceRows();
                 }

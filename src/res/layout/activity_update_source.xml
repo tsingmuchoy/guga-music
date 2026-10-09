@@ -14,15 +14,50 @@
             android:id="@+id/btnBack"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="← 更新源"
+            android:text="← 版本与更新"
             android:textColor="?attr/gTextPri"
             android:textSize="20sp"
             android:textStyle="bold" />
 
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔄 版本与更新"
+                android:textColor="?attr/gAccent"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvUpdate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="⬆️ 检查更新（点一下，看看有没有新版）"
+                android:textColor="?attr/gTextPri"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvUpdateHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="?attr/gTextFaint"
+                android:textSize="12sp" />
+        </LinearLayout>
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="16dp"
             android:text="选中的源连不上时，自动切换到另一个源"
             android:textColor="?attr/gTextSec"
             android:textSize="13sp" />

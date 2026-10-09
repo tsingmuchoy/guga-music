@@ -193,6 +193,14 @@ public class BiliApi {
     public void search(String keyword, int page, Cb<List<Track>> cb) {
         run(() -> {
             prepare();
+            if (page > 1) {
+                // 翻页续接：单次尝试 + 老接口兜底，不走凭证自愈（返回空即没有更多）
+                try {
+                    return searchWbi(keyword, page);
+                } catch (Exception e) {
+                    return searchLegacy(keyword, page);
+                }
+            }
             try {
                 List<Track> r1 = searchWbi(keyword, page);
                 if (!r1.isEmpty()) return r1;
@@ -225,6 +233,7 @@ public class BiliApi {
         p.put("search_type", "video");
         p.put("keyword", keyword);
         p.put("page", String.valueOf(page));
+        p.put("page_size", "50");
         String url = "https://api.bilibili.com/x/web-interface/wbi/search/type?" + Wbi.signQuery(p, mixin());
         JSONObject j = getJson(url);
         if (j.getInt("code") != 0) throw new Exception("code " + j.getInt("code") + "：" + j.optString("message"));
@@ -233,7 +242,7 @@ public class BiliApi {
 
     private List<Track> searchLegacy(String keyword, int page) throws Exception {
         String url = "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword="
-                + enc(keyword) + "&page=" + page;
+                + enc(keyword) + "&page=" + page + "&page_size=50";
         JSONObject j = getJson(url);
         if (j.getInt("code") != 0) throw new Exception("搜索失败：" + j.optString("message"));
         return parseSearch(j);

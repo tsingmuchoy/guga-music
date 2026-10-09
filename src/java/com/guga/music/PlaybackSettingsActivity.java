@@ -28,10 +28,10 @@ public class PlaybackSettingsActivity extends Activity {
 
         btnAlbumCover = findViewById(R.id.btnAlbumCover);
         refreshAlbumCover();
-        findViewById(R.id.rowAlbumCover).setOnClickListener(v -> { Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
+        findViewById(R.id.rowAlbumCover).setOnClickListener(v -> { Haptics.press(this); Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
         btnFloatIsland = findViewById(R.id.btnFloatIsland);
         refreshFloatIsland();
-        findViewById(R.id.rowFloatIsland).setOnClickListener(v -> onFloatIslandClicked());
+        findViewById(R.id.rowFloatIsland).setOnClickListener(v -> { Haptics.tick(this); onFloatIslandClicked(); });
         btnSbLyricsEntry = findViewById(R.id.btnSbLyricsEntry);
         refreshSbEntry();
         findViewById(R.id.rowSbLyricsEntry).setOnClickListener(v ->
@@ -45,6 +45,7 @@ public class PlaybackSettingsActivity extends Activity {
         btnTraffic = findViewById(R.id.btnTraffic);
         refreshDataRows();
         findViewById(R.id.rowMetered).setOnClickListener(v -> {
+            Haptics.press(this);
             android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
             boolean on = pf.getBoolean("metered_cap_on", true);
             int cap = pf.getInt("metered_cap_tier", 1);
@@ -59,6 +60,7 @@ public class PlaybackSettingsActivity extends Activity {
             refreshDataRows();
         });
         findViewById(R.id.rowCacheCap).setOnClickListener(v -> {
+            Haptics.tick(this);
             android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
             int cur = pf.getInt("cache_cap_mb", 48);
             int nxt = cur == 16 ? 32 : cur == 32 ? 48 : cur == 48 ? 96 : 16;
@@ -67,11 +69,13 @@ public class PlaybackSettingsActivity extends Activity {
             refreshDataRows();
         });
         findViewById(R.id.rowCacheInfo).setOnClickListener(v -> {
+            Haptics.tick(this);
             StreamCache.clearAll(this);
             Toast.makeText(this, "音频缓存已清空", Toast.LENGTH_SHORT).show();
             refreshDataRows();
         });
         findViewById(R.id.rowTraffic).setOnClickListener(v -> {
+            Haptics.tick(this);
             PlayerService svc = PlayerService.get();
             if (svc != null) svc.resetTrafficMonth();
             Toast.makeText(this, "流量统计已清零", Toast.LENGTH_SHORT).show();

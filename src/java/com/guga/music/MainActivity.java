@@ -41,6 +41,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private int tab = 0; // 0搜索 1收藏 2历史 3我的
     private boolean favShowingTracks = false;
     private final List<Track> displayTracks = new ArrayList<>();
+    private String searchKw = "";
+    private int searchPage = 1;
+    private boolean searchLoading;
+    private boolean searchMore = true;
+    private TextView searchFooter;
     private final List<BiliApi.FavFolder> folders = new ArrayList<>();
     private View llFavSwitch;
     private TextView chipFavBili, chipFavLocal, btnNewLocal;
@@ -76,6 +81,20 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         btnFavBack = findViewById(R.id.btnFavBack);
         svMine = findViewById(R.id.svMine);
         lvMain = findViewById(R.id.lvMain);
+        searchFooter = new TextView(this);
+        searchFooter.setGravity(android.view.Gravity.CENTER);
+        float fden = getResources().getDisplayMetrics().density;
+        searchFooter.setPadding(0, (int) (12 * fden), 0, (int) (12 * fden));
+        searchFooter.setTextSize(12);
+        searchFooter.setTextColor(ThemeUtil.color(this, R.attr.gTextFaint));
+        searchFooter.setVisibility(View.GONE);
+        lvMain.addFooterView(searchFooter);
+        lvMain.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
+            @Override public void onScroll(android.widget.AbsListView v, int first, int visible, int total) {
+                if (tab == 0 && searchMore && !searchLoading && total > 0 && first + visible >= total - 3) loadMoreSearch();
+            }
+        });
         rootMain = findViewById(R.id.rootMain);
         tvHint = findViewById(R.id.tvHint);
         tvUname = findViewById(R.id.tvUname);
@@ -91,7 +110,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         tabViews[3] = findViewById(R.id.tabMine);
 
         EditText etSearch = findViewById(R.id.etSearch);
-        findViewById(R.id.btnSearch).setOnClickListener(v -> doSearch(etSearch.getText().toString().trim()));
+        findViewById(R.id.btnSearch).setOnClickListener(v -> { Haptics.tick(this); doSearch(etSearch.getText().toString().trim()); });
         etSearch.setOnEditorActionListener((v, actionId, e) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 doSearch(etSearch.getText().toString().trim());
@@ -102,10 +121,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
         for (int i = 0; i < 4; i++) {
             final int idx = i;
-            tabViews[i].setOnClickListener(v -> selectTab(idx));
+            tabViews[i].setOnClickListener(v -> { Haptics.tick(this); selectTab(idx); });
         }
 
         lvMain.setOnItemClickListener((p, v, pos, id) -> {
+            Haptics.tick(this);
             if (tab == 1 && favLocalMode) {
                 if (pos < localLists.size()) {
                     LocalDb.Playlist pl = localLists.get(pos);
@@ -160,20 +180,24 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         });
 
         findViewById(R.id.llMini).setOnClickListener(v -> {
+            Haptics.tick(this);
             if (PlayerService.get() != null && PlayerService.get().current() != null) {
                 startActivity(new Intent(this, PlayerActivity.class));
             }
         });
         btnMiniToggle.setOnClickListener(v -> {
+            Haptics.press(this);
             PlayerService s = PlayerService.get();
             if (s != null) s.toggle();
         });
         findViewById(R.id.btnMiniNext).setOnClickListener(v -> {
+            Haptics.tick(this);
             PlayerService s = PlayerService.get();
             if (s != null) s.next(true);
         });
 
         btnLogin.setOnClickListener(v -> {
+            Haptics.tick(this);
             if (api.isLoggedIn()) {
                 new AlertDialog.Builder(this)
                         .setMessage("退出登录？")
@@ -184,13 +208,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 startActivity(new Intent(this, LoginActivity.class));
             }
         });
-        findViewById(R.id.btnSettings).setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        findViewById(R.id.btnSettings).setOnClickListener(v -> { Haptics.tick(this); startActivity(new Intent(this, SettingsActivity.class)); });
         localDb = new LocalDb(this);
         llFavSwitch = findViewById(R.id.llFavSwitch);
         chipFavBili = findViewById(R.id.chipFavBili);
         chipFavLocal = findViewById(R.id.chipFavLocal);
         btnNewLocal = findViewById(R.id.btnNewLocal);
         chipFavBili.setOnClickListener(v -> {
+            Haptics.tick(this);
             favLocalMode = false;
             styleFavChips();
             favShowingTracks = false;
@@ -198,6 +223,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             loadFolders();
         });
         chipFavLocal.setOnClickListener(v -> {
+            Haptics.tick(this);
             favLocalMode = true;
             styleFavChips();
             showLocalLists();
@@ -283,6 +309,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 refreshMine();
                 break;
         }
+        updateSearchFooter();
     }
 
     private void hint(String msg) {
@@ -301,20 +328,63 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             return;
         }
         hint("搜索中…");
+        searchKw = kw;
+        searchPage = 1;
+        searchMore = true;
+        searchLoading = true;
         api.search(kw, 1, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
+                searchLoading = false;
                 if (tab != 0) return;
                 displayTracks.clear();
                 displayTracks.addAll(v);
                 lvMain.setAdapter(trackAdapter);
                 trackAdapter.notifyDataSetChanged();
+                searchMore = v.size() >= 50;
+                updateSearchFooter();
                 hint(v.isEmpty() ? "没搜到结果，换个词试试" : null);
             }
             @Override public void onErr(String msg) {
+                searchLoading = false;
                 if (tab != 0) return;
                 hint("搜索失败：" + msg);
             }
         });
+    }
+
+    /** 搜索翻页：滑到接近底部时自动续接下一页（每页 50 条，去重追加） */
+    private void loadMoreSearch() {
+        if (searchKw.isEmpty() || searchLoading || !searchMore) return;
+        searchLoading = true;
+        updateSearchFooter();
+        final int next = searchPage + 1;
+        api.search(searchKw, next, new BiliApi.Cb<List<Track>>() {
+            @Override public void onOk(List<Track> v) {
+                searchLoading = false;
+                if (tab != 0) { updateSearchFooter(); return; }
+                searchPage = next;
+                java.util.Set<String> seen = new java.util.HashSet<>();
+                for (Track t : displayTracks) seen.add(t.bvid);
+                for (Track t : v) if (seen.add(t.bvid)) displayTracks.add(t);
+                trackAdapter.notifyDataSetChanged();
+                searchMore = v.size() >= 50;
+                updateSearchFooter();
+            }
+            @Override public void onErr(String msg) {
+                searchLoading = false;
+                updateSearchFooter();
+            }
+        });
+    }
+
+    private void updateSearchFooter() {
+        if (searchFooter == null) return;
+        if (tab != 0 || displayTracks.isEmpty() || (!searchLoading && searchMore)) {
+            searchFooter.setVisibility(View.GONE);
+            return;
+        }
+        searchFooter.setVisibility(View.VISIBLE);
+        searchFooter.setText(searchLoading ? "加载中…" : "— 没有更多了 —");
     }
 
     // ---------------- 收藏 ----------------

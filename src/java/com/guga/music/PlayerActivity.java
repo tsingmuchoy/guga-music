@@ -76,6 +76,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         lyView = findViewById(R.id.lyView);
         api = new BiliApi(getApplicationContext());
         lyView.setOnClickListener(v -> {
+            Haptics.tick(this);
             PlayerService s = PlayerService.get();
             if (s != null && s.current() != null) {
                 startActivity(new android.content.Intent(this, LyricsActivity.class));
@@ -83,19 +84,22 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         });
         lvQueue.setAdapter(queueAdapter);
         lvQueue.setOnItemClickListener((p, v, pos, id) -> {
+            Haptics.tick(this);
             PlayerService s = PlayerService.get();
             if (s != null) s.playAt(pos);
         });
 
-        btnToggle.setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.toggle(); });
-        findViewById(R.id.btnNext).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.next(true); });
-        findViewById(R.id.btnPrev).setOnClickListener(v -> { PlayerService s = PlayerService.get(); if (s != null) s.prev(); });
-        btnQuality.setOnClickListener(v -> toggleQualityChips());
+        btnToggle.setOnClickListener(v -> { Haptics.press(this); PlayerService s = PlayerService.get(); if (s != null) s.toggle(); });
+        findViewById(R.id.btnNext).setOnClickListener(v -> { Haptics.tick(this); PlayerService s = PlayerService.get(); if (s != null) s.next(true); });
+        findViewById(R.id.btnPrev).setOnClickListener(v -> { Haptics.tick(this); PlayerService s = PlayerService.get(); if (s != null) s.prev(); });
+        btnQuality.setOnClickListener(v -> { Haptics.tick(this); toggleQualityChips(); });
         findViewById(R.id.btnAddList).setOnClickListener(v -> {
+            Haptics.tick(this);
             PlayerService svc = PlayerService.get();
             if (svc != null && svc.current() != null) PlaylistPicker.show(this, svc.current());
         });
         btnMode.setOnClickListener(v -> {
+            Haptics.tick(this);
             PlayerService s = PlayerService.get();
             if (s != null) {
                 s.cycleMode();
@@ -195,6 +199,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             chip.setTextSize(13);
             chip.setSingleLine(true);
             chip.setOnClickListener(v -> {
+                Haptics.press(PlayerActivity.this);
                 PlayerService svc = PlayerService.get();
                 if (svc != null) {
                     svc.setSessionTier(tier); // 播放页切档 = 临时请求，不改设置里的默认档位（军师建议）
