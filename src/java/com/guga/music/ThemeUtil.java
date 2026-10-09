@@ -37,6 +37,8 @@ public class ThemeUtil {
                     new int[]{0xFFB5E048, 0xFF4CC38A}),
             new Def("rainbow", "彩虹桥", R.style.ThemeRainbow, 0xFF0D0D15, 0xFF1E1B2C, 0xFFFF6B6B,
                     new int[]{0xFFFF5E5E, 0xFFFFB03A, 0xFFF7E74B, 0xFF3DFFA2, 0xFF3FA9FF, 0xFFB26BFF}),
+            new Def("material", "Material 紫", R.style.ThemeMaterial, 0xFF141218, 0xFF211F26, 0xFFD0BCFF,
+                    new int[]{0xFFD0BCFF, 0xFFEFB8C8}),
     };
 
     /** 已下线主题（琥珀夜/瓷白）的存量设置一律回退到默认哔哩粉 */
