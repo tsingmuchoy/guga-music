@@ -174,6 +174,20 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     // ---------------- 播放队列上滑面板 ----------------
     private View llQueueSheet, llSheetHead;
     private android.graphics.Bitmap sheetBlurBmp;
+    private boolean sheetTouchActive;
+    private final Runnable blurTask = new Runnable() {
+        @Override public void run() {
+            if (sheetTouchActive) { scheduleSheetBlur(250); return; }
+            refreshSheetBlur();
+        }
+    };
+
+    /** 毛玻璃刷新合并：同一时间只排一个，触摸拖动中先避让，落位后再抓图 */
+    private void scheduleSheetBlur(long delayMs) {
+        if (llQueueSheet == null) return;
+        llQueueSheet.removeCallbacks(blurTask);
+        llQueueSheet.postDelayed(blurTask, delayMs);
+    }
     private int sheetMinH, sheetMaxH;
     private boolean sheetExpanded;
     private float dragStartY;
@@ -188,11 +202,12 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         llQueueSheet.post(() -> {
             sheetMinH = llSheetHead.getHeight() + (int) (78 * den);
             if (!sheetExpanded) setSheetHeight(sheetMinH);
-            llQueueSheet.post(this::refreshSheetBlur);
+            scheduleSheetBlur(0);
         });
         llSheetHead.setOnTouchListener((v, e) -> {
             switch (e.getAction()) {
                 case android.view.MotionEvent.ACTION_DOWN:
+                    sheetTouchActive = true;
                     dragStartY = e.getRawY();
                     dragStartH = llQueueSheet.getHeight();
                     sheetDragMoved = false;
@@ -205,6 +220,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
                 }
                 case android.view.MotionEvent.ACTION_UP:
                 case android.view.MotionEvent.ACTION_CANCEL: {
+                    sheetTouchActive = false;
                     if (!sheetDragMoved) {
                         animateSheetTo(sheetExpanded ? sheetMinH : sheetMaxH);
                     } else {
@@ -223,6 +239,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         final float den = getResources().getDisplayMetrics().density;
         switch (e.getAction()) {
             case android.view.MotionEvent.ACTION_DOWN:
+                sheetTouchActive = true;
                 dragStartY = e.getRawY();
                 dragStartH = llQueueSheet.getHeight();
                 sheetDragMoved = false;
@@ -247,6 +264,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             }
             case android.view.MotionEvent.ACTION_UP:
             case android.view.MotionEvent.ACTION_CANCEL:
+                sheetTouchActive = false;
                 if (sheetDragMoved) {
                     animateSheetTo(llQueueSheet.getHeight() > (sheetMinH + sheetMaxH) / 2 ? sheetMaxH : sheetMinH);
                     sheetDragMoved = false;
@@ -283,7 +301,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         va.setInterpolator(new android.view.animation.DecelerateInterpolator());
         va.addUpdateListener(a -> setSheetHeight((Integer) a.getAnimatedValue()));
         va.addListener(new android.animation.AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(android.animation.Animator a) { refreshSheetBlur(); }
+            @Override public void onAnimationEnd(android.animation.Animator a) { scheduleSheetBlur(0); }
         });
         va.start();
     }
@@ -303,10 +321,20 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
                     bw, bh, android.graphics.Bitmap.Config.ARGB_8888);
             android.graphics.Canvas c = new android.graphics.Canvas(full);
             c.scale(1f / scale, 1f / scale);
-            int vis = llQueueSheet.getVisibility();
-            llQueueSheet.setVisibility(android.view.View.INVISIBLE);
-            root.draw(c);
-            llQueueSheet.setVisibility(vis);
+            // 逐个子 View 画（跳过面板本身）：不能靠隐藏面板抓图，那会让面板每刷新一次就闪没一帧
+            android.view.ViewGroup vg = (android.view.ViewGroup) root;
+            if (root.getBackground() != null) {
+                root.getBackground().setBounds(0, 0, root.getWidth(), root.getHeight());
+                root.getBackground().draw(c);
+            }
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                android.view.View ch = vg.getChildAt(i);
+                if (ch == llQueueSheet || ch.getVisibility() != android.view.View.VISIBLE) continue;
+                c.save();
+                c.translate(ch.getLeft(), ch.getTop());
+                ch.draw(c);
+                c.restore();
+            }
             int[] rl = new int[2], sl = new int[2];
             root.getLocationOnScreen(rl);
             llQueueSheet.getLocationOnScreen(sl);
@@ -534,7 +562,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     @Override
     public void onTrackChanged(Track t) {
         loadLyrics(t);
-        if (llQueueSheet != null) llQueueSheet.postDelayed(this::refreshSheetBlur, 900);
+        scheduleSheetBlur(900);
         tvTitle.setText(t.title);
         tvAuthor.setText(t.author == null ? "" : t.author);
         ImgLoader.loadDisc(ivCover, t.cover);

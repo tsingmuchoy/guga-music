@@ -23,6 +23,10 @@ public class ImgLoader {
         @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
     };
     private static final ExecutorService POOL = Executors.newFixedThreadPool(4);
+    /** 唱片合成图（720x720 约 2MB 一张）单独放小缓存，别把列表小图挤出共享缓存害它们反复重载闪烁 */
+    private static final LruCache<String, Bitmap> DISC_CACHE = new LruCache<String, Bitmap>(3) {
+        @Override protected int sizeOf(String k, Bitmap b) { return 1; }
+    };
     /** 流量网络时列表图取小图（由播放服务按网络状态更新） */
     public static volatile boolean meteredSmall = false;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -81,13 +85,16 @@ public class ImgLoader {
         final String furl = url;
         final int accent = disc ? ThemeUtil.color(iv.getContext(), R.attr.gAccent) : 0;
         String key = disc ? furl + "#disc" + accent : furl;
+        Object oldTag = iv.getTag();
         iv.setTag(key);
-        Bitmap hit = CACHE.get(key);
+        LruCache<String, Bitmap> store = disc ? DISC_CACHE : CACHE;
+        Bitmap hit = store.get(key);
         if (hit != null) {
             iv.setImageBitmap(hit);
             return;
         }
-        iv.setImageBitmap(null);
+        // 同一张图重复绑定（如列表重排）时别先清空成白框，等新图回来再换，防频闪
+        if (!key.equals(oldTag) || iv.getDrawable() == null) iv.setImageBitmap(null);
         POOL.execute(() -> {
             try {
                 Bitmap src = CACHE.get(furl);
@@ -104,7 +111,7 @@ public class ImgLoader {
                 }
                 if (src != null) {
                     Bitmap out = disc ? makeDisc(src, accent) : src;
-                    CACHE.put(key, out);
+                    store.put(key, out);
                     MAIN.post(() -> {
                         if (key.equals(iv.getTag())) iv.setImageBitmap(out);
                     });
