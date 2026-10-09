@@ -127,18 +127,27 @@ public class StatsDb extends SQLiteOpenHelper {
     // 同一首歌常有多个视频（原唱/现场/翻唱/不同 UP 主上传），按 BV 分开算会把一首歌拆成好几条。
     // 归一键 = 清洗后的歌名 + 能提炼出的歌手；榜单与曲目数都按归一后的口径算。
 
-    /** 从标题提取歌名：优先《》/「」中的内容；其次「歌手 - 歌名」的右半；否则原标题 */
+    /** 从标题提取歌名：优先《》/「」中的内容；其次「歌手 - 歌名」的右半；否则原标题。
+     *  结尾年份是版本注记不是歌名（「初恋 1990」→「初恋」），与封面引擎同口径 */
     static String extractSongName(String title) {
         if (title == null) return "";
+        String name;
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("[《「]([^》」]{1,80})[》」]").matcher(title);
-        if (m.find()) return m.group(1).trim();
-        String[] parts = title.split("\\s+[-—–~]\\s+", 2);
-        if (parts.length == 2 && !parts[1].trim().isEmpty()) return parts[1].trim();
-        return title.trim();
+        if (m.find()) {
+            name = m.group(1).trim();
+        } else {
+            String[] parts = title.split("\\s+[-—–~]\\s+", 2);
+            if (parts.length == 2 && !parts[1].trim().isEmpty()) name = parts[1].trim();
+            else name = title.trim();
+        }
+        java.util.regex.Matcher ym = java.util.regex.Pattern.compile(
+                "^(.+?)\\s*[（(]?\\s*(19|20)\\d{2}\\s*[)）]?$").matcher(name);
+        if (ym.find() && !cleanKey(ym.group(1)).isEmpty()) name = ym.group(1).trim();
+        return name;
     }
 
     /** 从标题提取歌手：《》型取书名号前紧挨着的最后一个词段（前面常有「在…大声听」之类前缀垃圾），
-     *  提不到再看书名号后；「歌手 - 歌名」型取左半。提不出返回空 */
+     *  提不到再看书名号后、再挖标题括号段；「歌手 - 歌名」型取左半。提不出返回空 */
     static String extractSinger(String title) {
         if (title == null) return "";
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(.*?)[《「]").matcher(title);
@@ -151,18 +160,40 @@ public class StatsDb extends SQLiteOpenHelper {
                 if (vi >= 0) { pre = pre.substring(vi + v.length()); break; }
             }
             String seg = trimSinger(lastSegment(pre));
-            if (seg.length() >= 2 && seg.length() <= 12) return seg;
+            if (seg.length() >= 2 && seg.length() <= 12 && !junkPhrase(seg)) return seg;
             java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("[》」](.*?)$").matcher(title);
             if (m2.find()) {
                 String seg2 = trimSinger(firstSegment(cleanLoose(m2.group(1))));
-                if (seg2.length() >= 2 && seg2.length() <= 12) return seg2;
+                if (seg2.length() >= 2 && seg2.length() <= 12 && !junkPhrase(seg2)) return seg2;
             }
-            return "";
+            return bracketSinger(title);
         }
         String[] parts = title.split("\\s+[-—–~]\\s+", 2);
         if (parts.length == 2) {
             String left = trimSinger(cleanLoose(parts[0]));
-            if (left.length() >= 2 && left.length() <= 12) return left;
+            if (left.length() >= 2 && left.length() <= 12 && !junkPhrase(left)) return left;
+        }
+        return bracketSinger(title);
+    }
+
+    /** 像「百万级录音棚听」这类是场景短语、不是人名，直接否决 */
+    private static boolean junkPhrase(String s) {
+        return s.contains("录音棚") || s.contains("豪装") || s.contains("百万")
+                || s.contains("音响") || s.contains("试听") || s.contains("录音室");
+    }
+
+    /** 歌手藏在标题括号段里时挖出来（如【One Last Kiss | 宇多田光】、[歌名 - 歌手]） */
+    private static String bracketSinger(String title) {
+        String songNameKey = cleanKey(extractSongName(title));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "[【\\[]([^】\\]]{2,40})[】\\]]").matcher(title);
+        while (m.find()) {
+            for (String part : m.group(1).split("[|｜/·、]")) {
+                String cand = trimSinger(cleanLoose(part));
+                if (cand.length() < 2 || cand.length() > 12 || junkPhrase(cand)) continue;
+                String ck = cleanKey(cand);
+                if (!ck.isEmpty() && !ck.equals(songNameKey)) return cand;
+            }
         }
         return "";
     }
@@ -216,6 +247,21 @@ public class StatsDb extends SQLiteOpenHelper {
         return name + "|" + cleanKey(extractSinger(title));
     }
 
+    private static class Grp {
+        Row row;
+        String nameKey = "", singerKey = "", dispName = "", dispSinger = "";
+        long repPlays;
+    }
+
+    /** 歌手键兼容：相同，或互为包含的别名（短键 ≥3 字、长度差 ≤4，防「周杰/周杰伦」这类误合） */
+    private static boolean singerCompatible(String a, String b) {
+        if (a.equals(b)) return true;
+        if (a.isEmpty() || b.isEmpty()) return false;
+        String sh = a.length() <= b.length() ? a : b;
+        String lo = a.length() <= b.length() ? b : a;
+        return sh.length() >= 3 && lo.length() - sh.length() <= 4 && lo.contains(sh);
+    }
+
     public synchronized List<Row> top(String fromDay, String toDay, int limit) {
         List<Row> perVideo = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery(
@@ -235,57 +281,92 @@ public class StatsDb extends SQLiteOpenHelper {
             }
         } finally { c.close(); }
 
-        java.util.Map<String, Row> groups = new java.util.LinkedHashMap<>();
-        java.util.Map<String, Long> repPlays = new java.util.HashMap<>();
+        // 归一分组：歌名键相同、且歌手键相同或互为别名（BEYOND 与 黄家驹Beyond）才合并
+        List<Grp> grps = new ArrayList<>();
         for (Row v : perVideo) {
-            String key = songKey(v.title, v.author);
-            if (key.isEmpty()) key = "bv|" + v.bvid;
-            Row g = groups.get(key);
-            if (g == null) {
-                g = new Row();
-                g.bvid = v.bvid;
-                g.title = v.title;
-                g.author = v.author;
-                g.cover = v.cover;
-                groups.put(key, g);
-                repPlays.put(key, -1L);
+            String dispName = cleanLoose(extractSongName(v.title));
+            String dispSinger = extractSinger(v.title);
+            String nameKey = cleanKey(extractSongName(v.title));
+            String singerKey = cleanKey(dispSinger);
+            Grp g = null;
+            if (!nameKey.isEmpty()) {
+                for (Grp cand : grps) {
+                    if (cand.nameKey.equals(nameKey) && singerCompatible(cand.singerKey, singerKey)) {
+                        g = cand;
+                        break;
+                    }
+                }
             }
-            g.plays += v.plays;
-            g.seconds += v.seconds;
-            if (v.plays > repPlays.get(key)) {
-                // 代表条目 = 组内播得最多的那个视频（回播就播它，封面先用它的）
-                repPlays.put(key, v.plays);
-                g.bvid = v.bvid;
-                g.title = v.title;
-                g.author = v.author;
-                g.cover = v.cover;
+            if (g == null) {
+                g = new Grp();
+                g.row = new Row();
+                g.row.bvid = v.bvid;
+                g.row.title = v.title;
+                g.row.author = v.author;
+                g.row.cover = v.cover;
+                g.nameKey = nameKey;
+                g.singerKey = singerKey;
+                g.dispName = dispName;
+                g.dispSinger = dispSinger;
+                g.repPlays = -1;
+                grps.add(g);
+            }
+            g.row.plays += v.plays;
+            g.row.seconds += v.seconds;
+            if (v.plays > g.repPlays) {
+                // 代表条目 = 组内播得最多的那个视频（回播就播它）
+                g.repPlays = v.plays;
+                g.row.bvid = v.bvid;
+                g.row.title = v.title;
+                g.row.author = v.author;
+                g.row.cover = v.cover;
+                if (!dispName.isEmpty()) g.dispName = dispName;
+            }
+            // 歌手展示取组内更短的变体（BEYOND 优于 黄家驹Beyond）
+            if (!dispSinger.isEmpty() && (g.dispSinger.isEmpty()
+                    || singerKey.length() < cleanKey(g.dispSinger).length())) {
+                g.dispSinger = dispSinger;
+                g.singerKey = singerKey;
             }
         }
-        List<Row> out = new ArrayList<>(groups.values());
-        for (Row g : out) {
+        List<Row> out = new ArrayList<>();
+        for (Grp g : grps) {
             // 展示：干净歌名 + 歌手（提炼不出歌手时保留代表视频的 UP 主名）
-            String singer = extractSinger(g.title);
-            String name = cleanLoose(extractSongName(g.title));
-            if (!name.isEmpty()) g.title = name;
-            if (!singer.isEmpty()) g.author = singer;
+            if (!g.dispName.isEmpty()) g.row.title = g.dispName;
+            if (!g.dispSinger.isEmpty()) g.row.author = g.dispSinger;
+            out.add(g.row);
         }
         out.sort((a, b) -> a.plays != b.plays
                 ? Long.compare(b.plays, a.plays) : Long.compare(b.seconds, a.seconds));
         return out.size() > limit ? new ArrayList<>(out.subList(0, limit)) : out;
     }
 
-    /** 归一后的不同歌曲数（与最常播放榜同一口径） */
+    /** 归一后的不同歌曲数（与最常播放榜同一聚类口径，别名歌手也算一首） */
     public synchronized int distinctSongs(String fromDay, String toDay) {
-        java.util.Set<String> keys = new java.util.HashSet<>();
+        List<String[]> clusters = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT bvid, title, author FROM play_day WHERE day>=? AND day<=? GROUP BY bvid",
                 new String[]{fromDay, toDay});
         try {
             while (c.moveToNext()) {
-                String k = songKey(c.getString(1), c.getString(2));
-                keys.add(k.isEmpty() ? "bv|" + c.getString(0) : k);
+                String title = c.getString(1);
+                String nameKey = cleanKey(extractSongName(title));
+                if (nameKey.isEmpty()) {
+                    clusters.add(new String[]{"bv|" + c.getString(0), ""});
+                    continue;
+                }
+                String singerKey = cleanKey(extractSinger(title));
+                boolean merged = false;
+                for (String[] cl : clusters) {
+                    if (cl[0].equals(nameKey) && singerCompatible(cl[1], singerKey)) {
+                        if (!singerKey.isEmpty() && singerKey.length() < cl[1].length()) cl[1] = singerKey;
+                        merged = true;
+                        break;
+                    }
+                }
+                if (!merged) clusters.add(new String[]{nameKey, singerKey});
             }
         } finally { c.close(); }
-        return keys.size();
+        return clusters.size();
     }
 }
