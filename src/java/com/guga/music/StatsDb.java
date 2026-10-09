@@ -137,20 +137,58 @@ public class StatsDb extends SQLiteOpenHelper {
         return title.trim();
     }
 
-    /** 从标题提取歌手：《》前的前缀（短而干净时）或「歌手 - 歌名」的左半；提不出返回空 */
+    /** 从标题提取歌手：《》型取书名号前紧挨着的最后一个词段（前面常有「在…大声听」之类前缀垃圾），
+     *  提不到再看书名号后；「歌手 - 歌名」型取左半。提不出返回空 */
     static String extractSinger(String title) {
         if (title == null) return "";
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(.*?)[《「]").matcher(title);
         if (m.find()) {
             String pre = cleanLoose(m.group(1));
-            return pre.length() >= 2 && pre.length() <= 10 ? pre : "";
+            // 前缀里若含「大声听/聆听」这类词，歌手在它们之后（哪怕和歌手连写没空格）
+            String[] verbs = {"大声听", "一起听", "聆听", "欣赏"};
+            for (String v : verbs) {
+                int vi = pre.lastIndexOf(v);
+                if (vi >= 0) { pre = pre.substring(vi + v.length()); break; }
+            }
+            String seg = trimSinger(lastSegment(pre));
+            if (seg.length() >= 2 && seg.length() <= 12) return seg;
+            java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("[》」](.*?)$").matcher(title);
+            if (m2.find()) {
+                String seg2 = trimSinger(firstSegment(cleanLoose(m2.group(1))));
+                if (seg2.length() >= 2 && seg2.length() <= 12) return seg2;
+            }
+            return "";
         }
         String[] parts = title.split("\\s+[-—–~]\\s+", 2);
         if (parts.length == 2) {
-            String left = cleanLoose(parts[0]);
+            String left = trimSinger(cleanLoose(parts[0]));
             if (left.length() >= 2 && left.length() <= 12) return left;
         }
         return "";
+    }
+
+    private static String lastSegment(String s) {
+        String[] parts = s.trim().split("\\s+");
+        return parts.length == 0 ? "" : parts[parts.length - 1];
+    }
+
+    private static String firstSegment(String s) {
+        String[] parts = s.trim().split("\\s+");
+        return parts.length == 0 ? "" : parts[0];
+    }
+
+    /** 歌手名修剪：剥掉「大声听/聆听」等前缀垃圾与「乐队」后缀 */
+    private static String trimSinger(String s) {
+        String x = s == null ? "" : s.trim();
+        String[] junk = {"大声听", "一起听", "聆听", "欣赏", "播放", "来听", "听"};
+        for (String j : junk) {
+            if (x.startsWith(j) && x.length() > j.length() + 1) {
+                x = x.substring(j.length());
+                break;
+            }
+        }
+        if (x.endsWith("乐队") && x.length() > 3) x = x.substring(0, x.length() - 2);
+        return x.trim();
     }
 
     /** 显示用清洗：去掉括号段与常见噪声词，保留原文大小写 */
