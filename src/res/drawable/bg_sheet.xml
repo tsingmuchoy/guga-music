@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <gradient android:angle="270" android:startColor="?attr/gBarHi" android:endColor="?attr/gBarLo" />
-    <corners android:topLeftRadius="22dp" android:topRightRadius="22dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
-    <stroke android:width="1dp" android:color="?attr/gRim" />
-</shape>
+<!-- 上滑面板专用底：先铺一层主题底色（不透明），再叠玻璃卡质感。
+     纯玻璃底拉高后后面的歌词/按钮会透出来糊成一团（v1.31.1 用户反馈），故面板必须近乎不透明 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/gBg" />
+            <corners android:radius="24dp" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/bg_card" />
+</layer-list>
