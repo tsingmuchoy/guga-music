@@ -222,12 +222,26 @@ String url; String src; int score; boolean artistHit; long diff;
 CoverCand(String u, String s, int sc, boolean ah, long d) { url = u; src = s; score = sc; artistHit = ah; diff = d; }
 }
 
-/** 封面专用歌名候选：在歌词候选基础上再去掉结尾年份（如「初恋 1990」→「初恋」） */
+/** 同一张封面图被多个候选共用时只保留记录最好的一条（防差候选覆盖好记录） */
+private static void putCover(java.util.Map<String, CoverCand> byUrl, CoverCand c) {
+CoverCand o = byUrl.get(c.url);
+if (o == null || c.score > o.score || (c.score == o.score && c.artistHit && !o.artistHit)
+|| (c.score == o.score && c.artistHit == o.artistHit && c.diff < o.diff)) byUrl.put(c.url, c);
+}
+
+/** 封面专用歌名候选：在歌词候选基础上再去掉结尾年份（如「初恋 1990」→「初恋」），
+ *  并剔除纯歌手名（否则「feat. 某歌手」的歌会因标题含歌手名被误判歌名对版） */
 private static java.util.List<String> coverCandsOf(Hints hints) {
-java.util.List<String> out = new java.util.ArrayList<>(hints.nameCands);
+java.util.List<String> out = new java.util.ArrayList<>();
+for (String c : hints.nameCands) {
+if (!hints.artist.isEmpty() && normName(c).equals(normName(hints.artist))) continue;
+out.add(c);
+}
 for (String c : hints.nameCands) {
 String v = c.replaceAll("\\s*(19|20)\\d{2}\\s*$", "").trim();
-if (!v.isEmpty() && !out.contains(v)) out.add(v);
+if (v.isEmpty() || out.contains(v)) continue;
+if (!hints.artist.isEmpty() && normName(v).equals(normName(hints.artist))) continue;
+out.add(v);
 }
 return out;
 }
@@ -240,7 +254,7 @@ try { collectQqCovers(track, hints, cands, byUrl); } catch (Exception ignored) {
 try { collectKuwoCovers(track, hints, cands, byUrl); } catch (Exception ignored) {}
 CoverCand bestHit = null, bestLoose = null;
 for (CoverCand c : byUrl.values()) {
-if (c.artistHit && c.score >= 80) {
+if (c.artistHit && (c.score >= 100 || (c.score >= 80 && c.diff <= 3000))) {
 if (bestHit == null || c.score > bestHit.score || (c.score == bestHit.score && c.diff < bestHit.diff)) bestHit = c;
 } else if (c.score == 100 && c.diff <= 3000) {
 if (bestLoose == null || c.diff < bestLoose.diff) bestLoose = c;
@@ -278,7 +292,7 @@ if (!an.isEmpty() && ((track.title != null && track.title.contains(an))
 }
 }
 String url = pic.contains("?") ? pic : pic + "?param=400y400";
-byUrl.put(url, new CoverCand(url, "网易云", score, artistHit, diff));
+putCover(byUrl, new CoverCand(url, "网易云", score, artistHit, diff));
 }
 }
 }
@@ -312,7 +326,7 @@ if (an.length() >= 2 && ((track.title != null && track.title.contains(an))
 }
 }
 String url = "https://y.gtimg.cn/music/photo_new/T002R500x500M000" + amid + ".jpg";
-byUrl.put(url, new CoverCand(url, "QQ音乐", score, artistHit, diff));
+putCover(byUrl, new CoverCand(url, "QQ音乐", score, artistHit, diff));
 }
 }
 }
@@ -1195,7 +1209,7 @@ boolean artistHit = singer.length() >= 2 && ((track.title != null && track.title
 || (!hints.artist.isEmpty() && (hints.artist.contains(singer) || singer.contains(hints.artist))));
 String url = "https://img1.kuwo.cn/star/albumcover/500/"
 + shortPic.substring(shortPic.indexOf('/') + 1);
-byUrl.put(url, new CoverCand(url, "酷我", score, artistHit, diff));
+putCover(byUrl, new CoverCand(url, "酷我", score, artistHit, diff));
 }
 }
 }
