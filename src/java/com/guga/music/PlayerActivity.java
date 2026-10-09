@@ -173,6 +173,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
 
     // ---------------- 播放队列上滑面板 ----------------
     private View llQueueSheet, llSheetHead;
+    private android.graphics.Bitmap sheetBlurBmp;
     private int sheetMinH, sheetMaxH;
     private boolean sheetExpanded;
     private float dragStartY;
@@ -187,6 +188,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         llQueueSheet.post(() -> {
             sheetMinH = llSheetHead.getHeight() + (int) (78 * den);
             if (!sheetExpanded) setSheetHeight(sheetMinH);
+            llQueueSheet.post(this::refreshSheetBlur);
         });
         llSheetHead.setOnTouchListener((v, e) -> {
             switch (e.getAction()) {
@@ -280,7 +282,117 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         va.setDuration(220);
         va.setInterpolator(new android.view.animation.DecelerateInterpolator());
         va.addUpdateListener(a -> setSheetHeight((Integer) a.getAnimatedValue()));
+        va.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) { refreshSheetBlur(); }
+        });
         va.start();
+    }
+
+
+    /** 毛玻璃面板底：把面板背后的画面抓下来降采样重模糊当底，再压一层主题底色保住文字可读性。
+     *  纯透明会透出歌词糊成一团、纯实色又没玻璃味（用户两次反馈的折中点）；抓图只在面板落位/切歌时做，成本可忽略 */
+    private void refreshSheetBlur() {
+        try {
+            if (llQueueSheet == null || !llQueueSheet.isAttachedToWindow()) return;
+            android.view.View root = (android.view.View) llQueueSheet.getParent();
+            int sw = llQueueSheet.getWidth(), sh = llQueueSheet.getHeight();
+            if (root == null || sw <= 0 || sh <= 0 || root.getWidth() <= 0 || root.getHeight() <= 0) return;
+            final int scale = 8;
+            int bw = Math.max(1, root.getWidth() / scale), bh = Math.max(1, root.getHeight() / scale);
+            android.graphics.Bitmap full = android.graphics.Bitmap.createBitmap(
+                    bw, bh, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(full);
+            c.scale(1f / scale, 1f / scale);
+            int vis = llQueueSheet.getVisibility();
+            llQueueSheet.setVisibility(android.view.View.INVISIBLE);
+            root.draw(c);
+            llQueueSheet.setVisibility(vis);
+            int[] rl = new int[2], sl = new int[2];
+            root.getLocationOnScreen(rl);
+            llQueueSheet.getLocationOnScreen(sl);
+            int x = Math.max(0, (sl[0] - rl[0]) / scale), y = Math.max(0, (sl[1] - rl[1]) / scale);
+            int cw = Math.min(bw - x, Math.max(1, sw / scale));
+            int ch = Math.min(bh - y, Math.max(1, sh / scale));
+            if (cw <= 0 || ch <= 0) { full.recycle(); return; }
+            android.graphics.Bitmap crop = android.graphics.Bitmap.createBitmap(full, x, y, cw, ch);
+            full.recycle();
+            boxBlur(crop, Math.max(6, cw / 9));
+            int bg = ThemeUtil.color(this, R.attr.gBg);
+            android.graphics.Canvas c2 = new android.graphics.Canvas(crop);
+            c2.drawColor(android.graphics.Color.argb(105, android.graphics.Color.red(bg),
+                    android.graphics.Color.green(bg), android.graphics.Color.blue(bg)));
+            float rad = 24 * getResources().getDisplayMetrics().density / scale;
+            android.graphics.Bitmap round = android.graphics.Bitmap.createBitmap(
+                    cw, ch, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c3 = new android.graphics.Canvas(round);
+            android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            paint.setShader(new android.graphics.BitmapShader(crop,
+                    android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP));
+            c3.drawRoundRect(new android.graphics.RectF(0, 0, cw, ch), rad, rad, paint);
+            crop.recycle();
+            android.graphics.drawable.BitmapDrawable bd =
+                    new android.graphics.drawable.BitmapDrawable(getResources(), round);
+            bd.setFilterBitmap(true);
+            android.graphics.drawable.Drawable[] layers;
+            if (android.graphics.Color.alpha(ThemeUtil.color(this, R.attr.gGlassHi)) < 250) {
+                layers = new android.graphics.drawable.Drawable[]{bd, getDrawable(R.drawable.bg_card)};
+            } else {
+                layers = new android.graphics.drawable.Drawable[]{bd};
+            }
+            llQueueSheet.setBackground(new android.graphics.drawable.LayerDrawable(layers));
+            if (sheetBlurBmp != null && !sheetBlurBmp.isRecycled()) sheetBlurBmp.recycle();
+            sheetBlurBmp = round;
+        } catch (Exception ignored) {}
+    }
+
+    /** 盒式模糊：横竖滑动窗口各一遍、迭代 3 次近似高斯，就地处理降采样小图 */
+    private static void boxBlur(android.graphics.Bitmap bmp, int radius) {
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        if (w <= 1 || h <= 1 || radius < 1) return;
+        int[] px = new int[w * h];
+        bmp.getPixels(px, 0, w, 0, 0, w, h);
+        int[] tmp = new int[w * h];
+        int n = 2 * radius + 1;
+        for (int it = 0; it < 3; it++) {
+            for (int y = 0; y < h; y++) {
+                int row = y * w;
+                long sr = 0, sg = 0, sb = 0, sa = 0;
+                for (int i = -radius; i <= radius; i++) {
+                    int p = px[row + Math.max(0, Math.min(w - 1, i))];
+                    sa += android.graphics.Color.alpha(p); sr += android.graphics.Color.red(p);
+                    sg += android.graphics.Color.green(p); sb += android.graphics.Color.blue(p);
+                }
+                for (int x = 0; x < w; x++) {
+                    tmp[row + x] = android.graphics.Color.argb(
+                            (int) (sa / n), (int) (sr / n), (int) (sg / n), (int) (sb / n));
+                    int po = px[row + Math.max(0, x - radius)];
+                    int pi = px[row + Math.min(w - 1, x + radius + 1)];
+                    sa += android.graphics.Color.alpha(pi) - android.graphics.Color.alpha(po);
+                    sr += android.graphics.Color.red(pi) - android.graphics.Color.red(po);
+                    sg += android.graphics.Color.green(pi) - android.graphics.Color.green(po);
+                    sb += android.graphics.Color.blue(pi) - android.graphics.Color.blue(po);
+                }
+            }
+            for (int x = 0; x < w; x++) {
+                long sr = 0, sg = 0, sb = 0, sa = 0;
+                for (int i = -radius; i <= radius; i++) {
+                    int p = tmp[Math.max(0, Math.min(h - 1, i)) * w + x];
+                    sa += android.graphics.Color.alpha(p); sr += android.graphics.Color.red(p);
+                    sg += android.graphics.Color.green(p); sb += android.graphics.Color.blue(p);
+                }
+                for (int y = 0; y < h; y++) {
+                    px[y * w + x] = android.graphics.Color.argb(
+                            (int) (sa / n), (int) (sr / n), (int) (sg / n), (int) (sb / n));
+                    int po = tmp[Math.max(0, y - radius) * w + x];
+                    int pi = tmp[Math.min(h - 1, y + radius + 1) * w + x];
+                    sa += android.graphics.Color.alpha(pi) - android.graphics.Color.alpha(po);
+                    sr += android.graphics.Color.red(pi) - android.graphics.Color.red(po);
+                    sg += android.graphics.Color.green(pi) - android.graphics.Color.green(po);
+                    sb += android.graphics.Color.blue(pi) - android.graphics.Color.blue(po);
+                }
+            }
+        }
+        bmp.setPixels(px, 0, w, 0, 0, w, h);
     }
 
     private void setupGradientChrome() {
@@ -422,6 +534,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     @Override
     public void onTrackChanged(Track t) {
         loadLyrics(t);
+        if (llQueueSheet != null) llQueueSheet.postDelayed(this::refreshSheetBlur, 900);
         tvTitle.setText(t.title);
         tvAuthor.setText(t.author == null ? "" : t.author);
         ImgLoader.loadDisc(ivCover, t.cover);
