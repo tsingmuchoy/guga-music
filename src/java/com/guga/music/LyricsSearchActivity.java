@@ -116,17 +116,28 @@ public class LyricsSearchActivity extends Activity {
                     Toast.makeText(this, "这版歌词取不到或没有时间轴，换一版试试", Toast.LENGTH_SHORT).show();
                     return;
                 }
+                // 预览：不用系统灰弹窗——自家深色圆角卡，完整歌词放可拖动的滚动区里看全
+                View root = getLayoutInflater().inflate(R.layout.dialog_lyric_preview, null);
+                ((TextView) root.findViewById(R.id.tvPrevTitle)).setText(c.name + " · " + Lyrics.srcName(c.src));
                 StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < Math.min(10, lines.size()); i++) {
-                    if (i > 0) sb.append("\n");
-                    sb.append(lines.get(i).text);
+                for (Lyrics.Line l : lines) {
+                    if (sb.length() > 0) sb.append("\n");
+                    sb.append(l.text);
                 }
-                new AlertDialog.Builder(this)
-                        .setTitle(c.name + " · " + Lyrics.srcName(c.src))
-                        .setMessage(sb.toString())
-                        .setNegativeButton("再看看", null)
-                        .setPositiveButton("就用这版", (d, w) -> applyChoice(c, lrc))
-                        .show();
+                ((TextView) root.findViewById(R.id.tvPrevBody)).setText(sb.toString());
+                android.widget.ScrollView sv = root.findViewById(R.id.svPrev);
+                Haptics.attachScrollRatchet(sv);
+                android.view.ViewGroup.LayoutParams slp = sv.getLayoutParams();
+                slp.height = (int) (getResources().getDisplayMetrics().heightPixels * 0.55);
+                sv.setLayoutParams(slp);
+                final AlertDialog dlg = new AlertDialog.Builder(this).setView(root).create();
+                root.findViewById(R.id.btnPrevBack).setOnClickListener(v -> dlg.dismiss());
+                root.findViewById(R.id.btnPrevUse).setOnClickListener(v -> { dlg.dismiss(); applyChoice(c, lrc); });
+                dlg.show();
+                if (dlg.getWindow() != null) {
+                    dlg.getWindow().setBackgroundDrawable(
+                            new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+                }
             });
         }).start();
     }
