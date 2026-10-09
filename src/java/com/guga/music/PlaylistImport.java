@@ -73,6 +73,7 @@ return d;
 }
 if (probe.contains("163.com")) {
 id = find(probe, "[?#&]id=(\\d+)");
+if (id == null) id = find(probe, "playlist/(\\d+)");
 if (id != null) { d.platform = "netease"; d.id = id; return d; }
 }
 if (probe.contains("qq.com")) {
@@ -178,6 +179,21 @@ return sb.toString();
 }
 
 // ---------------- 各平台解析 ----------------
+
+/** 傻瓜兜底：只给了一个数字 ID、不知道是哪个平台时，挨个平台试，哪个能拉到歌单用哪个 */
+public static Parsed fetchByIdBruteforce(String digits) throws Exception {
+String[] order = {"netease", "qq", "bodian", "kuwo", "kugou"};
+Exception last = null;
+for (String p : order) {
+try {
+Detected d = new Detected();
+d.platform = p; d.id = digits; d.extra = "5";
+Parsed r = fetch(d);
+if (r != null && !r.tracks.isEmpty()) return r;
+} catch (Exception e) { last = e; }
+}
+throw new Exception("这个ID在网易云/QQ/波点/酷我/酷狗都没找到歌单，确认一下ID没复制错");
+}
 
 public static Parsed fetch(Detected d) throws Exception {
 if ("netease".equals(d.platform)) return fetchNetease(d.id);

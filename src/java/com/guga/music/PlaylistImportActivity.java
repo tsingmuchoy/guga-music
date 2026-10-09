@@ -29,8 +29,9 @@ import java.util.regex.Pattern;
 public class PlaylistImportActivity extends Activity {
 
 private EditText etLink, etName;
-private LinearLayout llPlatforms, llProgress, llResult;
-private TextView btnStart, tvStage, tvSummary, tvUnmatchedHead, tvUnmatched, btnSave;
+private LinearLayout llPlatforms, llProgress, llResult, llFail;
+private TextView btnStart, tvStage, tvSummary, tvUnmatchedHead, tvUnmatched, btnSave, tvFailMsg;
+private String bruteDigits;
 private ProgressBar pbImport;
 private ListView lvResult;
 private ScrollView svUnmatched;
@@ -59,6 +60,9 @@ etName = findViewById(R.id.etName);
 llPlatforms = findViewById(R.id.llPlatforms);
 llProgress = findViewById(R.id.llProgress);
 llResult = findViewById(R.id.llResult);
+llFail = findViewById(R.id.llFail);
+tvFailMsg = findViewById(R.id.tvFailMsg);
+findViewById(R.id.btnRetryFail).setOnClickListener(v -> { llFail.setVisibility(View.GONE); startImport(); });
 btnStart = findViewById(R.id.btnStart);
 tvStage = findViewById(R.id.tvStage);
 tvSummary = findViewById(R.id.tvSummary);
@@ -79,9 +83,24 @@ ClipData cd = cm == null ? null : cm.getPrimaryClip();
 if (cd != null && cd.getItemCount() > 0 && cd.getItemAt(0).getText() != null) {
 etLink.setText(cd.getItemAt(0).getText().toString());
 etLink.setSelection(etLink.getText().length());
+// 粘进来就能认出的，直接开跑，少点一下
+if (PlaylistImport.detect(etLink.getText().toString()) != null) startImport();
 } else toast("剪贴板是空的");
 } catch (Exception e) { toast("读取剪贴板失败"); }
 });
+// 剪贴板里正好有歌单链接时自动填好（刚在别的 App 复制完进来的人不用再点粘贴）
+try {
+ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+ClipData cd = cm == null ? null : cm.getPrimaryClip();
+if (cd != null && cd.getItemCount() > 0 && cd.getItemAt(0).getText() != null) {
+String clip = cd.getItemAt(0).getText().toString();
+if (PlaylistImport.detect(clip) != null) {
+etLink.setText(clip);
+toast("已填入剪贴板里的歌单链接，点「开始导入」即可");
+}
+}
+} catch (Exception ignored) {}
+handleIntent(getIntent());
 etLink.addTextChangedListener(new TextWatcher() {
 @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
 @Override public void afterTextChanged(Editable s) {}
@@ -96,6 +115,28 @@ styleChips();
 btnStart.setOnClickListener(v -> startImport());
 findViewById(R.id.btnCancel).setOnClickListener(v -> { cancelled = true; });
 btnSave.setOnClickListener(v -> savePlaylist());
+}
+
+/** 从别的 App「分享到咕嘎音乐」进来：文本已带好，直接开跑 */
+private void handleIntent(android.content.Intent it) {
+if (it == null) return;
+String shared = null;
+if (android.content.Intent.ACTION_SEND.equals(it.getAction())) {
+CharSequence t = it.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT);
+if (t != null) shared = t.toString();
+}
+if (shared != null && !shared.trim().isEmpty()) {
+etLink.setText(shared.trim());
+etLink.setSelection(etLink.getText().length());
+llFail.setVisibility(View.GONE);
+startImport();
+}
+}
+
+@Override protected void onNewIntent(android.content.Intent it) {
+super.onNewIntent(it);
+setIntent(it);
+handleIntent(it);
 }
 
 private void buildChips() {
@@ -161,13 +202,22 @@ if (d2 != null && d2.platform != null) det = d2;
 String platform = manualPick || selectedPlatform != null ? selectedPlatform
 : (det == null ? null : det.platform);
 if (platform == null && det != null) platform = det.platform;
+bruteDigits = null;
 if (platform == null) {
-toast("没认出这个链接（支持网易云/QQ/酷狗/酷我/波点/汽水歌单，也可粘贴纯数字ID再手动选平台）");
+// 只给了一串数字 ID：不知道哪个平台就挨个试，不用用户猜
+String digits = null;
+if (raw.matches("\\d{5,}")) digits = raw;
+else if (det != null && det.id != null && det.id.matches("\\d{5,}")) digits = det.id;
+if (digits == null) {
+showFail("😢 没认出这个链接");
 return;
+}
+bruteDigits = digits;
 }
 PlaylistImport.Detected use = new PlaylistImport.Detected();
 use.platform = platform;
 use.url = extractUrl(raw);
+if (bruteDigits == null) {
 if (det != null && platform.equals(det.platform)) {
 use.id = det.id;
 if (det.url != null) use.url = det.url;
@@ -178,28 +228,47 @@ use.id = det.id;
 use.id = raw;
 }
 if ("qishui".equals(platform)) {
-if (use.url == null) { toast("汽水需要完整的分享链接"); return; }
+if (use.url == null) { showFail("😢 汽水需要完整的分享链接，光有数字ID不够"); return; }
 } else if (use.id == null) {
-toast("没找到歌单ID，检查一下链接或换个平台试试");
+showFail("😢 没找到歌单ID，检查一下链接有没有复制全");
 return;
+}
 }
 working = true;
 cancelled = false;
 matchedTracks.clear(); matchedSrcs.clear(); unmatched.clear(); parsed = null;
 llResult.setVisibility(View.GONE);
+llFail.setVisibility(View.GONE);
 llProgress.setVisibility(View.VISIBLE);
 btnStart.setEnabled(false);
 btnStart.setText("导入中…");
 pbImport.setIndeterminate(true);
-tvStage.setText("正在解析" + PlaylistImport.platformName(platform) + "歌单…");
+tvStage.setText(bruteDigits != null ? "不知道是哪个平台的ID，正在挨个平台试…"
+: "正在解析" + PlaylistImport.platformName(platform) + "歌单…");
 final PlaylistImport.Detected fu = use;
 worker = new Thread(() -> runImport(fu));
 worker.start();
 }
 
+private void showFail(String msg) {
+tvFailMsg.setText(msg);
+llFail.setVisibility(View.VISIBLE);
+}
+
+private void postFail(String msg) {
+runOnUiThread(() -> {
+working = false;
+llProgress.setVisibility(View.GONE);
+btnStart.setEnabled(true);
+btnStart.setText("⇩ 开始导入");
+showFail("😢 导入失败：" + msg);
+});
+}
+
 private void runImport(PlaylistImport.Detected use) {
 try {
-PlaylistImport.Parsed p = PlaylistImport.fetch(use);
+PlaylistImport.Parsed p = bruteDigits != null
+? PlaylistImport.fetchByIdBruteforce(bruteDigits) : PlaylistImport.fetch(use);
 parsed = p;
 if (cancelled) { postReset("已取消"); return; }
 int total = p.tracks.size();
@@ -223,7 +292,7 @@ if (i < total - 1) Thread.sleep(200);
 }
 runOnUiThread(this::showResult);
 } catch (Exception e) {
-postReset("导入失败：" + (e.getMessage() == null ? "网络或链接异常" : e.getMessage()));
+postFail(e.getMessage() == null ? "网络或链接异常" : e.getMessage());
 }
 }
 

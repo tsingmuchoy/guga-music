@@ -32,7 +32,13 @@
         <activity android:name=".PlayerActivity" android:exported="false" />
         <activity android:name=".LyricsActivity" android:exported="false" />
         <activity android:name=".LyricsSearchActivity" android:exported="false" />
-        <activity android:name=".PlaylistImportActivity" android:exported="false" />
+        <activity android:name=".PlaylistImportActivity" android:exported="true" android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".SbLyricsSettingsActivity" android:exported="false" />
         <activity android:name=".ThemeSettingsActivity" android:exported="false" />
