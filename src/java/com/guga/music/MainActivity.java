@@ -285,11 +285,26 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     // ---------------- 标签页 ----------------
+    private static final int[] TAB_ICONS = {
+            R.drawable.ic_tab_search, R.drawable.ic_tab_fav, R.drawable.ic_tab_history, R.drawable.ic_tab_mine};
+
+    /** 底栏图标 + 文字统一上色：未选次级色描边，选中主题色（收藏星选中变实心） */
+    private void styleTabs(int sel) {
+        float den = getResources().getDisplayMetrics().density;
+        for (int k = 0; k < 4; k++) {
+            boolean on = k == sel;
+            int res = k == 1 && on ? R.drawable.ic_tab_fav_fill : TAB_ICONS[k];
+            android.graphics.drawable.Drawable d = getDrawable(res).mutate();
+            d.setTint(ThemeUtil.color(this, on ? R.attr.gAccent : R.attr.gTextSec));
+            tabViews[k].setCompoundDrawablesWithIntrinsicBounds(d, null, null, null);
+            tabViews[k].setCompoundDrawablePadding((int) (5 * den));
+            tabViews[k].setTextColor(ThemeUtil.color(this, on ? R.attr.gAccent : R.attr.gTextSec));
+        }
+    }
+
     private void selectTab(int i) {
         tab = i;
-        for (int k = 0; k < 4; k++) {
-            tabViews[k].setTextColor(ThemeUtil.color(this, k == i ? R.attr.gAccent : R.attr.gTextSec));
-        }
+        styleTabs(i);
         llSearchBar.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
         if (llSortChips != null) llSortChips.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
         svMine.setVisibility(i == 3 ? View.VISIBLE : View.GONE);
