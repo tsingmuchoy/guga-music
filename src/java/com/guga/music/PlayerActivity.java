@@ -83,6 +83,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             }
         });
         lvQueue.setAdapter(queueAdapter);
+        setupQueueSheet();
         lvQueue.setOnItemClickListener((p, v, pos, id) -> {
             Haptics.tick(this);
             PlayerService s = PlayerService.get();
@@ -151,6 +152,118 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     }
 
     /** 主题渐变落地（v1.24.2 瘦身：播放键只字形渐变不要大圆底；进度条压回 4dp 细线 + 12dp 小圆钮） */
+    // ---------------- 播放队列上滑面板 ----------------
+    private View llQueueSheet, llSheetHead;
+    private int sheetMinH, sheetMaxH;
+    private boolean sheetExpanded;
+    private float dragStartY;
+    private int dragStartH;
+    private boolean sheetDragMoved;
+
+    private void setupQueueSheet() {
+        llQueueSheet = findViewById(R.id.llQueueSheet);
+        llSheetHead = findViewById(R.id.llSheetHead);
+        final float den = getResources().getDisplayMetrics().density;
+        sheetMaxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.82f);
+        llQueueSheet.post(() -> {
+            sheetMinH = llSheetHead.getHeight() + (int) (78 * den);
+            if (!sheetExpanded) setSheetHeight(sheetMinH);
+        });
+        llSheetHead.setOnTouchListener((v, e) -> {
+            switch (e.getAction()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    dragStartY = e.getRawY();
+                    dragStartH = llQueueSheet.getHeight();
+                    sheetDragMoved = false;
+                    return true;
+                case android.view.MotionEvent.ACTION_MOVE: {
+                    float dy = dragStartY - e.getRawY();
+                    if (Math.abs(dy) > 6 * den) sheetDragMoved = true;
+                    setSheetHeight(clampSheet(dragStartH + (int) dy));
+                    return true;
+                }
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL: {
+                    if (!sheetDragMoved) {
+                        animateSheetTo(sheetExpanded ? sheetMinH : sheetMaxH);
+                    } else {
+                        animateSheetTo(llQueueSheet.getHeight() > (sheetMinH + sheetMaxH) / 2 ? sheetMaxH : sheetMinH);
+                    }
+                    return true;
+                }
+            }
+            return false;
+        });
+        lvQueue.setOnTouchListener((v, e) -> sheetListTouch(e));
+    }
+
+    /** 列表区的拖拽接管：收起时上滑展开；展开且列表已到顶时下滑收起；其余情况还给列表自己滚 */
+    private boolean sheetListTouch(android.view.MotionEvent e) {
+        final float den = getResources().getDisplayMetrics().density;
+        switch (e.getAction()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+                dragStartY = e.getRawY();
+                dragStartH = llQueueSheet.getHeight();
+                sheetDragMoved = false;
+                return false;
+            case android.view.MotionEvent.ACTION_MOVE: {
+                float dy = dragStartY - e.getRawY();
+                if (sheetDragMoved) {
+                    setSheetHeight(clampSheet(dragStartH + (int) dy));
+                    return true;
+                }
+                if (!sheetExpanded && dy > 24 * den) {
+                    sheetDragMoved = true;
+                    setSheetHeight(clampSheet(dragStartH + (int) dy));
+                    return true;
+                }
+                if (sheetExpanded && dy < -24 * den && listAtTop()) {
+                    sheetDragMoved = true;
+                    setSheetHeight(clampSheet(dragStartH + (int) dy));
+                    return true;
+                }
+                return false;
+            }
+            case android.view.MotionEvent.ACTION_UP:
+            case android.view.MotionEvent.ACTION_CANCEL:
+                if (sheetDragMoved) {
+                    animateSheetTo(llQueueSheet.getHeight() > (sheetMinH + sheetMaxH) / 2 ? sheetMaxH : sheetMinH);
+                    sheetDragMoved = false;
+                    return true;
+                }
+                return false;
+        }
+        return false;
+    }
+
+    private boolean listAtTop() {
+        return lvQueue.getFirstVisiblePosition() == 0
+                && (lvQueue.getChildCount() == 0 || lvQueue.getChildAt(0).getTop() >= 0);
+    }
+
+    private int clampSheet(int h) {
+        return Math.max(sheetMinH, Math.min(sheetMaxH, h));
+    }
+
+    private void setSheetHeight(int h) {
+        android.view.ViewGroup.LayoutParams lp = llQueueSheet.getLayoutParams();
+        if (lp.height != h) {
+            lp.height = h;
+            llQueueSheet.setLayoutParams(lp);
+        }
+    }
+
+    private void animateSheetTo(int target) {
+        boolean willExpand = target == sheetMaxH;
+        if (willExpand != sheetExpanded) Haptics.tick(this);
+        sheetExpanded = willExpand;
+        android.animation.ValueAnimator va = android.animation.ValueAnimator.ofInt(llQueueSheet.getHeight(), target);
+        va.setDuration(220);
+        va.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        va.addUpdateListener(a -> setSheetHeight((Integer) a.getAnimatedValue()));
+        va.start();
+    }
+
     private void setupGradientChrome() {
         float den = getResources().getDisplayMetrics().density;
         btnToggle.setBackground(null);
