@@ -122,6 +122,14 @@
             android:layout_marginTop="8dp" />
 
         <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="导入在后台跑：可以放心离开这个页面，导完会发通知"
+            android:textColor="?attr/gTextSec"
+            android:textSize="11.5sp" />
+
+        <TextView
             android:id="@+id/btnCancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

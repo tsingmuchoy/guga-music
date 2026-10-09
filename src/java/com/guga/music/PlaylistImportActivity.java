@@ -44,8 +44,7 @@ private final List<TextView> chips = new ArrayList<>();
 private final String[] chipPlatforms = {null, "netease", "qq", "kugou", "kuwo", "bodian", "qishui"};
 private final String[] chipLabels = {"自动识别", "网易云", "QQ音乐", "酷狗", "酷我", "波点", "汽水"};
 
-private volatile boolean working, cancelled;
-private Thread worker;
+private volatile boolean working;
 private PlaylistImport.Parsed parsed;
 private final List<Track> matchedTracks = new ArrayList<>();
 private final List<PlaylistImport.Src> matchedSrcs = new ArrayList<>();
@@ -114,7 +113,7 @@ styleChips();
 }
 });
 btnStart.setOnClickListener(v -> startImport());
-findViewById(R.id.btnCancel).setOnClickListener(v -> { cancelled = true; });
+findViewById(R.id.btnCancel).setOnClickListener(v -> ImportService.cancel());
 btnSave.setOnClickListener(v -> savePlaylist());
 }
 
@@ -236,8 +235,6 @@ return;
 }
 }
 working = true;
-cancelled = false;
-matchedTracks.clear(); matchedSrcs.clear(); unmatched.clear(); parsed = null;
 llResult.setVisibility(View.GONE);
 llFail.setVisibility(View.GONE);
 llProgress.setVisibility(View.VISIBLE);
@@ -246,9 +243,9 @@ btnStart.setText("导入中…");
 pbImport.setIndeterminate(true);
 tvStage.setText(bruteDigits != null ? "不知道是哪个平台的ID，正在挨个平台试…"
 : "正在解析" + PlaylistImport.platformName(platform) + "歌单…");
-final PlaylistImport.Detected fu = use;
-worker = new Thread(() -> runImport(fu));
-worker.start();
+ImportService.startJob(this, use, bruteDigits);
+ImportService.listener = jobListener;
+toast("已在后台开始导入，可以放心离开这个页面，导完会通知你");
 }
 
 private static void sleepQuiet(long ms) {
@@ -270,66 +267,57 @@ showFail("😢 导入失败：" + msg);
 });
 }
 
-private void runImport(PlaylistImport.Detected use) {
-try {
-PlaylistImport.Parsed p = bruteDigits != null
-? PlaylistImport.fetchByIdBruteforce(bruteDigits) : PlaylistImport.fetch(use);
-parsed = p;
-if (cancelled) { postReset("已取消"); return; }
-int total = p.tracks.size();
-runOnUiThread(() -> {
+private final ImportService.Listener jobListener = new ImportService.Listener() {
+@Override public void onProgress() { syncProgress(); }
+@Override public void onFinish() { handleJobFinish(); }
+};
+
+/** 与后台导入任务对齐界面（开始导入/回到页面时调用） */
+private void attachJob() {
+working = true;
+llProgress.setVisibility(View.VISIBLE);
+llResult.setVisibility(View.GONE);
+btnStart.setEnabled(false);
+btnStart.setText("导入中…");
+syncProgress();
+}
+
+private void syncProgress() {
+if (ImportService.progressTotal > 0) {
 pbImport.setIndeterminate(false);
-pbImport.setMax(total);
-pbImport.setProgress(0);
-tvStage.setText("共 " + total + " 首，开始匹配 B 站…");
-});
-blockedAbort = false;
-int consecBlocked = 0;
-for (int i = 0; i < total; i++) {
-if (cancelled) { postReset("已取消"); return; }
-PlaylistImport.Src s = p.tracks.get(i);
-Track t = null;
-boolean blockedHere = false;
-try {
-t = PlaylistImport.matchOneE(api, s);
-consecBlocked = 0;
-} catch (PlaylistImport.BlockedException be) {
-blockedHere = true;
-// 风控退避：等一等再重试同一首（BiliApi 内部已先自动换过一次凭证）
-long[] waits = {4000, 10000, 25000};
-for (int a = 0; a < waits.length && t == null; a++) {
-final long wsec = waits[a] / 1000;
-final int att = a + 1;
-runOnUiThread(() -> tvStage.setText("B站搜索被临时风控，等 " + wsec + " 秒后第 " + att + " 次重试…"));
-sleepQuiet(waits[a]);
-if (cancelled) { postReset("已取消"); return; }
-try { t = PlaylistImport.matchOneE(api, s); blockedHere = false; consecBlocked = 0; }
-catch (PlaylistImport.BlockedException be2) { blockedHere = true; }
+pbImport.setMax(ImportService.progressTotal);
+pbImport.setProgress(ImportService.progressDone);
+} else pbImport.setIndeterminate(true);
+String st = ImportService.stageText;
+if (st != null && !st.isEmpty()) tvStage.setText(st);
+}
+
+private void handleJobFinish() {
+if (ImportService.state == ImportService.ST_DONE && ImportService.parsed != null) {
+parsed = ImportService.parsed;
+matchedTracks.clear(); matchedTracks.addAll(ImportService.matchedTracks);
+matchedSrcs.clear(); matchedSrcs.addAll(ImportService.matchedSrcs);
+unmatched.clear(); unmatched.addAll(ImportService.unmatched);
+blockedAbort = ImportService.blockedAbort;
+showResult();
+} else if (ImportService.state == ImportService.ST_FAILED) {
+postFail(ImportService.errorText);
+} else if (ImportService.state == ImportService.ST_CANCELLED) {
+postReset("已取消");
 }
 }
-if (blockedHere) {
-consecBlocked++;
-if (consecBlocked >= 3) {
-// 连着三首退避重试都过不去：多半是当前网络被重点风控，别再硬撞——先交已匹配的
-blockedAbort = true;
-unmatched.add(s);
-for (int j = i + 1; j < total; j++) unmatched.add(p.tracks.get(j));
-runOnUiThread(() -> pbImport.setProgress(total));
-break;
+
+@Override protected void onResume() {
+super.onResume();
+ImportService.listener = jobListener;
+if (ImportService.isRunning()) attachJob();
+else if (ImportService.state == ImportService.ST_DONE && ImportService.parsed != null
+&& parsed != ImportService.parsed) handleJobFinish();
 }
-}
-if (t != null) { matchedTracks.add(t); matchedSrcs.add(s); } else unmatched.add(s);
-final int done = i + 1, mt = matchedTracks.size();
-runOnUiThread(() -> {
-pbImport.setProgress(done);
-tvStage.setText("匹配中 " + done + "/" + total + " · 已匹配 " + mt + " 首");
-});
-if (i < total - 1) Thread.sleep(700);
-}
-runOnUiThread(this::showResult);
-} catch (Exception e) {
-postFail(e.getMessage() == null ? "网络或链接异常" : e.getMessage());
-}
+
+@Override protected void onPause() {
+if (ImportService.listener == jobListener) ImportService.listener = null;
+super.onPause();
 }
 
 private void postReset(String msg) {
@@ -404,7 +392,8 @@ finish();
 }
 
 @Override protected void onDestroy() {
-cancelled = true;
+// 离开页面不取消导入：任务在 ImportService 里继续跑
+if (ImportService.listener == jobListener) ImportService.listener = null;
 super.onDestroy();
 }
 }
