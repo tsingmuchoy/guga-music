@@ -32,7 +32,25 @@ public Src(String n, String a, int d) { name = n; artist = a; durSec = d; }
 public static class Parsed {
 public String platform, title;
 public List<Src> tracks = new ArrayList<>();
+public List<Src> dups = new ArrayList<>();
 public int skipped;
+}
+
+/** 源歌单内部去重：同名+同歌手+时长接近的重复条目只留第一条（省下的搜索次数也少惹 B 站风控）；
+ *  被剔的进 p.dups 供结果页展示。轻量归一只动大小写/空白/标点，不剥括号——Live 版与录音室版时长不同、不会误杀 */
+public static void dedupeSource(Parsed p) {
+Set<String> seen = new HashSet<>();
+List<Src> keep = new ArrayList<>();
+for (Src s : p.tracks) {
+String key = dupKey(s.name) + "\u0001" + dupKey(s.artist == null ? "" : s.artist)
++ "\u0001" + (s.durSec > 0 ? s.durSec / 15 : 0);
+if (seen.add(key)) keep.add(s); else p.dups.add(s);
+}
+p.tracks = keep;
+}
+
+private static String dupKey(String s) {
+return s.toLowerCase(java.util.Locale.ROOT).replaceAll("[\\s\\p{Punct}　]", "");
 }
 
 public static class Detected {

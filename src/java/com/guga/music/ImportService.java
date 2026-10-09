@@ -28,6 +28,7 @@ public static volatile PlaylistImport.Parsed parsed;
 public static volatile List<Track> matchedTracks = new ArrayList<>();
 public static volatile List<PlaylistImport.Src> matchedSrcs = new ArrayList<>();
 public static volatile List<PlaylistImport.Src> unmatched = new ArrayList<>();
+public static volatile List<PlaylistImport.Src> dupSrcs = new ArrayList<>();
 public static volatile int progressDone, progressTotal;
 public static volatile String stageText = "";
 public static volatile String errorText = "";
@@ -76,6 +77,7 @@ parsed = null;
 matchedTracks = new ArrayList<>();
 matchedSrcs = new ArrayList<>();
 unmatched = new ArrayList<>();
+dupSrcs = new ArrayList<>();
 progressDone = 0;
 progressTotal = 0;
 stageText = "正在解析歌单…";
@@ -88,6 +90,8 @@ BiliApi api = new BiliApi(this);
 try {
 PlaylistImport.Parsed p = jobBrute != null
 ? PlaylistImport.fetchByIdBruteforce(jobBrute) : PlaylistImport.fetch(jobUse);
+PlaylistImport.dedupeSource(p);
+dupSrcs = new ArrayList<>(p.dups);
 parsed = p;
 if (cancelFlag) { finish(ST_CANCELLED, null); return; }
 int total = p.tracks.size();
@@ -95,6 +99,7 @@ progressTotal = total;
 stageText = "共 " + total + " 首，开始匹配 B 站…";
 pushProgress(0, total);
 int consecBlocked = 0;
+java.util.Set<String> seenBv = new java.util.HashSet<>();
 for (int i = 0; i < total; i++) {
 if (cancelFlag) { finish(ST_CANCELLED, null); return; }
 PlaylistImport.Src s = p.tracks.get(i);
@@ -125,7 +130,10 @@ progressDone = total;
 break;
 }
 }
-if (t != null) { matchedTracks.add(t); matchedSrcs.add(s); } else unmatched.add(s);
+if (t != null) {
+// 两条源曲目匹配到同一个 B 站视频：只留第一条，后一条算重复自动剔除
+if (seenBv.add(t.bvid)) { matchedTracks.add(t); matchedSrcs.add(s); } else dupSrcs.add(s);
+} else unmatched.add(s);
 progressDone = i + 1;
 stageText = "匹配中 " + (i + 1) + "/" + total + " · 已匹配 " + matchedTracks.size() + " 首";
 pushProgress(i + 1, total);

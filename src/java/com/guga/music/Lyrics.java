@@ -588,6 +588,29 @@ if (tr != null && tr.contains("[")) p.trans = tr;
 return p;
 }
 } else if (c.src.equals("netease")) {
+// 先走 v1 接口：一次拿齐歌词+翻译+罗马音（旧 api/song/lyric 没有 romalrc，手动匹配就白选了）
+try {
+JSONObject d = new JSONObject(httpGet(
+"https://music.163.com/api/song/lyric/v1?id=" + c.ref + "&cp=false&lv=1&kv=1&tv=1&rv=1&yv=1",
+"https://music.163.com"));
+JSONObject lrc = d.optJSONObject("lrc");
+String text = lrc == null ? null : lrc.optString("lyric");
+if (text != null && text.contains("[") && parseLrc(text).size() >= 5) {
+LrcPack p = new LrcPack(text);
+JSONObject tly = d.optJSONObject("tlyric");
+if (tly != null) {
+String tt = tly.optString("lyric");
+if (tt != null && tt.contains("[")) p.trans = tt;
+}
+JSONObject rly = d.optJSONObject("romalrc");
+if (rly != null) {
+String rr = rly.optString("lyric");
+if (rr != null && rr.contains("[")) p.roma = rr;
+}
+try { attachNeteaseWords(p, Long.parseLong(c.ref)); } catch (Exception ignored) {}
+return p;
+}
+} catch (Exception ignored) {}
 JSONObject lr = new JSONObject(httpGet(
 "https://music.163.com/api/song/lyric?lv=1&kv=1&tv=-1&id=" + c.ref, "https://music.163.com"));
 JSONObject lrc = lr.optJSONObject("lrc");
@@ -659,6 +682,18 @@ LyricsDb.bind(ctx, bvid, b);
 COVER_MEM.remove(bvid);
 ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).edit().remove("alt_" + bvid).apply();
 return true;
+}
+
+/** 只锁封面+原歌名（选中歌曲的歌词取不到时的兜底）：歌词不写缓存、继续自动匹配，
+ *  fetchSync 试过绑定源取不到也会自动落回自动流程，不会把歌词弄丢 */
+public static void applyManualCoverOnly(Context ctx, String bvid, MCand c) {
+String label = srcLabel(c.src) + "（手动）";
+LyricsDb.Bind b = new LyricsDb.Bind();
+b.src = c.src; b.ref = c.ref; b.name = c.name; b.artist = c.artist; b.durMs = c.durMs; b.label = label;
+b.cover = c.cover;
+LyricsDb.bind(ctx, bvid, b);
+COVER_MEM.remove(bvid);
+ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).edit().remove("alt_" + bvid).apply();
 }
 
 /** 解除手动锁定并清掉歌词缓存，回到自动匹配 */

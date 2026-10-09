@@ -185,8 +185,28 @@ public class LyricsSearchActivity extends Activity {
                     ? new ArrayList<>() : Lyrics.parseLrc(pack.lrc);
             runOnUiThread(() -> {
                 if (lines.size() < 5) {
-                    tvStatus.setText(shown.isEmpty() ? "没搜到候选" : "共 " + shown.size() + " 个候选，点一个预览歌词");
-                    Toast.makeText(this, "这版歌词取不到或没有时间轴，换一版试试", Toast.LENGTH_SHORT).show();
+                    // 歌词取不到别一票否决：封面+原歌名还能用，歌词继续自动匹配
+                    tvStatus.setText("共 " + shown.size() + " 个候选，点一个预览");
+                    View root0 = getLayoutInflater().inflate(R.layout.dialog_lyric_preview, null);
+                    ((TextView) root0.findViewById(R.id.tvPrevTitle)).setText(c.name + " · " + Lyrics.srcName(c.src));
+                    android.widget.ImageView iv0 = root0.findViewById(R.id.ivPrevCover);
+                    if (c.cover != null && !c.cover.isEmpty()) {
+                        iv0.setVisibility(View.VISIBLE);
+                        ImgLoader.load(iv0, c.cover);
+                    } else iv0.setVisibility(View.GONE);
+                    TextView note0 = root0.findViewById(R.id.tvPrevCoverNote);
+                    note0.setVisibility(View.VISIBLE);
+                    note0.setText("这首在" + Lyrics.srcName(c.src) + "的歌词暂时取不到（接口没返回），没法锁定歌词；"
+                            + "可以只应用封面和原歌名，歌词继续自动匹配。");
+                    root0.findViewById(R.id.svPrev).setVisibility(View.GONE);
+                    TextView use0 = root0.findViewById(R.id.btnPrevUse);
+                    use0.setText("只用封面+歌名");
+                    final AlertDialog dlg0 = new AlertDialog.Builder(this).setView(root0).create();
+                    root0.findViewById(R.id.btnPrevBack).setOnClickListener(v -> dlg0.dismiss());
+                    use0.setOnClickListener(v -> { dlg0.dismiss(); applyCoverOnly(c); });
+                    dlg0.show();
+                    if (dlg0.getWindow() != null) dlg0.getWindow().setBackgroundDrawable(
+                            new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
                     return;
                 }
                 // 预览：不用系统灰弹窗——自家深色圆角卡，完整歌词放可拖动的滚动区里看全
@@ -228,6 +248,13 @@ public class LyricsSearchActivity extends Activity {
                 }
             });
         }).start();
+    }
+
+    private void applyCoverOnly(final Lyrics.MCand c) {
+        Lyrics.applyManualCoverOnly(getApplicationContext(), bvid, c);
+        Toast.makeText(this, "已应用封面+原歌名 ✓ 歌词继续自动匹配", Toast.LENGTH_SHORT).show();
+        setResult(RESULT_OK);
+        finish();
     }
 
     private void applyChoice(final Lyrics.MCand c, final Lyrics.LrcPack pack) {

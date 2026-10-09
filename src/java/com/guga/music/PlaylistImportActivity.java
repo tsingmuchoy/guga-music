@@ -30,7 +30,9 @@ public class PlaylistImportActivity extends Activity {
 
 private EditText etLink, etName;
 private LinearLayout llPlatforms, llProgress, llResult, llFail;
-private TextView btnStart, tvStage, tvSummary, tvUnmatchedHead, tvUnmatched, btnSave, tvFailMsg;
+private TextView btnStart, tvStage, tvSummary, tvUnmatchedHead, tvUnmatched, btnSave, tvFailMsg, tvDupHead, tvDup;
+private View svDup;
+private final List<PlaylistImport.Src> dupList = new ArrayList<>();
 private String bruteDigits;
 private boolean blockedAbort;
 private ProgressBar pbImport;
@@ -68,6 +70,9 @@ tvStage = findViewById(R.id.tvStage);
 tvSummary = findViewById(R.id.tvSummary);
 tvUnmatchedHead = findViewById(R.id.tvUnmatchedHead);
 tvUnmatched = findViewById(R.id.tvUnmatched);
+tvDupHead = findViewById(R.id.tvDupHead);
+tvDup = findViewById(R.id.tvDup);
+svDup = findViewById(R.id.svDup);
 btnSave = findViewById(R.id.btnSave);
 pbImport = findViewById(R.id.pbImport);
 lvResult = findViewById(R.id.lvResult);
@@ -298,6 +303,7 @@ parsed = ImportService.parsed;
 matchedTracks.clear(); matchedTracks.addAll(ImportService.matchedTracks);
 matchedSrcs.clear(); matchedSrcs.addAll(ImportService.matchedSrcs);
 unmatched.clear(); unmatched.addAll(ImportService.unmatched);
+dupList.clear(); dupList.addAll(ImportService.dupSrcs);
 blockedAbort = ImportService.blockedAbort;
 showResult();
 } else if (ImportService.state == ImportService.ST_FAILED) {
@@ -337,10 +343,11 @@ btnStart.setEnabled(true);
 btnStart.setText("⇩ 重新导入");
 llResult.setVisibility(View.VISIBLE);
 etName.setText(parsed.title);
-int total = parsed.tracks.size();
+int total = parsed.tracks.size() + (parsed.dups == null ? 0 : parsed.dups.size());
 tvSummary.setText("来源：" + PlaylistImport.platformName(parsed.platform)
 + " · 共 " + total + " 首 · 匹配 " + matchedTracks.size() + " · 未匹配 " + unmatched.size()
 + (parsed.skipped > 0 ? " · 跳过失效 " + parsed.skipped : "")
++ (dupList.size() > 0 ? " · 去重 " + dupList.size() : "")
 + (blockedAbort ? "\n⚠️ B站搜索被临时风控，导入提前结束：先把已匹配的存了，过几分钟再导一次这张歌单即可" : ""));
 lvResult.setAdapter(new BaseAdapter() {
 @Override public int getCount() { return matchedTracks.size(); }
@@ -375,6 +382,21 @@ sb.append("\n");
 }
 tvUnmatched.setText(sb.toString());
 svUnmatched.setVisibility(View.VISIBLE);
+}
+if (dupList.isEmpty()) {
+tvDupHead.setVisibility(View.GONE);
+svDup.setVisibility(View.GONE);
+} else {
+tvDupHead.setVisibility(View.VISIBLE);
+tvDupHead.setText("重复（" + dupList.size() + " 首，已自动剔除）");
+StringBuilder dsb = new StringBuilder();
+for (PlaylistImport.Src s : dupList) {
+dsb.append("· ").append(s.name);
+if (!s.artist.isEmpty()) dsb.append(" - ").append(s.artist);
+dsb.append("\n");
+}
+tvDup.setText(dsb.toString());
+svDup.setVisibility(View.VISIBLE);
 }
 btnSave.setVisibility(matchedTracks.isEmpty() ? View.GONE : View.VISIBLE);
 if (matchedTracks.isEmpty()) toast("一首也没匹配上，换个歌单或检查网络再试");
