@@ -557,6 +557,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         PlayerService s = PlayerService.get();
         if (s != null) s.removeListener(this);
         handler.removeCallbacks(ticker);
+        if (discSpin != null) discSpin.pause(); // 页面不可见：唱片别在后台空转（回前台 onStateChanged 会按播放状态恢复）
         super.onPause();
     }
 

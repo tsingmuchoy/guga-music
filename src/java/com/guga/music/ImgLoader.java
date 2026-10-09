@@ -93,9 +93,10 @@ public class ImgLoader {
             iv.setImageBitmap(hit);
             return;
         }
-        // 同一张图重复绑定（如列表重排）时别先清空成白框，等新图回来再换，防频闪
-        if (!key.equals(oldTag) || iv.getDrawable() == null) iv.setImageBitmap(null);
+        // 换图不先清空：旧图垫着、新图到位再换，切歌/滚动都不空闪；
+        // 加载失败走下面回调清掉旧图，不会把上一张错当成本张留着
         POOL.execute(() -> {
+            Bitmap out = null;
             try {
                 Bitmap src = CACHE.get(furl);
                 if (src == null) {
@@ -110,13 +111,14 @@ public class ImgLoader {
                     if (src != null) CACHE.put(furl, src);
                 }
                 if (src != null) {
-                    Bitmap out = disc ? makeDisc(src, accent) : src;
+                    out = disc ? makeDisc(src, accent) : src;
                     store.put(key, out);
-                    MAIN.post(() -> {
-                        if (key.equals(iv.getTag())) iv.setImageBitmap(out);
-                    });
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) { out = null; }
+            final Bitmap fout = out;
+            MAIN.post(() -> {
+                if (key.equals(iv.getTag())) iv.setImageBitmap(fout);
+            });
         });
     }
 

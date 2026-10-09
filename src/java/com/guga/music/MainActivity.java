@@ -431,6 +431,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     // ---------------- 播放统计（历史页上半独立滚动区，与下方历史列表分栏） ----------------
+    private int statsGen;
     private int lvScrollState;
     private int ratchetIdx = -1;
     private long ratchetAt;
@@ -596,90 +597,103 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         String rangeText = STAT_PERIOD_DAYS[statPeriod] == 0 ? "全部记录"
                 : STAT_PERIOD_DAYS[statPeriod] == 1 ? "今天 · " + to : from + " ~ " + to;
         ((TextView) statsHeaderView.findViewById(R.id.tvStatRange)).setText(rangeText);
-        StatsDb.Sum sum = statsDb.summary(from, to);
-        ((TextView) statsHeaderView.findViewById(R.id.tvStatPlays)).setText(String.valueOf(sum.plays));
-        ((TextView) statsHeaderView.findViewById(R.id.tvStatTime)).setText(fmtListen(sum.seconds));
-        ((TextView) statsHeaderView.findViewById(R.id.tvStatTracks)).setText(String.valueOf(statsDb.distinctSongs(from, to)));
-        statRows.clear();
-        statRows.addAll(statsDb.top(from, to, 10));
-        long max = 1;
-        for (StatsDb.Row r : statRows) if (r.plays > max) max = r.plays;
-        LinearLayout box = statsHeaderView.findViewById(R.id.llStatTop);
-        box.removeAllViews();
-        statsHeaderView.findViewById(R.id.tvStatEmpty).setVisibility(statRows.isEmpty() ? View.VISIBLE : View.GONE);
-        float den = getResources().getDisplayMetrics().density;
-        for (int i = 0; i < statRows.size(); i++) {
-            final int idx = i;
-            final StatsDb.Row r = statRows.get(i);
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            row.setPadding(0, (int) (8 * den), 0, (int) (8 * den));
-            TextView rank = new TextView(this);
-            rank.setLayoutParams(new LinearLayout.LayoutParams((int) (26 * den), LinearLayout.LayoutParams.WRAP_CONTENT));
-            rank.setGravity(android.view.Gravity.CENTER);
-            rank.setText(String.valueOf(i + 1));
-            rank.setTextSize(14);
-            rank.setTextColor(ThemeUtil.color(this, i < 3 ? R.attr.gAccent : R.attr.gTextFaint));
-            if (i < 3) rank.setTypeface(null, android.graphics.Typeface.BOLD);
-            row.addView(rank);
-            LinearLayout mid = new LinearLayout(this);
-            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-            mlp.leftMargin = (int) (10 * den);
-            mid.setLayoutParams(mlp);
-            mid.setOrientation(LinearLayout.VERTICAL);
-            TextView title = new TextView(this);
-            title.setText(r.title == null || r.title.isEmpty() ? r.bvid : r.title);
-            title.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
-            title.setTextSize(13.5f);
-            title.setSingleLine(true);
-            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            mid.addView(title);
-            TextView author = new TextView(this);
-            author.setText(r.author == null ? "" : r.author);
-            author.setTextColor(ThemeUtil.color(this, R.attr.gTextFaint));
-            author.setTextSize(11);
-            author.setSingleLine(true);
-            mid.addView(author);
-            LinearLayout bar = new LinearLayout(this);
-            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (int) (6 * den));
-            blp.topMargin = (int) (5 * den);
-            bar.setLayoutParams(blp);
-            bar.setBackgroundResource(R.drawable.bg_bar_track);
-            bar.setOrientation(LinearLayout.HORIZONTAL);
-            View fill = new View(this);
-            fill.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, (float) r.plays));
-            fill.setBackground(ThemeUtil.accentGradient(this, 3));
-            bar.addView(fill);
-            View gap = new View(this);
-            gap.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, (float) (max - r.plays)));
-            bar.addView(gap);
-            mid.addView(bar);
-            row.addView(mid);
-            TextView meta = new TextView(this);
-            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            tlp.leftMargin = (int) (10 * den);
-            meta.setLayoutParams(tlp);
-            meta.setGravity(android.view.Gravity.RIGHT);
-            meta.setText(r.plays + " 次" + (r.seconds >= 60 ? "\n" + fmtListen(r.seconds) : ""));
-            meta.setTextColor(ThemeUtil.color(this, R.attr.gTextSec));
-            meta.setTextSize(11.5f);
-            row.addView(meta);
-            row.setOnClickListener(v -> {
-                Haptics.press(this);
-                List<Track> ts = new ArrayList<>();
-                for (StatsDb.Row rr : statRows) {
-                    Track t = new Track();
-                    t.bvid = rr.bvid;
-                    t.title = rr.title;
-                    t.author = rr.author;
-                    t.cover = rr.cover;
-                    ts.add(t);
+        // 汇总/曲目数/Top 榜的查询与聚类挪到后台线程，数据攒多后切历史页也不在主线程卡帧；
+        // gen 守卫：连点档位时只认最后一次的结果
+        final int gen = ++statsGen;
+        final String fFrom = from, fTo = to;
+        new Thread(() -> {
+            final StatsDb.Sum sum = statsDb.summary(fFrom, fTo);
+            final int distinct = statsDb.distinctSongs(fFrom, fTo);
+            final java.util.List<StatsDb.Row> top = statsDb.top(fFrom, fTo, 10);
+            runOnUiThread(() -> {
+                if (gen != statsGen || statsHeaderView == null) return;
+                // sum/distinct/top 已在后台算好
+                ((TextView) statsHeaderView.findViewById(R.id.tvStatPlays)).setText(String.valueOf(sum.plays));
+                ((TextView) statsHeaderView.findViewById(R.id.tvStatTime)).setText(fmtListen(sum.seconds));
+                ((TextView) statsHeaderView.findViewById(R.id.tvStatTracks)).setText(String.valueOf(distinct));
+                statRows.clear();
+                statRows.addAll(top);
+                long max = 1;
+                for (StatsDb.Row r : statRows) if (r.plays > max) max = r.plays;
+                LinearLayout box = statsHeaderView.findViewById(R.id.llStatTop);
+                box.removeAllViews();
+                statsHeaderView.findViewById(R.id.tvStatEmpty).setVisibility(statRows.isEmpty() ? View.VISIBLE : View.GONE);
+                float den = getResources().getDisplayMetrics().density;
+                for (int i = 0; i < statRows.size(); i++) {
+                    final int idx = i;
+                    final StatsDb.Row r = statRows.get(i);
+                    LinearLayout row = new LinearLayout(this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    row.setPadding(0, (int) (8 * den), 0, (int) (8 * den));
+                    TextView rank = new TextView(this);
+                    rank.setLayoutParams(new LinearLayout.LayoutParams((int) (26 * den), LinearLayout.LayoutParams.WRAP_CONTENT));
+                    rank.setGravity(android.view.Gravity.CENTER);
+                    rank.setText(String.valueOf(i + 1));
+                    rank.setTextSize(14);
+                    rank.setTextColor(ThemeUtil.color(this, i < 3 ? R.attr.gAccent : R.attr.gTextFaint));
+                    if (i < 3) rank.setTypeface(null, android.graphics.Typeface.BOLD);
+                    row.addView(rank);
+                    LinearLayout mid = new LinearLayout(this);
+                    LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+                    mlp.leftMargin = (int) (10 * den);
+                    mid.setLayoutParams(mlp);
+                    mid.setOrientation(LinearLayout.VERTICAL);
+                    TextView title = new TextView(this);
+                    title.setText(r.title == null || r.title.isEmpty() ? r.bvid : r.title);
+                    title.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+                    title.setTextSize(13.5f);
+                    title.setSingleLine(true);
+                    title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    mid.addView(title);
+                    TextView author = new TextView(this);
+                    author.setText(r.author == null ? "" : r.author);
+                    author.setTextColor(ThemeUtil.color(this, R.attr.gTextFaint));
+                    author.setTextSize(11);
+                    author.setSingleLine(true);
+                    mid.addView(author);
+                    LinearLayout bar = new LinearLayout(this);
+                    LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (int) (6 * den));
+                    blp.topMargin = (int) (5 * den);
+                    bar.setLayoutParams(blp);
+                    bar.setBackgroundResource(R.drawable.bg_bar_track);
+                    bar.setOrientation(LinearLayout.HORIZONTAL);
+                    View fill = new View(this);
+                    fill.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, (float) r.plays));
+                    fill.setBackground(ThemeUtil.accentGradient(this, 3));
+                    bar.addView(fill);
+                    View gap = new View(this);
+                    gap.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, (float) (max - r.plays)));
+                    bar.addView(gap);
+                    mid.addView(bar);
+                    row.addView(mid);
+                    TextView meta = new TextView(this);
+                    LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    tlp.leftMargin = (int) (10 * den);
+                    meta.setLayoutParams(tlp);
+                    meta.setGravity(android.view.Gravity.RIGHT);
+                    meta.setText(r.plays + " 次" + (r.seconds >= 60 ? "\n" + fmtListen(r.seconds) : ""));
+                    meta.setTextColor(ThemeUtil.color(this, R.attr.gTextSec));
+                    meta.setTextSize(11.5f);
+                    row.addView(meta);
+                    row.setOnClickListener(v -> {
+                        Haptics.press(this);
+                        List<Track> ts = new ArrayList<>();
+                        for (StatsDb.Row rr : statRows) {
+                            Track t = new Track();
+                            t.bvid = rr.bvid;
+                            t.title = rr.title;
+                            t.author = rr.author;
+                            t.cover = rr.cover;
+                            ts.add(t);
+                        }
+                        playTracks(ts, idx);
+                    });
+                    box.addView(row);
                 }
-                playTracks(ts, idx);
+    
             });
-            box.addView(row);
-        }
+        }).start();
     }
 
     static String fmtListen(long sec) {
