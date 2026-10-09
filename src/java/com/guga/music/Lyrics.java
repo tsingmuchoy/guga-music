@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 歌词引擎 v4：QQ音乐 / 网易云 / 酷狗 / AMLL TTML / LRCLIB 按用户设置顺序级联（默认 QQ->网易云->酷狗->AMLL->LRCLIB），B 站字幕兜底；本地缓存 lyrics_v4 目录 */
+/** 歌词引擎 v4：QQ音乐 / 网易云 / 酷狗 / AMLL TTML / LRCLIB 按用户设置顺序级联（默认 QQ->网易云->酷狗->AMLL->LRCLIB），B 站字幕兜底；本地缓存 lyrics_v5 目录 */
 public class Lyrics {
 
 public static class Line {
@@ -356,7 +356,7 @@ int next = sp.getInt("alt_" + track.bvid, 0) + 1;
 sp.edit().putInt("alt_" + track.bvid, next).apply();
 LyricsDb.unbind(app, track.bvid); // 用户主动换版本：解除手动锁定，回到自动匹配
 try {
-File dir = new File(app.getFilesDir(), "lyrics_v4");
+File dir = new File(app.getFilesDir(), "lyrics_v5");
 new File(dir, track.bvid + ".lrc").delete();
 new File(dir, track.bvid + ".none").delete();
 } catch (Exception ignored) {}
@@ -366,7 +366,7 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 }
 
 private static Result fetchSync(Context ctx, Track track, BiliApi api) {
-File dir = new File(ctx.getFilesDir(), "lyrics_v4");
+File dir = new File(ctx.getFilesDir(), "lyrics_v5");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, track.bvid + ".lrc");
 File none = new File(dir, track.bvid + ".none");
@@ -402,7 +402,7 @@ LrcPack pack = null;
 if (key.equals("qq")) pack = qqLyrics(track, hints, alt);
 else if (key.equals("netease")) pack = neteaseLyrics(track, hints, alt);
 else if (key.equals("kugou")) { String s1 = kugouLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
-else if (key.equals("kuwo")) { String s1 = kuwoLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
+else if (key.equals("kuwo")) { pack = kuwoLyrics(track, hints, alt); }
 else if (key.equals("amll")) { pack = amllLyrics(track, hints, alt); }
 else if (key.equals("lrclib")) { String s1 = lrclibLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
 Result r = acceptPack(cache, pack, srcLabel(key));
@@ -642,8 +642,8 @@ if (text.contains("[")) return new LrcPack(text);
 }
 }
 } else if (c.src.equals("kuwo")) {
-String t = kuwoFetchLrc(Long.parseLong(c.ref));
-if (t != null) return new LrcPack(t);
+LrcPack kp = kuwoFetchLrc(Long.parseLong(c.ref));
+if (kp != null) return kp;
 } else if (c.src.equals("lrclib")) {
 if (c.lrcText != null && c.lrcText.contains("[")) return new LrcPack(c.lrcText);
 String u = "https://lrclib.net/api/get?track_name=" + URLEncoder.encode(c.name, "UTF-8")
@@ -669,7 +669,7 @@ public static boolean applyManual(Context ctx, String bvid, MCand c, LrcPack pac
 if (pack == null || pack.lrc == null || parseLrc(pack.lrc).size() < 5) return false;
 String label = srcLabel(c.src) + "（手动）";
 try {
-File dir = new File(ctx.getFilesDir(), "lyrics_v4");
+File dir = new File(ctx.getFilesDir(), "lyrics_v5");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, bvid + ".lrc");
 if (acceptPack(cache, pack, label) == null) return false;
@@ -701,7 +701,7 @@ public static void clearManual(Context ctx, String bvid) {
 LyricsDb.unbind(ctx, bvid);
 COVER_MEM.remove(bvid);
 try {
-File dir = new File(ctx.getFilesDir(), "lyrics_v4");
+File dir = new File(ctx.getFilesDir(), "lyrics_v5");
 new File(dir, bvid + ".lrc").delete();
 new File(dir, bvid + ".none").delete();
 } catch (Exception ignored) {}
@@ -1422,7 +1422,7 @@ private static long kuwoDurMs(JSONObject sj) {
 try { return Long.parseLong(sj.optString("DURATION").trim()) * 1000L; } catch (Exception e) { return 0; }
 }
 
-private static String kuwoLyrics(Track track, Hints hints, int alt) throws Exception {
+private static LrcPack kuwoLyrics(Track track, Hints hints, int alt) throws Exception {
 long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
 Map<Long, Cand> byId = new HashMap<>();
 for (String q : hints.queries) {
@@ -1453,34 +1453,72 @@ if (pool.isEmpty()) return null;
 for (int k = 0; k < pool.size(); k++) {
 Cand c = pool.get(Math.floorMod(alt + k, pool.size()));
 try {
-String lrc = kuwoFetchLrc(c.id);
-if (lrc != null) return lrc;
+LrcPack p = kuwoFetchLrc(c.id);
+if (p != null) return p;
 } catch (Exception ignored) {}
 }
 return null;
 }
 
-private static String kuwoFetchLrc(long rid) throws Exception {
+private static boolean hasKana(String s) {
+for (int i = 0; i < s.length(); i++) {
+char c = s.charAt(i);
+if ((c >= 0x3040 && c <= 0x30FF) || (c >= 0xFF66 && c <= 0xFF9D)) return true;
+}
+return false;
+}
+
+private static LrcPack kuwoFetchLrc(long rid) throws Exception {
 JSONObject r = new JSONObject(httpGet(
 "https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + rid,
 "https://www.kuwo.cn/"));
 JSONObject data = r.optJSONObject("data");
 JSONArray list = data == null ? null : data.optJSONArray("lrclist");
 if (list == null) return null;
-StringBuilder sb = new StringBuilder();
-int count = 0;
+List<Long> times = new ArrayList<>();
+List<String> texts = new ArrayList<>();
 for (int i = 0; i < list.length(); i++) {
 JSONObject lj = list.getJSONObject(i);
 String text = kuwoUnescape(lj.optString("lineLyric")).trim();
 if (text.isEmpty()) continue;
 double sec;
 try { sec = Double.parseDouble(lj.optString("time")); } catch (Exception e) { continue; }
-long ms = Math.round(sec * 1000);
-sb.append(String.format("[%02d:%02d.%03d]", ms / 60000, (ms % 60000) / 1000, ms % 1000))
-.append(text).append("\n");
-count++;
+times.add(Math.round(sec * 1000));
+texts.add(text);
 }
-return count >= 5 ? sb.toString() : null;
+if (texts.size() < 5) return null;
+// 酷我日语歌把译文行挂在原词行结束处（与下一句原词同一个时间戳），原词/译文交错成双行，
+// 播放页和歌词页都会挤成一团、罗马音还会整体错位一行。识别到这种结构就把译文折回
+// 它前面最近的原词行当翻译，恢复一句一行。特征：译文行时间戳与某句原词行精确重合。
+int kana = 0;
+java.util.Set<Long> kanaTimes = new java.util.HashSet<>();
+for (int i = 0; i < texts.size(); i++) if (hasKana(texts.get(i))) { kana++; kanaTimes.add(times.get(i)); }
+if (kana >= 5) {
+StringBuilder main = new StringBuilder(), trans = new StringBuilder();
+long lastKanaMs = -1;
+int folded = 0;
+for (int i = 0; i < texts.size(); i++) {
+String t = texts.get(i);
+long ms = times.get(i);
+if (hasKana(t)) {
+main.append(stamp(ms)).append(t).append("\n");
+lastKanaMs = ms;
+} else if (lastKanaMs >= 0 && (ms == lastKanaMs || kanaTimes.contains(ms))) {
+trans.append(stamp(lastKanaMs)).append(t).append("\n");
+folded++;
+} else {
+main.append(stamp(ms)).append(t).append("\n");
+}
+}
+if (folded >= 3) {
+LrcPack p = new LrcPack(main.toString());
+p.trans = trans.toString();
+return p;
+}
+}
+StringBuilder sb = new StringBuilder();
+for (int i = 0; i < texts.size(); i++) sb.append(stamp(times.get(i))).append(texts.get(i)).append("\n");
+return new LrcPack(sb.toString());
 }
 
 private static void collectKuwoCovers(Track track, Hints hints, java.util.List<String> cands,
