@@ -39,4 +39,26 @@ public class Haptics {
 
     /** 重压：长按类操作 */
     public static void heavy(Context c) { fire(c, VibrationEffect.EFFECT_HEAVY_CLICK, 30, 180); }
+
+    /** 滚动棘轮触感：列表滚动时每划过一个条目轻震一下，像拨齿轮「划起来」的手感。
+     *  只在滚动未静止时触发，45ms 节流防震成一片；走总开关（设置里关了就静默）。
+     *  注意：目标列表若已有自己的 OnScrollListener 不要用这个（会被覆盖），在那边内联同样的逻辑 */
+    public static void attachRatchet(final android.widget.AbsListView lv) {
+        final int[] lastIdx = {-1};
+        final long[] lastAt = {0};
+        final int[] state = {android.widget.AbsListView.OnScrollListener.SCROLL_STATE_IDLE};
+        lv.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int s) { state[0] = s; }
+            @Override public void onScroll(android.widget.AbsListView v, int first, int visible, int total) {
+                if (state[0] != SCROLL_STATE_IDLE && lastIdx[0] >= 0 && first != lastIdx[0]) {
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now - lastAt[0] >= 45) {
+                        lastAt[0] = now;
+                        tick(lv.getContext());
+                    }
+                }
+                lastIdx[0] = first;
+            }
+        });
+    }
 }

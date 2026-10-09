@@ -99,8 +99,15 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         lvMain.addFooterView(searchFooter);
         buildSortChips();
         lvMain.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
-            @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) { lvScrollState = state; }
             @Override public void onScroll(android.widget.AbsListView v, int first, int visible, int total) {
+                // 滚动棘轮触感：划过每个条目轻震一下（与 Haptics.attachRatchet 同逻辑，本列表已有监听器故内联）
+                if (lvScrollState != android.widget.AbsListView.OnScrollListener.SCROLL_STATE_IDLE
+                        && ratchetIdx >= 0 && first != ratchetIdx) {
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now - ratchetAt >= 45) { ratchetAt = now; Haptics.tick(MainActivity.this); }
+                }
+                ratchetIdx = first;
                 if (tab == 0 && searchMore && !searchLoading && total > 0 && first + visible >= total - 3) loadMoreSearch();
             }
         });
@@ -424,7 +431,25 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     // ---------------- 播放统计（历史页上半独立滚动区，与下方历史列表分栏） ----------------
+    private int lvScrollState;
+    private int ratchetIdx = -1;
+    private long ratchetAt;
     private View statsHeaderView;
+    private View llSplitHandle;
+    private boolean splitInitDone;
+    private float splitStartY, splitLastY;
+    private int splitStartH, splitTotalH;
+    private boolean splitArmed, splitAtLimit;
+    private final Runnable splitArmTask = new Runnable() {
+        @Override public void run() {
+            splitArmed = true;
+            splitAtLimit = false;
+            splitStartY = splitLastY;
+            splitStartH = statsHeaderView.getHeight();
+            splitTotalH = splitStartH + ((View) lvMain.getParent()).getHeight();
+            Haptics.press(MainActivity.this); // 长按激活拖动：一下 3D 触感确认
+        }
+    };
     private StatsDb statsDb;
     private int statPeriod = 1;
     private final TextView[] statChips = new TextView[5];
@@ -436,15 +461,91 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         if (statsDb == null) statsDb = new StatsDb(this);
         if (statsHeaderView == null) buildStatsHeader();
         statsHeaderView.setVisibility(View.VISIBLE);
+        if (llSplitHandle != null) llSplitHandle.setVisibility(View.VISIBLE);
+        if (!splitInitDone) {
+            splitInitDone = true;
+            statsHeaderView.post(this::applySavedSplitRatio);
+        }
         refreshStatsHeader();
     }
 
     private void detachStatsHeader() {
         if (statsHeaderView != null) statsHeaderView.setVisibility(View.GONE);
+        if (llSplitHandle != null) llSplitHandle.setVisibility(View.GONE);
+    }
+
+    /** 分栏比例恢复（存的是统计区占分栏总高的比例，换机/转屏都稳） */
+    private void applySavedSplitRatio() {
+        float ratio = getSharedPreferences("ui", MODE_PRIVATE).getFloat("stats_pane_ratio", -1f);
+        if (ratio < 0f) return;
+        View frame = (View) lvMain.getParent();
+        int total = statsHeaderView.getHeight() + frame.getHeight();
+        if (total <= 0) return;
+        setStatsPaneHeight(Math.round(total * ratio));
+    }
+
+    private int setStatsPaneHeight(int px) {
+        View frame = (View) lvMain.getParent();
+        int total = statsHeaderView.getHeight() + frame.getHeight();
+        if (total <= 0) return statsHeaderView.getHeight();
+        float den = getResources().getDisplayMetrics().density;
+        // 上限：手柄底边不能越过底部功能栏区（预留 150dp，就是历史列表原有的底部留白）
+        int max = Math.max(0, total - (int) (150 * den));
+        int h = Math.max(0, Math.min(px, max));
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) statsHeaderView.getLayoutParams();
+        lp.height = h;
+        lp.weight = 0;
+        statsHeaderView.setLayoutParams(lp);
+        return h;
+    }
+
+    private void setupSplitDrag() {
+        llSplitHandle = findViewById(R.id.llSplitHandle);
+        if (llSplitHandle == null) return;
+        final float den = getResources().getDisplayMetrics().density;
+        llSplitHandle.setOnTouchListener((v, e) -> {
+            switch (e.getAction()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    // 先按下不动：等长按激活才允许拖（防滚动列表时误触分隔条）
+                    splitLastY = e.getRawY();
+                    splitStartY = e.getRawY();
+                    splitArmed = false;
+                    llSplitHandle.postDelayed(splitArmTask,
+                            android.view.ViewConfiguration.getLongPressTimeout());
+                    return true;
+                case android.view.MotionEvent.ACTION_MOVE: {
+                    float dyDown = e.getRawY() - splitStartY;
+                    splitLastY = e.getRawY();
+                    if (!splitArmed) {
+                        if (Math.abs(dyDown) > 12 * den) llSplitHandle.removeCallbacks(splitArmTask);
+                        return true;
+                    }
+                    int want = splitStartH + (int) (e.getRawY() - splitStartY);
+                    int applied = setStatsPaneHeight(want);
+                    boolean atLimit = applied != want;
+                    if (atLimit && !splitAtLimit) Haptics.tick(MainActivity.this); // 顶/底到界提醒
+                    splitAtLimit = atLimit;
+                    return true;
+                }
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    llSplitHandle.removeCallbacks(splitArmTask);
+                    if (splitArmed && splitTotalH > 0) {
+                        getSharedPreferences("ui", MODE_PRIVATE).edit()
+                                .putFloat("stats_pane_ratio",
+                                        statsHeaderView.getHeight() / (float) splitTotalH)
+                                .apply();
+                    }
+                    splitArmed = false;
+                    return true;
+            }
+            return true;
+        });
     }
 
     private void buildStatsHeader() {
         statsHeaderView = findViewById(R.id.llStatsPane);
+        setupSplitDrag();
         statPeriod = getSharedPreferences("ui", MODE_PRIVATE).getInt("stats_period", 1);
         LinearLayout box = statsHeaderView.findViewById(R.id.llStatPeriods);
         float den = getResources().getDisplayMetrics().density;

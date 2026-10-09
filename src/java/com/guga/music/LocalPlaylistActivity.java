@@ -52,6 +52,7 @@ public class LocalPlaylistActivity extends Activity {
         tvListName.setText(name == null ? "本地歌单" : name);
         IconUtil.leading(tvListName, R.drawable.ic_note, R.attr.gAccent);
         lv = findViewById(R.id.lvTracks);
+        Haptics.attachRatchet(lv);
         tvEmpty = findViewById(R.id.tvEmptyTracks);
         lv.setAdapter(adapter);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());

@@ -149,11 +149,28 @@
                     android:orientation="vertical" />
             </ScrollView>
 
+        </LinearLayout>
+
+        <!-- 分栏拖动手柄：按住上下拖，调统计区与历史区的高度（仅历史标签显示） -->
+        <LinearLayout
+            android:id="@+id/llSplitHandle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="36dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_handle" />
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:layout_marginLeft="16dp"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="6dp"
                 android:layout_marginRight="16dp"
                 android:background="#33FFFFFF" />
 
@@ -161,7 +178,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="16dp"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="10dp"
                 android:layout_marginBottom="2dp"
                 android:drawablePadding="6dp"
                 android:drawableStart="@drawable/ic_tab_history"

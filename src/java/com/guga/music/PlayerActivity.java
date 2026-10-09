@@ -85,6 +85,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             }
         });
         lvQueue.setAdapter(queueAdapter);
+        Haptics.attachRatchet(lvQueue);
         setupQueueSheet();
         lvQueue.setOnItemClickListener((p, v, pos, id) -> {
             Haptics.tick(this);
