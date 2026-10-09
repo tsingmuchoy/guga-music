@@ -150,13 +150,23 @@ public class LyricsActivity extends Activity {
         @Override public long getItemId(int p) { return p; }
         @Override public View getView(int p, View cv, ViewGroup parent) {
             if (cv == null) cv = LayoutInflater.from(LyricsActivity.this).inflate(R.layout.row_lyric, parent, false);
-            TextView tv = (TextView) cv;
-            tv.setText(lines.get(p).text);
+            Lyrics.Line line = lines.get(p);
+            TextView tv = cv.findViewById(R.id.tvLyricMain);
+            tv.setText(line.text);
             boolean cur = p == curIdx;
             if (cur) ThemeUtil.gradientText(tv);
             else ThemeUtil.plainText(tv, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec));
             tv.setTextSize(cur ? 17 : 15);
             tv.setTypeface(null, cur ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            // 副行：罗马音（小、淡）与中文翻译（略大、次级色），开关关了或这行没数据就不占位
+            TextView tvr = cv.findViewById(R.id.tvLyricRoma);
+            boolean sr = Lyrics.isShowRoma(LyricsActivity.this) && line.roma != null && !line.roma.isEmpty();
+            tvr.setVisibility(sr ? View.VISIBLE : View.GONE);
+            if (sr) tvr.setText(line.roma);
+            TextView tvt = cv.findViewById(R.id.tvLyricTrans);
+            boolean st = Lyrics.isShowTrans(LyricsActivity.this) && line.trans != null && !line.trans.isEmpty();
+            tvt.setVisibility(st ? View.VISIBLE : View.GONE);
+            if (st) tvt.setText(line.trans);
             return cv;
         }
     };

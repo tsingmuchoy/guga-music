@@ -25,15 +25,19 @@ public class LyricsSearchActivity extends Activity {
     private TextView tvStatus, btnAuto;
     private ListView lv;
     private final List<Lyrics.MCand> results = new ArrayList<>();
+    private final List<Lyrics.MCand> shown = new ArrayList<>();
+    private android.widget.LinearLayout llSrcFilter;
+    private View hsvSrcFilter;
+    private String srcFilter = "";
     private boolean searching;
 
     private final BaseAdapter adapter = new BaseAdapter() {
-        @Override public int getCount() { return results.size(); }
-        @Override public Object getItem(int p) { return results.get(p); }
+        @Override public int getCount() { return shown.size(); }
+        @Override public Object getItem(int p) { return shown.get(p); }
         @Override public long getItemId(int p) { return p; }
         @Override public View getView(int p, View cv, ViewGroup parent) {
             if (cv == null) cv = LayoutInflater.from(LyricsSearchActivity.this).inflate(R.layout.item_lyric_cand, parent, false);
-            Lyrics.MCand c = results.get(p);
+            Lyrics.MCand c = shown.get(p);
             ((TextView) cv.findViewById(R.id.tvCandName)).setText(c.name);
             String dur = c.durMs > 0 ? " · " + (c.durMs / 60000) + ":" + String.format(java.util.Locale.CHINA, "%02d", (c.durMs % 60000) / 1000) : "";
             ((TextView) cv.findViewById(R.id.tvCandSub)).setText(
@@ -58,6 +62,8 @@ public class LyricsSearchActivity extends Activity {
         etName = findViewById(R.id.etSongName);
         etArtist = findViewById(R.id.etArtist);
         tvStatus = findViewById(R.id.tvLyrStatus);
+        llSrcFilter = findViewById(R.id.llSrcFilter);
+        hsvSrcFilter = findViewById(R.id.hsvSrcFilter);
         btnAuto = findViewById(R.id.btnAutoRestore);
         lv = findViewById(R.id.lvCand);
         lv.setAdapter(adapter);
@@ -79,8 +85,70 @@ public class LyricsSearchActivity extends Activity {
             finish();
         });
         findViewById(R.id.btnDoSearch).setOnClickListener(v -> { Haptics.tick(this); doSearch(); });
-        lv.setOnItemClickListener((p, v, pos, id) -> preview(results.get(pos)));
+        lv.setOnItemClickListener((p, v, pos, id) -> preview(shown.get(pos)));
         doSearch(); // 进页面先按预填词自动搜一次
+    }
+
+    /** 按源筛选（军师建议：候选太多时用户自己选源看）：全部 + 本次有结果的源 */
+    private void buildSrcChips() {
+        llSrcFilter.removeAllViews();
+        hsvSrcFilter.setVisibility(results.isEmpty() ? View.GONE : View.VISIBLE);
+        addSrcChip("全部", "");
+        for (String key : Lyrics.sourceOrder(getApplicationContext())) {
+            boolean has = false;
+            for (Lyrics.MCand c : results) if (c.src.equals(key)) { has = true; break; }
+            if (has) addSrcChip(Lyrics.srcName(key), key);
+        }
+        applyFilter();
+    }
+
+    private void addSrcChip(String label, final String key) {
+        TextView chip = new TextView(this);
+        float den = getResources().getDisplayMetrics().density;
+        android.widget.LinearLayout.LayoutParams lp =
+                new android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, (int) (30 * den));
+        lp.setMargins(0, 0, (int) (8 * den), 0);
+        chip.setLayoutParams(lp);
+        chip.setGravity(android.view.Gravity.CENTER);
+        chip.setPadding((int) (13 * den), 0, (int) (13 * den), 0);
+        chip.setText(label);
+        chip.setTextSize(12);
+        chip.setSingleLine(true);
+        chip.setTag(key);
+        chip.setOnClickListener(v -> { Haptics.tick(this); srcFilter = key; styleSrcChips(); applyFilter(); });
+        llSrcFilter.addView(chip);
+        styleChip(chip, key.equals(srcFilter));
+    }
+
+    private void styleChip(TextView chip, boolean on) {
+        if (on) {
+            chip.setBackground(ThemeUtil.accentGradient(this, 15));
+            chip.setTextColor(ThemeUtil.color(this, R.attr.gOnAccent));
+            chip.setTypeface(null, android.graphics.Typeface.BOLD);
+        } else {
+            chip.setBackgroundResource(R.drawable.bg_chip_pill);
+            chip.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+            chip.setTypeface(null, android.graphics.Typeface.NORMAL);
+        }
+    }
+
+    private void styleSrcChips() {
+        for (int i = 0; i < llSrcFilter.getChildCount(); i++) {
+            TextView chip = (TextView) llSrcFilter.getChildAt(i);
+            styleChip(chip, srcFilter.equals(chip.getTag()));
+        }
+    }
+
+    private void applyFilter() {
+        shown.clear();
+        for (Lyrics.MCand c : results) if (srcFilter.isEmpty() || c.src.equals(srcFilter)) shown.add(c);
+        adapter.notifyDataSetChanged();
+        if (!results.isEmpty()) {
+            tvStatus.setText(srcFilter.isEmpty()
+                    ? "共 " + results.size() + " 个候选，点一个预览歌词（可按歌词源筛选）"
+                    : Lyrics.srcName(srcFilter) + " 共 " + shown.size() + " 个候选（全部 " + results.size() + "）");
+        }
     }
 
     private void doSearch() {
@@ -96,10 +164,9 @@ public class LyricsSearchActivity extends Activity {
                 searching = false;
                 results.clear();
                 results.addAll(found);
-                adapter.notifyDataSetChanged();
-                tvStatus.setText(found.isEmpty()
-                        ? "没搜到候选，改改歌名/歌手再试试（比如去掉括号里的内容）"
-                        : "共 " + found.size() + " 个候选，点一个预览歌词");
+                srcFilter = "";
+                buildSrcChips();
+                if (found.isEmpty()) tvStatus.setText("没搜到候选，改改歌名/歌手再试试（比如去掉括号里的内容）");
             });
         }).start();
     }
@@ -112,7 +179,7 @@ public class LyricsSearchActivity extends Activity {
             final List<Lyrics.Line> lines = lrc == null ? new ArrayList<>() : Lyrics.parseLrc(lrc);
             runOnUiThread(() -> {
                 if (lines.size() < 5) {
-                    tvStatus.setText("共 " + results.size() + " 个候选，点一个预览歌词");
+                    tvStatus.setText(shown.isEmpty() ? "没搜到候选" : "共 " + shown.size() + " 个候选，点一个预览歌词");
                     Toast.makeText(this, "这版歌词取不到或没有时间轴，换一版试试", Toast.LENGTH_SHORT).show();
                     return;
                 }

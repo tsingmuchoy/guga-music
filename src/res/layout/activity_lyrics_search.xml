@@ -109,6 +109,21 @@
         android:textSize="14sp"
         android:textStyle="bold" />
 
+    <HorizontalScrollView
+        android:id="@+id/hsvSrcFilter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/llSrcFilter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
     <TextView
         android:id="@+id/tvLyrStatus"
         android:layout_width="match_parent"

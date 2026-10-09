@@ -1,8 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:gravity="center"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
     android:paddingTop="9dp"
-    android:paddingBottom="9dp"
-    android:textSize="15sp" />
+    android:paddingBottom="9dp">
+
+    <TextView
+        android:id="@+id/tvLyricMain"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/tvLyricRoma"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center"
+        android:textColor="?attr/gTextFaint"
+        android:textSize="11.5sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvLyricTrans"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center"
+        android:textColor="?attr/gTextSec"
+        android:textSize="12.5sp"
+        android:visibility="gone" />
+</LinearLayout>

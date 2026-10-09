@@ -12,6 +12,8 @@ import android.widget.Toast;
 public class PlaybackSettingsActivity extends Activity {
 
     private TextView btnAlbumCover;
+    private TextView btnLyricTrans;
+    private TextView btnLyricRoma;
     private TextView btnFloatIsland;
     private TextView btnSbLyricsEntry;
     private TextView btnMetered;
@@ -28,8 +30,14 @@ public class PlaybackSettingsActivity extends Activity {
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
 
         btnAlbumCover = findViewById(R.id.btnAlbumCover);
+        btnLyricTrans = findViewById(R.id.btnLyricTrans);
+        btnLyricRoma = findViewById(R.id.btnLyricRoma);
         refreshAlbumCover();
+        refreshLyricTrans();
+        refreshLyricRoma();
         findViewById(R.id.rowAlbumCover).setOnClickListener(v -> { Haptics.press(this); Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
+        findViewById(R.id.rowLyricTrans).setOnClickListener(v -> { Haptics.press(this); Lyrics.setShowTrans(this, !Lyrics.isShowTrans(this)); refreshLyricTrans(); });
+        findViewById(R.id.rowLyricRoma).setOnClickListener(v -> { Haptics.press(this); Lyrics.setShowRoma(this, !Lyrics.isShowRoma(this)); refreshLyricRoma(); });
         btnFloatIsland = findViewById(R.id.btnFloatIsland);
         refreshFloatIsland();
         findViewById(R.id.rowFloatIsland).setOnClickListener(v -> { Haptics.tick(this); onFloatIslandClicked(); });
@@ -169,6 +177,16 @@ public class PlaybackSettingsActivity extends Activity {
     private void refreshAlbumCover() {
         btnAlbumCover.setText("专辑封面：" + (Lyrics.isCoverArt(this) ? "开（歌曲自动换专辑原图）" : "关（用视频封面）"));
         IconUtil.leading(btnAlbumCover, R.drawable.ic_image, R.attr.gAccent);
+    }
+
+    private void refreshLyricTrans() {
+        btnLyricTrans.setText("歌词中文翻译：" + (Lyrics.isShowTrans(this) ? "开（日/韩歌曲有译文时显示）" : "关"));
+        IconUtil.leading(btnLyricTrans, R.drawable.ic_globe, R.attr.gAccent);
+    }
+
+    private void refreshLyricRoma() {
+        btnLyricRoma.setText("歌词罗马音：" + (Lyrics.isShowRoma(this) ? "开（日/韩歌曲有罗马音时显示）" : "关"));
+        IconUtil.leading(btnLyricRoma, R.drawable.ic_mic, R.attr.gAccent);
     }
 
     /** 音质五档选择行，档位存 player 偏好 quality_tier */

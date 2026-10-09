@@ -19,6 +19,8 @@ public class LyricsView extends View {
     private final Paint pNear = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pFar = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pHint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint pRoma = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint pTrans = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public LyricsView(Context c, AttributeSet a) {
         super(c, a);
@@ -36,6 +38,22 @@ public class LyricsView extends View {
         pHint.setTextSize(14 * sp);
         pHint.setColor(ThemeUtil.color(c, R.attr.gTextFaint));
         pHint.setTextAlign(Paint.Align.CENTER);
+        pRoma.setTextSize(11.5f * sp);
+        pRoma.setColor(ThemeUtil.color(c, R.attr.gTextFaint));
+        pRoma.setTextAlign(Paint.Align.CENTER);
+        pTrans.setTextSize(12.5f * sp);
+        pTrans.setColor(ThemeUtil.color(c, R.attr.gTextSec));
+        pTrans.setTextAlign(Paint.Align.CENTER);
+    }
+
+    /** 副行（罗马音/译文）绘制：过长截断、居中 */
+    private void drawFit(Canvas canvas, String text, Paint p, float cx, float baseline, float maxW) {
+        if (text == null) return;
+        if (p.measureText(text) > maxW) {
+            while (text.length() > 1 && p.measureText(text + "…") > maxW) text = text.substring(0, text.length() - 1);
+            text = text + "…";
+        }
+        canvas.drawText(text, cx, baseline, p);
     }
 
     @Override
@@ -80,12 +98,18 @@ public class LyricsView extends View {
         }
         int center = cur < 0 ? 0 : cur;
         float rowH = h / 5f;
+        Lyrics.Line curLine = center >= 0 && center < lines.size() ? lines.get(center) : null;
+        boolean showRoma = curLine != null && curLine.roma != null && !curLine.roma.isEmpty() && Lyrics.isShowRoma(getContext());
+        boolean showTrans = curLine != null && curLine.trans != null && !curLine.trans.isEmpty() && Lyrics.isShowTrans(getContext());
+        boolean subs = showRoma || showTrans;
         for (int off = -2; off <= 2; off++) {
             int i = center + off;
             if (i < 0 || i >= lines.size()) continue;
+            if (subs && Math.abs(off) == 1) continue; // 当前行带副行时给它腾一格
             Paint p = off == 0 ? pCur : Math.abs(off) == 1 ? pNear : pFar;
             Paint.FontMetrics fm = p.getFontMetrics();
             float y = h / 2 + off * rowH - (fm.ascent + fm.descent) / 2;
+            if (off == 0 && subs) y -= rowH * 0.52f; // 主行上移，罗马音/译文排在下方
             String text = lines.get(i).text;
             // 过长截断防溢出
             float maxW = w - 24;
@@ -94,6 +118,11 @@ public class LyricsView extends View {
                 text = text + "…";
             }
             canvas.drawText(text, w / 2, y, p);
+            if (off == 0 && subs) {
+                float sy = y;
+                if (showRoma) { sy += rowH * 0.50f; drawFit(canvas, curLine.roma, pRoma, w / 2, sy, w - 24); }
+                if (showTrans) { sy += rowH * 0.52f; drawFit(canvas, curLine.trans, pTrans, w / 2, sy, w - 24); }
+            }
         }
     }
 }
