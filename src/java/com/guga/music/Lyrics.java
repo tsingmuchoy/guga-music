@@ -1061,17 +1061,23 @@ n++;
 return n >= 3 ? sb.toString() : null;
 }
 
-/** 逐字补齐：结果没有逐字轴时，去网易云取同曲 YRC——先用它自带 LRC 与主歌词做重合率校验（≥0.5），
- *  再按时间窗把每个字重组进主歌词行；覆盖不到一半就整体放弃（宁缺毋滥）。试过的歌 7 天内不重复试（.w2 标记），防一次网络抖动永久堵死。 */
+/** 逐字补齐：结果没有逐字轴时，先去网易云取同曲 YRC，取不到再试酷狗 KRC（原生逐字、轻量解码）；
+ *  两源共用同一套闸门：与主歌词的时间重合率 ≥0.5、整体偏移校正、单调归属、覆盖 ≥1/2，否则整体放弃（宁缺毋滥）。
+ *  试过的歌 7 天内不重复试（.w3 标记），防一次网络抖动永久堵死。 */
 private static Result maybeWords(Context ctx, Track track, Result r, File cache, File dir) {
 try {
 if (r == null || r.lines == null || r.lines.size() < 5) return r;
 for (Line l : r.lines) if (l.words != null && !l.words.isEmpty()) return r;
-File mark = new File(dir, track.bvid + ".w2");
+File mark = new File(dir, track.bvid + ".w3");
 if (mark.exists() && System.currentTimeMillis() - mark.lastModified() < 7L * 24 * 3600 * 1000) return r;
 try { new java.io.FileOutputStream(mark).close(); } catch (Exception ignored) {}
-long nid = neteaseBestId(track, hintsOf(track));
-if (nid <= 0) return r;
+Hints hints = hintsOf(track);
+boolean done = false;
+String wsrc = "";
+// 1) 网易云 YRC
+try {
+long nid = neteaseBestId(track, hints);
+if (nid > 0) {
 JSONObject d = new JSONObject(httpGet(
 "https://music.163.com/api/song/lyric/v1?id=" + nid + "&cp=false&lv=0&kv=0&tv=0&rv=0&yv=1",
 "https://music.163.com"));
@@ -1079,11 +1085,39 @@ JSONObject yo = d.optJSONObject("yrc");
 JSONObject lo = d.optJSONObject("lrc");
 String yrc = yo == null ? null : yo.optString("lyric");
 String lrc = lo == null ? null : lo.optString("lyric");
-if (yrc == null || lrc == null || correlate(r.lines, lrc) < 0.5) return r;
+if (yrc != null && lrc != null) {
 List<YLine> yl = parseYrc(yrc);
-if (yl.isEmpty()) return r;
-// 先估两边时间轴的整体偏移（QQ 等源与网易云的时间戳常差几百毫秒，不校正会吞首字/串行）
-List<Line> neLines = parseLrc(lrc);
+if (!yl.isEmpty() && attachYWords(r, yl, lrc)) { done = true; wsrc = "网易云YRC"; }
+}
+}
+} catch (Exception ignored) {}
+// 2) 酷狗 KRC（原生逐字格式、轻量混淆非加密，网易云没逐字数据的歌常能在这补上）
+if (!done) {
+try {
+if (tryKugouKrc(track, hints, r)) { done = true; wsrc = "酷狗KRC"; }
+} catch (Exception ignored) {}
+}
+if (!done) return r;
+StringBuilder sb = new StringBuilder("#src:" + r.source + "\n");
+sb.append(lrcTextOf(r.lines));
+String ts = extraTextOf(r.lines, true);
+if (ts != null) sb.append("\n#trans:\n").append(ts);
+String rs = extraTextOf(r.lines, false);
+if (rs != null) sb.append("\n#roma:\n").append(rs);
+String wd = serializeWords(r.lines);
+if (wd != null) sb.append("\n#words:\n").append(wd);
+writeFile(cache, sb.toString());
+Diag.log(ctx, "🎤 已补齐逐字歌词（" + wsrc + "）《" + track.title + "》");
+} catch (Exception ignored) {}
+return r;
+}
+
+/** 把一份逐字轴（YLine 列表）重组进主歌词行：先与参考 LRC 做时间重合率校验（≥0.5），
+ *  再估整体偏移、单调归属、覆盖率 ≥1/2 才保留，否则回滚。网易云 YRC 与酷狗 KRC 共用。 */
+private static boolean attachYWords(Result r, List<YLine> yl, String refLrc) {
+if (correlate(r.lines, refLrc) < 0.5) return false;
+// 先估两边时间轴的整体偏移（各源时间戳常差几百毫秒，不校正会吞首字/串行）
+List<Line> neLines = parseLrc(refLrc);
 List<Long> deltas = new ArrayList<>();
 for (Line e : neLines) for (Line m : r.lines) {
 long dd = e.timeMs - m.timeMs;
@@ -1125,20 +1159,111 @@ if (perLine.get(i).size() >= 2) { m.words = perLine.get(i); covered++; }
 }
 if (total == 0 || covered * 2 < total) {
 for (Line m : r.lines) m.words = null;
-return r;
+return false;
 }
-StringBuilder sb = new StringBuilder("#src:" + r.source + "\n");
-sb.append(lrcTextOf(r.lines));
-String ts = extraTextOf(r.lines, true);
-if (ts != null) sb.append("\n#trans:\n").append(ts);
-String rs = extraTextOf(r.lines, false);
-if (rs != null) sb.append("\n#roma:\n").append(rs);
-String wd = serializeWords(r.lines);
-if (wd != null) sb.append("\n#words:\n").append(wd);
-writeFile(cache, sb.toString());
-Diag.log(ctx, "🎤 已补齐逐字歌词（网易云YRC）《" + track.title + "》");
+return true;
+}
+
+private static final byte[] KRC_KEY = {
+0x40, 0x47, 0x61, 0x77, 0x5E, 0x32, 0x74, 0x47,
+0x51, 0x36, 0x31, 0x2D, (byte) 0xCE, (byte) 0xD2, 0x6E, 0x69 };
+
+/** 酷狗 KRC 解码：Base64 → 去 krc1 头 → 逐字节 XOR 固定密钥 → zlib 解压（轻量混淆、非加密） */
+private static String decodeKrc(String b64) {
+try {
+byte[] raw = Base64.decode(b64, Base64.DEFAULT);
+if (raw.length < 5 || raw[0] != 'k' || raw[1] != 'r' || raw[2] != 'c' || raw[3] != '1')
+return new String(raw, StandardCharsets.UTF_8);
+byte[] dec = new byte[raw.length - 4];
+for (int i = 0; i < dec.length; i++) dec[i] = (byte) (raw[i + 4] ^ KRC_KEY[i % 16]);
+java.util.zip.InflaterInputStream in = new java.util.zip.InflaterInputStream(
+new java.io.ByteArrayInputStream(dec));
+java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+byte[] buf = new byte[8192];
+int n;
+while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+in.close();
+return bos.toString("UTF-8");
+} catch (Exception e) { return null; }
+}
+
+private static final Pattern KRC_LINE = Pattern.compile("^\\[(\\d+),(\\d+)\\](.*)$");
+private static final Pattern KRC_WORD = Pattern.compile("<(\\d+),(\\d+),\\d+>([^<]*)");
+
+/** 解析 KRC：唱词行 [行起,行长]<字偏移,字长,0>字…（偏移相对行起） */
+private static List<YLine> parseKrc(String text) {
+List<YLine> out = new ArrayList<>();
+for (String row : text.split("\n")) {
+Matcher m = KRC_LINE.matcher(row.trim());
+if (!m.find()) continue;
+long start;
+try { start = Long.parseLong(m.group(1)); } catch (Exception e) { continue; }
+Matcher wm = KRC_WORD.matcher(m.group(3));
+List<Word> ws = new ArrayList<>();
+while (wm.find()) {
+try {
+long rel = Long.parseLong(wm.group(1));
+long dur = Long.parseLong(wm.group(2));
+String t = wm.group(3);
+if (!t.isEmpty()) ws.add(new Word(start + rel, dur, t));
 } catch (Exception ignored) {}
-return r;
+}
+if (ws.size() >= 2) {
+YLine y = new YLine();
+y.startMs = start;
+y.words = ws;
+out.add(y);
+}
+}
+return out;
+}
+
+/** 逐字第二来源：酷狗 KRC。选歌规则与酷狗歌词一致（歌名分+歌手+时长差），取 fmt=krc 解码后走同一套对齐闸门 */
+private static boolean tryKugouKrc(Track track, Hints hints, Result r) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+Cand best = null;
+for (String q : hints.queries) {
+JSONObject sr = new JSONObject(httpGet("https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword="
++ URLEncoder.encode(q, "UTF-8"), null));
+JSONArray cands = sr.optJSONArray("candidates");
+if (cands == null) continue;
+for (int i = 0; i < cands.length(); i++) {
+JSONObject cj = cands.getJSONObject(i);
+long id = cj.optLong("id");
+if (id <= 0) continue;
+int score = nameScore(cj.optString("song"), hints.nameCands);
+long diff = wantDur > 0 ? Math.abs(cj.optLong("duration") - wantDur) : Long.MAX_VALUE / 2;
+String singer = cj.optString("singer");
+boolean artistHit = singer.length() >= 2 && track.title != null
+&& (track.title.contains(singer) || singer.equals(hints.artist));
+int group;
+if (score >= 80) group = 0;
+else if (score == 50 && artistHit) group = 1;
+else if (score == 0 && artistHit && diff <= 5000) group = 2;
+else continue;
+Cand c = new Cand(id, group, diff);
+c.ak = cj.optString("accesskey");
+if (best == null || c.group < best.group || (c.group == best.group && c.diff < best.diff)) best = c;
+}
+if (best != null) break;
+}
+if (best == null) return false;
+JSONObject dl = new JSONObject(httpGet(
+"https://lyrics.kugou.com/download?ver=1&client=pc&fmt=krc&charset=utf8&id=" + best.id
++ "&accesskey=" + best.ak, null));
+String content = dl.optString("content");
+if (content == null || content.isEmpty()) return false;
+String text = decodeKrc(content);
+if (text == null) return false;
+List<YLine> yl = parseKrc(text);
+if (yl.isEmpty()) return false;
+StringBuilder ref = new StringBuilder();
+for (YLine y : yl) {
+StringBuilder lt = new StringBuilder();
+for (Word w : y.words) lt.append(w.text);
+ref.append(stamp(y.startMs)).append(lt).append("\n");
+}
+return attachYWords(r, yl, ref.toString());
 }
 
 /** 日/韩歌曲补齐译文/罗马音：主歌词缺译/罗马音时，去网易云 v1 接口按歌名歌手找同一首歌，
