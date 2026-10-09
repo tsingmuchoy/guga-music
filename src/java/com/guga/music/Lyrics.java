@@ -36,7 +36,14 @@ public final long timeMs;
 public final String text;
 public String trans; // 中文翻译（有数据时按时间戳对齐进来）
 public String roma;  // 罗马音（同上）
+public List<Word> words; // 逐字时间轴（网易云 YRC / AMLL TTML，有数据时才有）
 public Line(long t, String s) { timeMs = t; text = s; }
+}
+
+/** 逐字时间轴的一个字/词 */
+public static class Word {
+public long startMs; public long durMs; public String text;
+public Word(long s, long d, String t) { startMs = s; durMs = d; text = t; }
 }
 
 public static class Result {
@@ -202,6 +209,12 @@ return ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getBoolean("
 public static void setShowRoma(Context ctx, boolean on) {
 ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("show_roma", on).apply();
 }
+public static boolean isShowWords(Context ctx) {
+return ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getBoolean("show_words", true);
+}
+public static void setShowWords(Context ctx, boolean on) {
+ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("show_words", on).apply();
+}
 
 public static void fetchCover(final Context ctx, final Track track, final CoverCb cb) {
 if (track == null || track.bvid == null || !isCoverArt(ctx)) { cb.onCover(null); return; }
@@ -360,14 +373,14 @@ try {
 if (cache.exists()) {
 Result cr = parseCache(readFile(cache));
 // 有锁定时只有「正是锁定版」的缓存才直接用；没锁定走原逻辑
-if (cr != null && (bind == null || cr.source.equals(bind.label))) return maybeEnrich(ctx, track, cr, cache, dir);
+if (cr != null && (bind == null || cr.source.equals(bind.label))) return maybeWords(ctx, track, maybeEnrich(ctx, track, cr, cache, dir), cache, dir);
 }
 if (bind != null) {
 try {
 MCand mc = new MCand();
 mc.src = bind.src; mc.ref = bind.ref; mc.name = bind.name; mc.artist = bind.artist; mc.durMs = bind.durMs;
 Result br = acceptPack(cache, fetchBoundPack(mc), bind.label);
-if (br != null) { Diag.log(ctx, "🎤 歌词命中：手动锁定（" + srcShort(bind.src) + "）"); return maybeEnrich(ctx, track, br, cache, dir); }
+if (br != null) { Diag.log(ctx, "🎤 歌词命中：手动锁定（" + srcShort(bind.src) + "）"); return maybeWords(ctx, track, maybeEnrich(ctx, track, br, cache, dir), cache, dir); }
 } catch (Exception ignored) {}
 // 锁定源这次没取到：落到下面自动流程兜底，绑定保留、下次播放再试
 }
@@ -387,16 +400,16 @@ if (key.equals("qq")) pack = qqLyrics(track, hints, alt);
 else if (key.equals("netease")) pack = neteaseLyrics(track, hints, alt);
 else if (key.equals("kugou")) { String s1 = kugouLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
 else if (key.equals("kuwo")) { String s1 = kuwoLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
-else if (key.equals("amll")) { String s1 = amllLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
+else if (key.equals("amll")) { pack = amllLyrics(track, hints, alt); }
 else if (key.equals("lrclib")) { String s1 = lrclibLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
 Result r = acceptPack(cache, pack, srcLabel(key));
-if (r != null) { Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + hints.name + "》"); return maybeEnrich(ctx, track, r, cache, dir); }
+if (r != null) { Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + hints.name + "》"); return maybeWords(ctx, track, maybeEnrich(ctx, track, r, cache, dir), cache, dir); }
 } catch (Exception ignored) {}
 }
 
 // B 站字幕兜底
 Result sr = trySubtitles(ctx, track, api, cache);
-if (sr != null) return maybeEnrich(ctx, track, sr, cache, dir);
+if (sr != null) return maybeWords(ctx, track, maybeEnrich(ctx, track, sr, cache, dir), cache, dir);
 
 try { writeFile(none, ""); trimLyricsDir(none); } catch (Exception ignored) {}
 Diag.log(ctx, "🎤 歌词未命中：《" + hints.name + "》");
@@ -573,6 +586,7 @@ if (tly != null) {
 String tt = tly.optString("lyric");
 if (tt != null && tt.contains("[")) p.trans = tt;
 }
+try { attachNeteaseWords(p, Long.parseLong(c.ref)); } catch (Exception ignored) {}
 return p;
 }
 }
@@ -678,7 +692,7 @@ return null;
 }
 
 private static class LrcPack {
-String lrc; String trans; String roma;
+String lrc; String trans; String roma; String words;
 LrcPack(String l) { lrc = l; }
 }
 
@@ -690,16 +704,22 @@ try {
 StringBuilder sb = new StringBuilder("#src:" + src + "\n" + pack.lrc);
 if (pack.trans != null && parseLrc(pack.trans).size() >= 3) sb.append("\n#trans:\n").append(pack.trans);
 if (pack.roma != null && parseLrc(pack.roma).size() >= 3) sb.append("\n#roma:\n").append(pack.roma);
+if (pack.words != null && !pack.words.isEmpty()) sb.append("\n#words:\n").append(pack.words);
 writeFile(cache, sb.toString());
 trimLyricsDir(cache);
 } catch (Exception ignored) {}
-return buildResult(lines, src, pack.trans, pack.roma);
+return buildResult(lines, src, pack.trans, pack.roma, pack.words);
 }
 
 /** 把译文/罗马音 LRC 按时间戳（±800ms 最近行）对齐挂到主歌词行上 */
 private static Result buildResult(List<Line> lines, String src, String transLrc, String romaLrc) {
+return buildResult(lines, src, transLrc, romaLrc, null);
+}
+
+private static Result buildResult(List<Line> lines, String src, String transLrc, String romaLrc, String wordsData) {
 if (transLrc != null) align(lines, transLrc, true);
 if (romaLrc != null) align(lines, romaLrc, false);
+if (wordsData != null) attachWords(lines, wordsData);
 return new Result(lines, src);
 }
 
@@ -777,14 +797,16 @@ else if (m.roma == null) m.roma = txt;
 private static Result parseCache(String content) {
 if (content == null) return null;
 String src = content.startsWith("#src:") ? content.substring(5, content.indexOf('\n')) : "缓存";
-String main = content, trans = null, roma = null;
+String main = content, trans = null, roma = null, words = null;
+int wi = main.indexOf("\n#words:\n");
+if (wi >= 0) { words = main.substring(wi + 8); main = main.substring(0, wi); }
 int ri = main.indexOf("\n#roma:\n");
 if (ri >= 0) { roma = main.substring(ri + 7); main = main.substring(0, ri); }
 int ti = main.indexOf("\n#trans:\n");
 if (ti >= 0) { trans = main.substring(ti + 8); main = main.substring(0, ti); }
 List<Line> lines = parseLrc(main);
 if (lines.isEmpty()) return null;
-return buildResult(lines, src, trans, roma);
+return buildResult(lines, src, trans, roma, words);
 }
 
 private static boolean isForeignText(String s) {
@@ -824,6 +846,130 @@ if (c < 128) ok++;
 return tot == 0 ? 0 : (double) ok / tot;
 }
 
+// ---------------- 逐字时间轴（YRC 解析 / 序列化 / 挂载） ----------------
+
+private static class YLine { long startMs; List<Word> words = new ArrayList<>(); }
+
+private static final Pattern YRC_LINE = Pattern.compile("^\\[(\\d+),(\\d+)\\](.*)$");
+
+/** 解析网易云 YRC：唱词行是 [行起,行长](字起,字长,0)字(字起,字长,0)字…，开头是 JSON 制作信息行（自动跳过） */
+private static List<YLine> parseYrc(String yrc) {
+List<YLine> out = new ArrayList<>();
+if (yrc == null) return out;
+for (String raw : yrc.split("\n")) {
+Matcher m = YRC_LINE.matcher(raw.trim());
+if (!m.find()) continue;
+YLine yl = new YLine();
+try { yl.startMs = Long.parseLong(m.group(1)); } catch (Exception e) { continue; }
+String rest = m.group(3);
+int i = 0;
+while (i < rest.length()) {
+int lp = rest.indexOf('(', i);
+if (lp < 0) break;
+int rp = rest.indexOf(')', lp);
+if (rp < 0) break;
+int next = rest.indexOf('(', rp);
+String text = next < 0 ? rest.substring(rp + 1) : rest.substring(rp + 1, next);
+String[] parts = rest.substring(lp + 1, rp).split(",");
+if (parts.length >= 2) {
+try {
+long ws = Long.parseLong(parts[0].trim());
+long wd = Long.parseLong(parts[1].trim());
+if (!text.isEmpty()) yl.words.add(new Word(ws, wd, text));
+} catch (Exception ignored) {}
+}
+i = next < 0 ? rest.length() : next;
+}
+if (yl.words.size() >= 2) out.add(yl);
+}
+return out;
+}
+
+private static String escWord(String s) {
+return s.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,");
+}
+
+private static String unescWord(String s) {
+StringBuilder sb = new StringBuilder();
+for (int i = 0; i < s.length(); i++) {
+char c = s.charAt(i);
+if (c == '\\' && i + 1 < s.length()) sb.append(s.charAt(++i));
+else sb.append(c);
+}
+return sb.toString();
+}
+
+/** 逐字轴序列化（缓存 #words 段）：每行一条「行时间<TAB>相对起,时长,字;相对起,时长,字…」 */
+private static String serializeWords(List<Line> lines) {
+StringBuilder sb = new StringBuilder();
+for (Line l : lines) {
+if (l.words == null || l.words.isEmpty()) continue;
+sb.append(l.timeMs).append('\t');
+for (int i = 0; i < l.words.size(); i++) {
+Word w = l.words.get(i);
+if (i > 0) sb.append(';');
+sb.append(w.startMs - l.timeMs).append(',').append(w.durMs).append(',').append(escWord(w.text));
+}
+sb.append('\n');
+}
+return sb.length() == 0 ? null : sb.toString();
+}
+
+private static void attachWords(List<Line> lines, String data) {
+java.util.Map<Long, Line> byTime = new java.util.HashMap<>();
+for (Line l : lines) if (!byTime.containsKey(l.timeMs)) byTime.put(l.timeMs, l);
+for (String row : data.split("\n")) {
+int tab = row.indexOf('\t');
+if (tab <= 0) continue;
+Line target;
+try { target = byTime.get(Long.parseLong(row.substring(0, tab).trim())); }
+catch (Exception e) { continue; }
+if (target == null) continue;
+List<Word> ws = new ArrayList<>();
+String body = row.substring(tab + 1);
+List<String> segs = new ArrayList<>();
+StringBuilder cur = new StringBuilder();
+for (int i = 0; i < body.length(); i++) {
+char c = body.charAt(i);
+if (c == '\\' && i + 1 < body.length()) { cur.append(c).append(body.charAt(++i)); }
+else if (c == ';') { segs.add(cur.toString()); cur.setLength(0); }
+else cur.append(c);
+}
+if (cur.length() > 0) segs.add(cur.toString());
+for (String seg : segs) {
+int c1 = seg.indexOf(','), c2 = c1 < 0 ? -1 : seg.indexOf(',', c1 + 1);
+if (c1 < 0 || c2 < 0) continue;
+try {
+long rel = Long.parseLong(seg.substring(0, c1).trim());
+long dur = Long.parseLong(seg.substring(c1 + 1, c2).trim());
+String text = unescWord(seg.substring(c2 + 1));
+if (!text.isEmpty()) ws.add(new Word(target.timeMs + rel, dur, text));
+} catch (Exception ignored) {}
+}
+if (ws.size() >= 2) target.words = ws;
+}
+}
+
+/** 给网易云歌词包补逐字轴：v1 接口 yv=1 取 YRC，按行起始时间（±150ms）贴到包内歌词行 */
+private static void attachNeteaseWords(LrcPack p, long nid) {
+try {
+JSONObject d = new JSONObject(httpGet(
+"https://music.163.com/api/song/lyric/v1?id=" + nid + "&cp=false&lv=0&kv=0&tv=0&rv=0&yv=1",
+"https://music.163.com"));
+JSONObject yo = d.optJSONObject("yrc");
+if (yo == null) return;
+List<YLine> yl = parseYrc(yo.optString("lyric"));
+if (yl.isEmpty()) return;
+List<Line> lines = parseLrc(p.lrc);
+for (Line m : lines) {
+YLine best = null; long bd = Long.MAX_VALUE;
+for (YLine y : yl) { long dd = Math.abs(y.startMs - m.timeMs); if (dd < bd) { bd = dd; best = y; } }
+if (best != null && bd <= 150) m.words = best.words;
+}
+p.words = serializeWords(lines);
+} catch (Exception ignored) {}
+}
+
 private static String stamp(long ms) {
 return String.format("[%02d:%02d.%03d]", ms / 60000, (ms % 60000) / 1000, ms % 1000);
 }
@@ -847,6 +993,86 @@ sb.append(stamp(l.timeMs)).append(v).append("\n");
 n++;
 }
 return n >= 3 ? sb.toString() : null;
+}
+
+/** 逐字补齐：结果没有逐字轴时，去网易云取同曲 YRC——先用它自带 LRC 与主歌词做重合率校验（≥0.5），
+ *  再按时间窗把每个字重组进主歌词行；覆盖不到一半就整体放弃（宁缺毋滥）。每首只试一次（.w 标记）。 */
+private static Result maybeWords(Context ctx, Track track, Result r, File cache, File dir) {
+try {
+if (r == null || r.lines == null || r.lines.size() < 5) return r;
+for (Line l : r.lines) if (l.words != null && !l.words.isEmpty()) return r;
+File mark = new File(dir, track.bvid + ".w");
+if (mark.exists()) return r;
+long nid = neteaseBestId(track, hintsOf(track));
+if (nid <= 0) { mark.createNewFile(); return r; }
+JSONObject d = new JSONObject(httpGet(
+"https://music.163.com/api/song/lyric/v1?id=" + nid + "&cp=false&lv=0&kv=0&tv=0&rv=0&yv=1",
+"https://music.163.com"));
+mark.createNewFile();
+JSONObject yo = d.optJSONObject("yrc");
+JSONObject lo = d.optJSONObject("lrc");
+String yrc = yo == null ? null : yo.optString("lyric");
+String lrc = lo == null ? null : lo.optString("lyric");
+if (yrc == null || lrc == null || correlate(r.lines, lrc) < 0.5) return r;
+List<YLine> yl = parseYrc(yrc);
+if (yl.isEmpty()) return r;
+// 先估两边时间轴的整体偏移（QQ 等源与网易云的时间戳常差几百毫秒，不校正会吞首字/串行）
+List<Line> neLines = parseLrc(lrc);
+List<Long> deltas = new ArrayList<>();
+for (Line e : neLines) for (Line m : r.lines) {
+long dd = e.timeMs - m.timeMs;
+if (Math.abs(dd) <= 1500) deltas.add(dd);
+}
+long off = 0;
+if (deltas.size() >= 3) {
+java.util.Map<Long, Integer> buckets = new java.util.HashMap<>();
+for (long dd : deltas) {
+long b = Math.round(dd / 200.0);
+Integer c = buckets.get(b);
+buckets.put(b, c == null ? 1 : c + 1);
+}
+long bestB = 0; int bestC = -1;
+for (java.util.Map.Entry<Long, Integer> en : buckets.entrySet()) {
+if (en.getValue() > bestC) { bestC = en.getValue(); bestB = en.getKey(); }
+}
+List<Long> sel = new ArrayList<>();
+for (long dd : deltas) if (Math.round(dd / 200.0) == bestB) sel.add(dd);
+java.util.Collections.sort(sel);
+off = sel.get(sel.size() / 2);
+}
+// 单调归属：每个字归「校正后行戳 ≤ 字起＋250ms」的最后一行（一个字只归一行，不串行）
+List<List<Word>> perLine = new ArrayList<>();
+for (int i = 0; i < r.lines.size(); i++) perLine.add(new ArrayList<>());
+int ptr = -1;
+for (YLine y : yl) {
+for (Word w : y.words) {
+while (ptr + 1 < r.lines.size() && r.lines.get(ptr + 1).timeMs + off <= w.startMs + 250) ptr++;
+if (ptr >= 0) perLine.get(ptr).add(w);
+}
+}
+int total = 0, covered = 0;
+for (int i = 0; i < r.lines.size(); i++) {
+Line m = r.lines.get(i);
+if (m.text == null || m.text.trim().isEmpty()) continue;
+total++;
+if (perLine.get(i).size() >= 2) { m.words = perLine.get(i); covered++; }
+}
+if (total == 0 || covered * 2 < total) {
+for (Line m : r.lines) m.words = null;
+return r;
+}
+StringBuilder sb = new StringBuilder("#src:" + r.source + "\n");
+sb.append(lrcTextOf(r.lines));
+String ts = extraTextOf(r.lines, true);
+if (ts != null) sb.append("\n#trans:\n").append(ts);
+String rs = extraTextOf(r.lines, false);
+if (rs != null) sb.append("\n#roma:\n").append(rs);
+String wd = serializeWords(r.lines);
+if (wd != null) sb.append("\n#words:\n").append(wd);
+writeFile(cache, sb.toString());
+Diag.log(ctx, "🎤 已补齐逐字歌词（网易云YRC）《" + track.title + "》");
+} catch (Exception ignored) {}
+return r;
 }
 
 /** 日/韩歌曲补齐译文/罗马音：主歌词缺译/罗马音时，去网易云 v1 接口按歌名歌手找同一首歌，
@@ -964,6 +1190,7 @@ if (tly != null) {
 String tt = tly.optString("lyric");
 if (tt != null && tt.contains("[")) p.trans = tt;
 }
+attachNeteaseWords(p, c.id);
 return p;
 }
 }
@@ -1408,27 +1635,27 @@ return null;
 }
 
 // ---------------- AMLL TTML（按平台歌曲 ID 查 amll-ttml-db） ----------------
-private static String amllLyrics(Track track, Hints hints, int alt) throws Exception {
+private static LrcPack amllLyrics(Track track, Hints hints, int alt) throws Exception {
 try {
 List<QCand> pool = qqCandidates(track, hints);
 int n = Math.min(pool.size(), 3);
 for (int k = 0; k < n; k++) {
 QCand c = pool.get(Math.floorMod(alt + k, pool.size()));
-String lrc = amllFetch("qq-lyrics/" + c.mid + ".ttml");
-if (lrc != null) return lrc;
+LrcPack p = amllFetch("qq-lyrics/" + c.mid + ".ttml");
+if (p != null) return p;
 }
 } catch (Exception ignored) {}
 try {
 long id = neteaseBestId(track, hints);
 if (id > 0) {
-String lrc = amllFetch("ncm-lyrics/" + id + ".ttml");
-if (lrc != null) return lrc;
+LrcPack p = amllFetch("ncm-lyrics/" + id + ".ttml");
+if (p != null) return p;
 }
 } catch (Exception ignored) {}
 return null;
 }
 
-private static String amllFetch(String path) {
+private static LrcPack amllFetch(String path) {
 String[] bases = {
 "https://cdn.jsdelivr.net/gh/amll-dev/amll-ttml-db@main/",
 "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/main/"
@@ -1438,11 +1665,63 @@ try {
 String ttml = httpGet(b + path, null);
 if (ttml != null && ttml.contains("<tt")) {
 String lrc = ttmlToLrc(ttml);
-if (lrc != null) return lrc;
+if (lrc != null) {
+LrcPack p = new LrcPack(lrc);
+p.words = ttmlWordsData(ttml, lrc);
+return p;
+}
 }
 } catch (Exception ignored) {}
 }
 return null;
+}
+
+private static final Pattern TTML_WORD = Pattern.compile("<span\\b([^>]*)>([^<]*)</span>");
+private static final Pattern TTML_ATTR_T = Pattern.compile("(begin|end)=\"([^\"]+)\"");
+
+/** 从 TTML 提取逐字跨度：每行 <p> 里带 begin/end 的普通 span（排除翻译/罗马音/背景声部），按行时间贴到 LRC 行后序列化 */
+private static String ttmlWordsData(String ttml, String lrcText) {
+try {
+Matcher m = TTML_P.matcher(ttml);
+java.util.Map<Long, List<Word>> byBegin = new java.util.HashMap<>();
+while (m.find()) {
+long pBegin = ttmlTime(m.group(1));
+if (pBegin < 0) continue;
+String inner = TTML_TRANS.matcher(m.group(2)).replaceAll("");
+Matcher sm = TTML_WORD.matcher(inner);
+List<Word> ws = new ArrayList<>();
+while (sm.find()) {
+String attrs = sm.group(1);
+if (attrs.contains("x-bg")) continue;
+long wb = -1, we = -1;
+Matcher am = TTML_ATTR_T.matcher(attrs);
+while (am.find()) {
+if (am.group(1).equals("begin")) wb = ttmlTime(am.group(2));
+else we = ttmlTime(am.group(2));
+}
+if (wb < 0 || we <= wb) continue;
+String text = sm.group(2).replace("&lt;", "<").replace("&gt;", ">")
+.replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&");
+if (!text.isEmpty()) ws.add(new Word(wb, we - wb, text));
+}
+if (ws.size() >= 2) byBegin.put(pBegin, ws);
+}
+if (byBegin.isEmpty()) return null;
+List<Line> lines = parseLrc(lrcText);
+for (Line ln : lines) {
+List<Word> ws = byBegin.get(ln.timeMs);
+if (ws == null) {
+long bd = Long.MAX_VALUE;
+for (java.util.Map.Entry<Long, List<Word>> e : byBegin.entrySet()) {
+long dd = Math.abs(e.getKey() - ln.timeMs);
+if (dd < bd) { bd = dd; ws = e.getValue(); }
+}
+if (bd > 150) ws = null;
+}
+if (ws != null) ln.words = ws;
+}
+return serializeWords(lines);
+} catch (Exception e) { return null; }
 }
 
 private static long neteaseBestId(Track track, Hints hints) throws Exception {

@@ -29,6 +29,24 @@ public class LyricsActivity extends Activity {
     private long lyrAt;
     private final Handler handler = new Handler();
 
+    // 逐字扫光专用快刷：40ms 只更新当前行 SyllableView 的进度（不重绑列表）
+    private final Runnable wordTicker = new Runnable() {
+        @Override public void run() {
+            PlayerService s = PlayerService.get();
+            if (s != null && lv != null) {
+                long pos = s.getPosition();
+                for (int i = 0; i < lv.getChildCount(); i++) {
+                    Object tag = lv.getChildAt(i).getTag();
+                    if (tag instanceof SyllableView) {
+                        SyllableView sv = (SyllableView) tag;
+                        if (sv.getVisibility() == View.VISIBLE) sv.setPosition(pos);
+                    }
+                }
+            }
+            handler.postDelayed(this, 40);
+        }
+    };
+
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
             PlayerService s = PlayerService.get();
@@ -141,8 +159,13 @@ public class LyricsActivity extends Activity {
         super.onResume();
         if (ThemeUtil.consumeDirty(this)) { recreate(); return; }
         handler.post(ticker);
+        handler.post(wordTicker);
     }
-    @Override protected void onPause() { handler.removeCallbacks(ticker); super.onPause(); }
+    @Override protected void onPause() {
+        handler.removeCallbacks(ticker);
+        handler.removeCallbacks(wordTicker);
+        super.onPause();
+    }
 
     private final BaseAdapter adapter = new BaseAdapter() {
         @Override public int getCount() { return lines.size(); }
@@ -152,12 +175,35 @@ public class LyricsActivity extends Activity {
             if (cv == null) cv = LayoutInflater.from(LyricsActivity.this).inflate(R.layout.row_lyric, parent, false);
             Lyrics.Line line = lines.get(p);
             TextView tv = cv.findViewById(R.id.tvLyricMain);
-            tv.setText(line.text);
             boolean cur = p == curIdx;
-            if (cur) ThemeUtil.gradientText(tv);
-            else ThemeUtil.plainText(tv, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec));
-            tv.setTextSize(cur ? 17 : 15);
-            tv.setTypeface(null, cur ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            // 逐字模式：当前行且这行有逐字轴时，用 SyllableView 逐字扫光替代普通文本
+            boolean useWords = cur && Lyrics.isShowWords(LyricsActivity.this)
+                    && line.words != null && line.words.size() >= 2;
+            Object tag = cv.getTag();
+            SyllableView sv = tag instanceof SyllableView ? (SyllableView) tag : null;
+            if (useWords) {
+                if (sv == null) {
+                    sv = new SyllableView(LyricsActivity.this);
+                    sv.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                    ((ViewGroup) cv).addView(sv, 0);
+                    cv.setTag(sv);
+                }
+                sv.setVisibility(View.VISIBLE);
+                sv.setWords(line.words, 17, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec),
+                        ThemeUtil.gradColors(LyricsActivity.this));
+                PlayerService ps = PlayerService.get();
+                if (ps != null) sv.setPosition(ps.getPosition());
+                tv.setVisibility(View.GONE);
+            } else {
+                if (sv != null) sv.setVisibility(View.GONE);
+                tv.setVisibility(View.VISIBLE);
+                tv.setText(line.text);
+                if (cur) ThemeUtil.gradientText(tv);
+                else ThemeUtil.plainText(tv, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec));
+                tv.setTextSize(cur ? 17 : 15);
+                tv.setTypeface(null, cur ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            }
             // 副行：罗马音（小、淡）与中文翻译（略大、次级色），开关关了或这行没数据就不占位
             TextView tvr = cv.findViewById(R.id.tvLyricRoma);
             boolean sr = Lyrics.isShowRoma(LyricsActivity.this) && line.roma != null && !line.roma.isEmpty();
