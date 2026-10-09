@@ -417,7 +417,7 @@ int total = -1;
 for (int pn = 0; pn < 12 && out.tracks.size() < 500; pn++) {
 JSONObject r = new JSONObject(httpGetBd(
 "https://bd-api.kuwo.cn/api/service/playlist/" + id + "/musicList?source=" + source
-+ "&pn=" + pn + "&rn=100&reqId=" + rid + pn));
++ "&pn=" + pn + "&rn=500&reqId=" + rid + pn));
 if (r.optInt("code") != 200) {
 if (pn == 0) throw new Exception("波点接口拒绝了请求（歌单可能已设为私密）");
 break;
@@ -633,6 +633,36 @@ if (best == null &&!firstArtist.isEmpty()) {
 // 换个问法再试一次：只用歌名搜，靠打分把关
 best = pickBest(searchSync(api, s.name), s);
 }
+return best;
+}
+
+/** B 站搜索被风控拦截（区别于「真的搜不到」）：导入方据此退避重试、别把歌误判成未匹配 */
+public static class BlockedException extends Exception {
+public BlockedException(String m) { super(m); }
+}
+
+/** searchSync 的抛错版：风控 → BlockedException；其他错误按无结果处理 */
+public static List<Track> searchSyncE(BiliApi api, String keyword) throws BlockedException {
+final List<Track>[] box = new List[1];
+final Exception[] err = new Exception[1];
+final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+api.search(keyword, 1, null, new BiliApi.Cb<List<Track>>() {
+@Override public void onOk(List<Track> v) { box[0] = v; latch.countDown();}
+@Override public void onErr(String msg) { err[0] = new Exception(msg); latch.countDown();}
+});
+try { latch.await(20, java.util.concurrent.TimeUnit.SECONDS);} catch (InterruptedException ignored) {}
+if (box[0] != null) return box[0];
+if (err[0] != null && err[0].getMessage() != null && err[0].getMessage().contains("VOUCHER"))
+throw new BlockedException(err[0].getMessage());
+return new ArrayList<>();
+}
+
+/** matchOne 的抛错版：任一问法被风控就整体上抛，不做无用功 */
+public static Track matchOneE(BiliApi api, Src s) throws BlockedException {
+String firstArtist = s.artist == null ? "" : s.artist.split("[/、,&]")[0].trim();
+String q = firstArtist.isEmpty() ? s.name : s.name + " " + firstArtist;
+Track best = pickBest(searchSyncE(api, q), s);
+if (best == null && !firstArtist.isEmpty()) best = pickBest(searchSyncE(api, s.name), s);
 return best;
 }
 }

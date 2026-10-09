@@ -209,6 +209,7 @@ public class BiliApi {
                 Diag.log(appCtx, "🔍 搜索首试失败：" + e1.getMessage());
             }
             // 自愈：buvid 与 WBI 签名密钥强制刷新后重试（多为风控/密钥过期导致的间歇空白）
+            Exception healErr = null;
             try {
                 sp.edit().remove("buvid3").remove("buvid4").remove("mixin_day").apply();
                 prepare();
@@ -219,8 +220,12 @@ public class BiliApi {
                 }
                 Diag.log(appCtx, "🔍 搜索刷新凭证后仍为空，走兜底");
             } catch (Exception e2) {
+                healErr = e2;
                 Diag.log(appCtx, "🔍 搜索重试失败：" + e2.getMessage());
             }
+            // 换了新凭证仍被风控：如实上抛给调用方（别拿老接口的报错把原因盖住）
+            if (healErr != null && healErr.getMessage() != null
+                    && healErr.getMessage().startsWith("VOUCHER")) throw healErr;
             // 兜底：非 WBI 老搜索接口（风控较松）
             List<Track> r = searchLegacy(keyword, page, order);
             Diag.log(appCtx, "🔍 搜索走兜底接口，结果 " + r.size() + " 条");
@@ -238,6 +243,9 @@ public class BiliApi {
         String url = "https://api.bilibili.com/x/web-interface/wbi/search/type?" + Wbi.signQuery(p, mixin());
         JSONObject j = getJson(url);
         if (j.getInt("code") != 0) throw new Exception("code " + j.getInt("code") + "：" + j.optString("message"));
+        JSONObject sdata = j.optJSONObject("data");
+        // 风控拦截时 code 仍是 0、但 data 只剩一张验证票据——必须与「真没结果」区分开
+        if (sdata != null && sdata.has("v_voucher")) throw new Exception("VOUCHER:搜索被风控拦截");
         return parseSearch(j);
     }
 

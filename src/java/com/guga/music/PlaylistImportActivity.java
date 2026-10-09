@@ -32,6 +32,7 @@ private EditText etLink, etName;
 private LinearLayout llPlatforms, llProgress, llResult, llFail;
 private TextView btnStart, tvStage, tvSummary, tvUnmatchedHead, tvUnmatched, btnSave, tvFailMsg;
 private String bruteDigits;
+private boolean blockedAbort;
 private ProgressBar pbImport;
 private ListView lvResult;
 private ScrollView svUnmatched;
@@ -250,6 +251,10 @@ worker = new Thread(() -> runImport(fu));
 worker.start();
 }
 
+private static void sleepQuiet(long ms) {
+try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+}
+
 private void showFail(String msg) {
 tvFailMsg.setText(msg);
 llFail.setVisibility(View.VISIBLE);
@@ -278,17 +283,48 @@ pbImport.setMax(total);
 pbImport.setProgress(0);
 tvStage.setText("共 " + total + " 首，开始匹配 B 站…");
 });
+blockedAbort = false;
+int consecBlocked = 0;
 for (int i = 0; i < total; i++) {
 if (cancelled) { postReset("已取消"); return; }
 PlaylistImport.Src s = p.tracks.get(i);
-Track t = PlaylistImport.matchOne(api, s);
+Track t = null;
+boolean blockedHere = false;
+try {
+t = PlaylistImport.matchOneE(api, s);
+consecBlocked = 0;
+} catch (PlaylistImport.BlockedException be) {
+blockedHere = true;
+// 风控退避：等一等再重试同一首（BiliApi 内部已先自动换过一次凭证）
+long[] waits = {4000, 10000, 25000};
+for (int a = 0; a < waits.length && t == null; a++) {
+final long wsec = waits[a] / 1000;
+final int att = a + 1;
+runOnUiThread(() -> tvStage.setText("B站搜索被临时风控，等 " + wsec + " 秒后第 " + att + " 次重试…"));
+sleepQuiet(waits[a]);
+if (cancelled) { postReset("已取消"); return; }
+try { t = PlaylistImport.matchOneE(api, s); blockedHere = false; consecBlocked = 0; }
+catch (PlaylistImport.BlockedException be2) { blockedHere = true; }
+}
+}
+if (blockedHere) {
+consecBlocked++;
+if (consecBlocked >= 3) {
+// 连着三首退避重试都过不去：多半是当前网络被重点风控，别再硬撞——先交已匹配的
+blockedAbort = true;
+unmatched.add(s);
+for (int j = i + 1; j < total; j++) unmatched.add(p.tracks.get(j));
+runOnUiThread(() -> pbImport.setProgress(total));
+break;
+}
+}
 if (t != null) { matchedTracks.add(t); matchedSrcs.add(s); } else unmatched.add(s);
 final int done = i + 1, mt = matchedTracks.size();
 runOnUiThread(() -> {
 pbImport.setProgress(done);
 tvStage.setText("匹配中 " + done + "/" + total + " · 已匹配 " + mt + " 首");
 });
-if (i < total - 1) Thread.sleep(200);
+if (i < total - 1) Thread.sleep(700);
 }
 runOnUiThread(this::showResult);
 } catch (Exception e) {
@@ -316,7 +352,8 @@ etName.setText(parsed.title);
 int total = parsed.tracks.size();
 tvSummary.setText("来源：" + PlaylistImport.platformName(parsed.platform)
 + " · 共 " + total + " 首 · 匹配 " + matchedTracks.size() + " · 未匹配 " + unmatched.size()
-+ (parsed.skipped > 0 ? " · 跳过失效 " + parsed.skipped : ""));
++ (parsed.skipped > 0 ? " · 跳过失效 " + parsed.skipped : "")
++ (blockedAbort ? "\n⚠️ B站搜索被临时风控，导入提前结束：先把已匹配的存了，过几分钟再导一次这张歌单即可" : ""));
 lvResult.setAdapter(new BaseAdapter() {
 @Override public int getCount() { return matchedTracks.size(); }
 @Override public Object getItem(int pos) { return matchedTracks.get(pos); }
