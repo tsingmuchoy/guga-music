@@ -282,8 +282,15 @@ public class LyricsActivity extends Activity {
         android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this).setView(root).create();
         holder[0] = dlg;
         dlg.show();
-        if (dlg.getWindow() != null) dlg.getWindow().setBackgroundDrawable(
-                new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+        // 底部半屏面板 + 不压暗背景：拖滑杆时上面的歌词实时滚动/扫光都看得见，摸得准
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            dlg.getWindow().setGravity(android.view.Gravity.BOTTOM);
+            dlg.getWindow().setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+            dlg.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        }
     }
 
     private void loadLyrics(final Track t, boolean next) {
