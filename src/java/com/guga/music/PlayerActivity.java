@@ -40,7 +40,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
                 if (dur > 0) {
                     sb.setMax(dur);
                     sb.setProgress(pos);
-                    lyView.setPosition(pos);
+                    Track ct = s.current();
+                    lyView.setPosition(pos - (ct != null ? Lyrics.offsetOf(PlayerActivity.this, ct.bvid) : 0));
                     tvPos.setText(Track.fmtDur(pos / 1000));
                     tvDur.setText(Track.fmtDur(dur / 1000));
                 }

@@ -1465,7 +1465,8 @@ public class PlayerService extends Service {
                 lp.y = wantY;
                 try { sbWm.updateViewLayout(sbView, lp); } catch (Exception ignored) {}
             }
-            int idx = Lyrics.indexAt(sbLines, getPosition());
+            Track curT = current();
+            int idx = Lyrics.indexAt(sbLines, getPosition() - (curT != null ? Lyrics.offsetOf(this, curT.bvid) : 0));
             if (idx != sbIdx) {
                 sbIdx = idx;
                 sbView.setText(idx >= 0 ? sbLines.get(idx).text : "");

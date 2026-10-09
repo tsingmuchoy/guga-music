@@ -222,6 +222,19 @@ public static void setSimWords(Context ctx, boolean on) {
 ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("sim_words", on).apply();
 }
 
+/** 歌词偏移（按视频绑定保存）：用户手动校准某支视频与歌词的时间差，毫秒；正数=歌词延后出现 */
+public static int offsetOf(Context ctx, String bvid) {
+if (bvid == null) return 0;
+return ctx.getSharedPreferences("lyric_offset", Context.MODE_PRIVATE).getInt("off_" + bvid, 0);
+}
+public static void setOffset(Context ctx, String bvid, int ms) {
+if (bvid == null) return;
+android.content.SharedPreferences.Editor e =
+ctx.getSharedPreferences("lyric_offset", Context.MODE_PRIVATE).edit();
+if (ms == 0) e.remove("off_" + bvid); else e.putInt("off_" + bvid, ms);
+e.apply();
+}
+
 /** 模拟扫字（兜底）：一行没有真逐字数据时，按行时间窗把每个字匀速排开——只是显示效果，
  *  不是真数据；只在用户手动开启「模拟扫字」时由歌词页调用。制作信息行不模拟。 */
 public static List<Word> simWords(Line l, long nextMs) {

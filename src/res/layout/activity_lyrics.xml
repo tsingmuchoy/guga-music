@@ -72,8 +72,21 @@
                 android:gravity="right"
                 android:paddingLeft="10dp"
                 android:paddingTop="2dp"
-                android:paddingBottom="8dp"
+                android:paddingBottom="2dp"
                 android:text="手动匹配 🎯"
+                android:textColor="?attr/gAccent"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btnOffsetLyrics"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="right"
+                android:paddingLeft="10dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="8dp"
+                android:text="歌词偏移 ⏱"
                 android:textColor="?attr/gAccent"
                 android:textSize="12sp"
                 android:visibility="gone" />
