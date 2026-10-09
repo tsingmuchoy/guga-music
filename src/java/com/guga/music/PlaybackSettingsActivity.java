@@ -15,6 +15,7 @@ public class PlaybackSettingsActivity extends Activity {
     private TextView btnLyricTrans;
     private TextView btnLyricRoma;
     private TextView btnLyricWords;
+    private TextView btnLyricSimWords;
     private TextView btnFloatIsland;
     private TextView btnSbLyricsEntry;
     private TextView btnMetered;
@@ -34,14 +35,17 @@ public class PlaybackSettingsActivity extends Activity {
         btnLyricTrans = findViewById(R.id.btnLyricTrans);
         btnLyricRoma = findViewById(R.id.btnLyricRoma);
         btnLyricWords = findViewById(R.id.btnLyricWords);
+        btnLyricSimWords = findViewById(R.id.btnLyricSimWords);
         refreshAlbumCover();
         refreshLyricTrans();
         refreshLyricRoma();
         refreshLyricWords();
+        refreshLyricSimWords();
         findViewById(R.id.rowAlbumCover).setOnClickListener(v -> { Haptics.press(this); Lyrics.setCoverArt(this, !Lyrics.isCoverArt(this)); refreshAlbumCover(); });
         findViewById(R.id.rowLyricTrans).setOnClickListener(v -> { Haptics.press(this); Lyrics.setShowTrans(this, !Lyrics.isShowTrans(this)); refreshLyricTrans(); });
         findViewById(R.id.rowLyricRoma).setOnClickListener(v -> { Haptics.press(this); Lyrics.setShowRoma(this, !Lyrics.isShowRoma(this)); refreshLyricRoma(); });
         findViewById(R.id.rowLyricWords).setOnClickListener(v -> { Haptics.press(this); Lyrics.setShowWords(this, !Lyrics.isShowWords(this)); refreshLyricWords(); });
+        findViewById(R.id.rowLyricSimWords).setOnClickListener(v -> { Haptics.press(this); Lyrics.setSimWords(this, !Lyrics.isSimWords(this)); refreshLyricSimWords(); });
         btnFloatIsland = findViewById(R.id.btnFloatIsland);
         refreshFloatIsland();
         findViewById(R.id.rowFloatIsland).setOnClickListener(v -> { Haptics.tick(this); onFloatIslandClicked(); });
@@ -196,6 +200,11 @@ public class PlaybackSettingsActivity extends Activity {
     private void refreshLyricWords() {
         btnLyricWords.setText("逐字歌词：" + (Lyrics.isShowWords(this) ? "开（全屏歌词页逐字扫光，有逐字数据的歌曲）" : "关"));
         IconUtil.leading(btnLyricWords, R.drawable.ic_mic, R.attr.gAccent);
+    }
+
+    private void refreshLyricSimWords() {
+        btnLyricSimWords.setText("模拟扫字（无逐字数据时）：" + (Lyrics.isSimWords(this) ? "开（按行时长匀速扫字，只是模拟效果）" : "关"));
+        IconUtil.leading(btnLyricSimWords, R.drawable.ic_mic, R.attr.gAccent);
     }
 
     /** 音质五档选择行，档位存 player 偏好 quality_tier */

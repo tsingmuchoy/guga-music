@@ -176,9 +176,15 @@ public class LyricsActivity extends Activity {
             Lyrics.Line line = lines.get(p);
             TextView tv = cv.findViewById(R.id.tvLyricMain);
             boolean cur = p == curIdx;
-            // 逐字模式：当前行且这行有逐字轴时，用 SyllableView 逐字扫光替代普通文本
+            // 逐字模式：当前行且这行有逐字轴时，用 SyllableView 逐字扫光替代普通文本；
+            // 没真逐字且用户开了「模拟扫字」时，按行时长现算一份模拟轴兜底（真数据永远优先）
+            List<Lyrics.Word> wlist = line.words;
+            if ((wlist == null || wlist.size() < 2) && Lyrics.isSimWords(LyricsActivity.this)) {
+                long nextMs = p + 1 < lines.size() ? lines.get(p + 1).timeMs : line.timeMs + 6000;
+                wlist = Lyrics.simWords(line, nextMs);
+            }
             boolean useWords = cur && Lyrics.isShowWords(LyricsActivity.this)
-                    && line.words != null && line.words.size() >= 2;
+                    && wlist != null && wlist.size() >= 2;
             Object tag = cv.getTag();
             SyllableView sv = tag instanceof SyllableView ? (SyllableView) tag : null;
             if (useWords) {
@@ -190,7 +196,7 @@ public class LyricsActivity extends Activity {
                     cv.setTag(sv);
                 }
                 sv.setVisibility(View.VISIBLE);
-                sv.setWords(line.words, 17, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec),
+                sv.setWords(wlist, 17, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec),
                         ThemeUtil.gradColors(LyricsActivity.this));
                 PlayerService ps = PlayerService.get();
                 if (ps != null) sv.setPosition(ps.getPosition());

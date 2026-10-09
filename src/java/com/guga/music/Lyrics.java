@@ -215,6 +215,39 @@ return ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getBoolean("
 public static void setShowWords(Context ctx, boolean on) {
 ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("show_words", on).apply();
 }
+public static boolean isSimWords(Context ctx) {
+return ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getBoolean("sim_words", false);
+}
+public static void setSimWords(Context ctx, boolean on) {
+ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("sim_words", on).apply();
+}
+
+/** 模拟扫字（兜底）：一行没有真逐字数据时，按行时间窗把每个字匀速排开——只是显示效果，
+ *  不是真数据；只在用户手动开启「模拟扫字」时由歌词页调用。制作信息行不模拟。 */
+public static List<Word> simWords(Line l, long nextMs) {
+if (l == null || l.text == null) return null;
+String t = l.text.trim();
+if (t.length() < 2) return null;
+if (t.startsWith("词") || t.startsWith("曲") || t.startsWith("作词") || t.startsWith("作曲")
+|| t.startsWith("编曲") || t.startsWith("制作") || t.startsWith("歌名")) return null;
+long win = nextMs - l.timeMs;
+if (win <= 0) win = 4000;
+if (win > 12000) win = 12000;
+List<String> chars = new ArrayList<>();
+for (int i = 0; i < t.length(); i++) {
+char c = t.charAt(i);
+if (c == ' ' || c == '　') {
+if (!chars.isEmpty()) chars.set(chars.size() - 1, chars.get(chars.size() - 1) + c);
+continue;
+}
+chars.add(String.valueOf(c));
+}
+if (chars.size() < 2) return null;
+long per = Math.max(60, win / chars.size());
+List<Word> out = new ArrayList<>();
+for (int i = 0; i < chars.size(); i++) out.add(new Word(l.timeMs + per * i, per, chars.get(i)));
+return out;
+}
 
 public static void fetchCover(final Context ctx, final Track track, final CoverCb cb) {
 if (track == null || track.bvid == null || !isCoverArt(ctx)) { cb.onCover(null); return; }
@@ -1063,12 +1096,12 @@ return n >= 3 ? sb.toString() : null;
 
 /** 逐字补齐：结果没有逐字轴时，先去网易云取同曲 YRC，取不到再试酷狗 KRC（原生逐字、轻量解码）；
  *  两源共用同一套闸门：与主歌词的时间重合率 ≥0.5、整体偏移校正、单调归属、覆盖 ≥1/2，否则整体放弃（宁缺毋滥）。
- *  试过的歌 7 天内不重复试（.w3 标记），防一次网络抖动永久堵死。 */
+ *  试过的歌 7 天内不重复试（.w4 标记），防一次网络抖动永久堵死。 */
 private static Result maybeWords(Context ctx, Track track, Result r, File cache, File dir) {
 try {
 if (r == null || r.lines == null || r.lines.size() < 5) return r;
 for (Line l : r.lines) if (l.words != null && !l.words.isEmpty()) return r;
-File mark = new File(dir, track.bvid + ".w3");
+File mark = new File(dir, track.bvid + ".w4");
 if (mark.exists() && System.currentTimeMillis() - mark.lastModified() < 7L * 24 * 3600 * 1000) return r;
 try { new java.io.FileOutputStream(mark).close(); } catch (Exception ignored) {}
 Hints hints = hintsOf(track);
@@ -1121,7 +1154,7 @@ List<Line> neLines = parseLrc(refLrc);
 List<Long> deltas = new ArrayList<>();
 for (Line e : neLines) for (Line m : r.lines) {
 long dd = e.timeMs - m.timeMs;
-if (Math.abs(dd) <= 1500) deltas.add(dd);
+if (Math.abs(dd) <= 4000) deltas.add(dd);
 }
 long off = 0;
 if (deltas.size() >= 3) {
