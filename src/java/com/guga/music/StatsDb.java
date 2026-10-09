@@ -123,11 +123,66 @@ public class StatsDb extends SQLiteOpenHelper {
         public long plays, seconds;
     }
 
+    // ---------------- 同歌归一 ----------------
+    // 同一首歌常有多个视频（原唱/现场/翻唱/不同 UP 主上传），按 BV 分开算会把一首歌拆成好几条。
+    // 归一键 = 清洗后的歌名 + 能提炼出的歌手；榜单与曲目数都按归一后的口径算。
+
+    /** 从标题提取歌名：优先《》/「」中的内容；其次「歌手 - 歌名」的右半；否则原标题 */
+    static String extractSongName(String title) {
+        if (title == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[《「]([^》」]{1,80})[》」]").matcher(title);
+        if (m.find()) return m.group(1).trim();
+        String[] parts = title.split("\\s+[-—–~]\\s+", 2);
+        if (parts.length == 2 && !parts[1].trim().isEmpty()) return parts[1].trim();
+        return title.trim();
+    }
+
+    /** 从标题提取歌手：《》前的前缀（短而干净时）或「歌手 - 歌名」的左半；提不出返回空 */
+    static String extractSinger(String title) {
+        if (title == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(.*?)[《「]").matcher(title);
+        if (m.find()) {
+            String pre = cleanLoose(m.group(1));
+            return pre.length() >= 2 && pre.length() <= 10 ? pre : "";
+        }
+        String[] parts = title.split("\\s+[-—–~]\\s+", 2);
+        if (parts.length == 2) {
+            String left = cleanLoose(parts[0]);
+            if (left.length() >= 2 && left.length() <= 12) return left;
+        }
+        return "";
+    }
+
+    /** 显示用清洗：去掉括号段与常见噪声词，保留原文大小写 */
+    static String cleanLoose(String s) {
+        if (s == null) return "";
+        String x = s.replaceAll("[【\\[（(][^】\\]）)]*[】\\]）)]", " ");
+        x = x.replaceAll("(?i)(官方|完整版|高清|修复版?|无损|纯享|现场|演唱会|mv|4k|8k|hi-?res|flac|cover|翻唱|原唱|伴奏)", " ");
+        return x.replaceAll("\\s+", " ").trim();
+    }
+
+    /** 归一键清洗：只留字母/数字/汉字，统一小写 */
+    static String cleanKey(String s) {
+        String x = cleanLoose(s).toLowerCase(Locale.ROOT);
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < x.length(); i++) {
+            char ch = x.charAt(i);
+            if (Character.isLetterOrDigit(ch)) b.append(ch);
+        }
+        return b.toString();
+    }
+
+    static String songKey(String title, String author) {
+        String name = cleanKey(extractSongName(title));
+        if (name.isEmpty()) return "";
+        return name + "|" + cleanKey(extractSinger(title));
+    }
+
     public synchronized List<Row> top(String fromDay, String toDay, int limit) {
-        List<Row> out = new ArrayList<>();
+        List<Row> perVideo = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT bvid, title, author, cover, SUM(plays) p, SUM(seconds) s FROM play_day"
-                        + " WHERE day>=? AND day<=? GROUP BY bvid ORDER BY p DESC, s DESC LIMIT " + limit,
+                        + " WHERE day>=? AND day<=? GROUP BY bvid ORDER BY p DESC, s DESC",
                 new String[]{fromDay, toDay});
         try {
             while (c.moveToNext()) {
@@ -138,9 +193,61 @@ public class StatsDb extends SQLiteOpenHelper {
                 r.cover = c.getString(3);
                 r.plays = c.getLong(4);
                 r.seconds = c.getLong(5);
-                out.add(r);
+                perVideo.add(r);
             }
         } finally { c.close(); }
-        return out;
+
+        java.util.Map<String, Row> groups = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Long> repPlays = new java.util.HashMap<>();
+        for (Row v : perVideo) {
+            String key = songKey(v.title, v.author);
+            if (key.isEmpty()) key = "bv|" + v.bvid;
+            Row g = groups.get(key);
+            if (g == null) {
+                g = new Row();
+                g.bvid = v.bvid;
+                g.title = v.title;
+                g.author = v.author;
+                g.cover = v.cover;
+                groups.put(key, g);
+                repPlays.put(key, -1L);
+            }
+            g.plays += v.plays;
+            g.seconds += v.seconds;
+            if (v.plays > repPlays.get(key)) {
+                // 代表条目 = 组内播得最多的那个视频（回播就播它，封面先用它的）
+                repPlays.put(key, v.plays);
+                g.bvid = v.bvid;
+                g.title = v.title;
+                g.author = v.author;
+                g.cover = v.cover;
+            }
+        }
+        List<Row> out = new ArrayList<>(groups.values());
+        for (Row g : out) {
+            // 展示：干净歌名 + 歌手（提炼不出歌手时保留代表视频的 UP 主名）
+            String singer = extractSinger(g.title);
+            String name = cleanLoose(extractSongName(g.title));
+            if (!name.isEmpty()) g.title = name;
+            if (!singer.isEmpty()) g.author = singer;
+        }
+        out.sort((a, b) -> a.plays != b.plays
+                ? Long.compare(b.plays, a.plays) : Long.compare(b.seconds, a.seconds));
+        return out.size() > limit ? new ArrayList<>(out.subList(0, limit)) : out;
+    }
+
+    /** 归一后的不同歌曲数（与最常播放榜同一口径） */
+    public synchronized int distinctSongs(String fromDay, String toDay) {
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT bvid, title, author FROM play_day WHERE day>=? AND day<=? GROUP BY bvid",
+                new String[]{fromDay, toDay});
+        try {
+            while (c.moveToNext()) {
+                String k = songKey(c.getString(1), c.getString(2));
+                keys.add(k.isEmpty() ? "bv|" + c.getString(0) : k);
+            }
+        } finally { c.close(); }
+        return keys.size();
     }
 }

@@ -475,10 +475,13 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         if (statsHeaderView == null || statsDb == null) return;
         String to = StatsDb.todayKey();
         String from = STAT_PERIOD_DAYS[statPeriod] == 0 ? "0000-01-01" : StatsDb.daysAgoKey(STAT_PERIOD_DAYS[statPeriod]);
+        String rangeText = STAT_PERIOD_DAYS[statPeriod] == 0 ? "全部记录"
+                : STAT_PERIOD_DAYS[statPeriod] == 1 ? "今天 · " + to : from + " ~ " + to;
+        ((TextView) statsHeaderView.findViewById(R.id.tvStatRange)).setText(rangeText);
         StatsDb.Sum sum = statsDb.summary(from, to);
         ((TextView) statsHeaderView.findViewById(R.id.tvStatPlays)).setText(String.valueOf(sum.plays));
         ((TextView) statsHeaderView.findViewById(R.id.tvStatTime)).setText(fmtListen(sum.seconds));
-        ((TextView) statsHeaderView.findViewById(R.id.tvStatTracks)).setText(String.valueOf(sum.tracks));
+        ((TextView) statsHeaderView.findViewById(R.id.tvStatTracks)).setText(String.valueOf(statsDb.distinctSongs(from, to)));
         statRows.clear();
         statRows.addAll(statsDb.top(from, to, 10));
         long max = 1;
@@ -508,6 +511,15 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             cover.setLayoutParams(clp);
             cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
             ImgLoader.load(cover, r.cover);
+            cover.setTag(r.bvid);
+            Track ct = new Track();
+            ct.bvid = r.bvid;
+            ct.title = r.title;
+            ct.author = r.author;
+            ct.cover = r.cover;
+            Lyrics.fetchCover(this, ct, url -> {
+                if (url != null && r.bvid.equals(cover.getTag())) ImgLoader.load(cover, url);
+            });
             row.addView(cover);
             LinearLayout mid = new LinearLayout(this);
             LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
