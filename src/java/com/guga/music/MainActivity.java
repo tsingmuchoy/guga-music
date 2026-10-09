@@ -174,26 +174,20 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             if (tab == 1 && favLocalMode) {
                 if (pos < localLists.size()) {
                     final LocalDb.Playlist pl = localLists.get(pos);
-                    new android.app.AlertDialog.Builder(this)
-                            .setTitle(pl.name)
-                            .setItems(new String[]{"重命名", "删除歌单"}, (d, w) -> {
-                                if (w == 0) {
-                                    PlaylistPicker.createDialog(this, "重命名歌单", pl.name, "保存", name -> {
-                                        localDb.renamePlaylist(pl.id, name);
+                    UiDialog.menu(this, pl.name, new String[]{"重命名", "删除歌单"}, w -> {
+                        if (w == 0) {
+                            PlaylistPicker.createDialog(this, "重命名歌单", pl.name, "保存", name -> {
+                                localDb.renamePlaylist(pl.id, name);
+                                showLocalLists();
+                            });
+                        } else {
+                            UiDialog.confirm(this, "删除歌单",
+                                    "删除歌单「" + pl.name + "」？里面记录的歌曲会一起删掉", "删除", () -> {
+                                        localDb.deletePlaylist(pl.id);
                                         showLocalLists();
                                     });
-                                } else {
-                                    new android.app.AlertDialog.Builder(this)
-                                            .setMessage("删除歌单「" + pl.name + "」？里面记录的歌曲会一起删掉")
-                                            .setPositiveButton("删除", (d2, w2) -> {
-                                                localDb.deletePlaylist(pl.id);
-                                                showLocalLists();
-                                            })
-                                            .setNegativeButton("取消", null)
-                                            .show();
-                                }
-                            })
-                            .show();
+                        }
+                    });
                 }
                 return true;
             }
@@ -229,11 +223,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         btnLogin.setOnClickListener(v -> {
             Haptics.tick(this);
             if (api.isLoggedIn()) {
-                new AlertDialog.Builder(this)
-                        .setMessage("退出登录？")
-                        .setPositiveButton("退出", (d, w) -> { api.logout(); refreshMine(); Toast.makeText(this, "已退出登录", Toast.LENGTH_SHORT).show(); })
-                        .setNegativeButton("取消", null)
-                        .show();
+                UiDialog.confirm(this, "退出登录？", null, "退出", () -> {
+                    api.logout();
+                    refreshMine();
+                    Toast.makeText(this, "已退出登录", Toast.LENGTH_SHORT).show();
+                });
             } else {
                 startActivity(new Intent(this, LoginActivity.class));
             }
@@ -599,17 +593,12 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void confirmClearStats() {
-        AlertDialog dlgClearStats = new AlertDialog.Builder(this)
-                .setTitle("清空播放统计？")
-                .setMessage("日/周/月/年所有听歌记录都会删掉，不可恢复。建议先导出一份备份。")
-                .setNegativeButton("取消", null)
-                .setPositiveButton("清空", (d, w) -> {
+        UiDialog.confirm(this, "清空播放统计？",
+                "日/周/月/年所有听歌记录都会删掉，不可恢复。建议先导出一份备份。", "清空", () -> {
                     statsDb.clearAll();
                     refreshStatsHeader();
                     android.widget.Toast.makeText(this, "播放统计已清空", android.widget.Toast.LENGTH_SHORT).show();
-                })
-                .create();
-        dlgDarkBg(dlgClearStats);
+                });
     }
 
     private void exportStats() {

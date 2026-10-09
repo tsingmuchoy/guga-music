@@ -1062,19 +1062,19 @@ return n >= 3 ? sb.toString() : null;
 }
 
 /** 逐字补齐：结果没有逐字轴时，去网易云取同曲 YRC——先用它自带 LRC 与主歌词做重合率校验（≥0.5），
- *  再按时间窗把每个字重组进主歌词行；覆盖不到一半就整体放弃（宁缺毋滥）。每首只试一次（.w 标记）。 */
+ *  再按时间窗把每个字重组进主歌词行；覆盖不到一半就整体放弃（宁缺毋滥）。试过的歌 7 天内不重复试（.w2 标记），防一次网络抖动永久堵死。 */
 private static Result maybeWords(Context ctx, Track track, Result r, File cache, File dir) {
 try {
 if (r == null || r.lines == null || r.lines.size() < 5) return r;
 for (Line l : r.lines) if (l.words != null && !l.words.isEmpty()) return r;
-File mark = new File(dir, track.bvid + ".w");
-if (mark.exists()) return r;
+File mark = new File(dir, track.bvid + ".w2");
+if (mark.exists() && System.currentTimeMillis() - mark.lastModified() < 7L * 24 * 3600 * 1000) return r;
+try { new java.io.FileOutputStream(mark).close(); } catch (Exception ignored) {}
 long nid = neteaseBestId(track, hintsOf(track));
-if (nid <= 0) { mark.createNewFile(); return r; }
+if (nid <= 0) return r;
 JSONObject d = new JSONObject(httpGet(
 "https://music.163.com/api/song/lyric/v1?id=" + nid + "&cp=false&lv=0&kv=0&tv=0&rv=0&yv=1",
 "https://music.163.com"));
-mark.createNewFile();
 JSONObject yo = d.optJSONObject("yrc");
 JSONObject lo = d.optJSONObject("lrc");
 String yrc = yo == null ? null : yo.optString("lyric");

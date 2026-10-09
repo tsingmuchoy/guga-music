@@ -63,13 +63,10 @@ public class LocalPlaylistActivity extends Activity {
         lv.setOnItemClickListener((p, v, pos, id) -> playFrom(pos));
         lv.setOnItemLongClickListener((p, v, pos, id) -> {
             final Track t = tracks.get(pos);
-            new AlertDialog.Builder(this)
-                    .setTitle(t.title)
-                    .setItems(new String[]{"从歌单移除"}, (d, w) -> {
-                        db.removeTrack(pid, t.bvid);
-                        reload();
-                    })
-                    .show();
+            UiDialog.menu(this, t.title, new String[]{"从歌单移除"}, idx -> {
+                db.removeTrack(pid, t.bvid);
+                reload();
+            });
             return true;
         });
     }

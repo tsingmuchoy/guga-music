@@ -186,13 +186,10 @@ public class UpdateChecker {
     }
 
     public static void showUpdateDialog(final Activity act, final Info info) {
-        new AlertDialog.Builder(act)
-                .setTitle("发现新版本 v" + info.version + " 🎉")
-                .setMessage((info.notes == null || info.notes.isEmpty() ? "有新版啦，快来更新！" : info.notes)
-                        + (info.sourceName == null ? "" : "\n\n（更新源：" + info.sourceName + "）"))
-                .setPositiveButton("立即更新", (d, w) -> download(act, info))
-                .setNegativeButton("下次再说", null)
-                .show();
+        UiDialog.confirm(act, "发现新版本 v" + info.version + " 🎉",
+                (info.notes == null || info.notes.isEmpty() ? "有新版啦，快来更新！" : info.notes)
+                        + (info.sourceName == null ? "" : "\n\n（更新源：" + info.sourceName + "）"),
+                "立即更新", () -> download(act, info));
     }
 
     /** 检查有没有「已下载好但还没装」的新版：有就从当前界面弹窗问装（前台拉起安装器不被系统拦） */
@@ -222,12 +219,9 @@ public class UpdateChecker {
             }
             if (status != DownloadManager.STATUS_SUCCESSFUL) return;
             final long fid = id;
-            new AlertDialog.Builder(act)
-                    .setTitle("新版 v" + ver + " 已下载好 📦")
-                    .setMessage("安装包已经下到手机里啦，点「立即安装」完成更新。")
-                    .setPositiveButton("立即安装", (d, w) -> fireInstall(act, dm, fid))
-                    .setNegativeButton("稍后", null)
-                    .show();
+            UiDialog.confirm(act, "新版 v" + ver + " 已下载好 📦",
+                    "安装包已经下到手机里啦，点「立即安装」完成更新。",
+                    "立即安装", () -> fireInstall(act, dm, fid));
         } catch (Exception ignored) {}
     }
 
