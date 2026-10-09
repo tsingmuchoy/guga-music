@@ -22,7 +22,10 @@ public class GugaApp extends Application {
             @Override public void onActivityStarted(Activity a) {
                 startedCount++;
                 PlayerService s = PlayerService.get();
-                if (s != null) s.refreshIsland();
+                if (s != null) {
+                    s.refreshIsland();
+                    s.refreshSbLyrics();
+                }
             }
             @Override public void onActivityStopped(Activity a) {
                 if (startedCount > 0) startedCount--;
