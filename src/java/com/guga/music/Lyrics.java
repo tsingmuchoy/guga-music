@@ -218,6 +218,9 @@ ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).edit().putBoolean("
 
 public static void fetchCover(final Context ctx, final Track track, final CoverCb cb) {
 if (track == null || track.bvid == null || !isCoverArt(ctx)) { cb.onCover(null); return; }
+// 用户手动匹配的封面（手动匹配歌曲时锁定）优先于一切自动匹配
+LyricsDb.Bind mbd = LyricsDb.get(ctx, track.bvid);
+if (mbd != null && mbd.cover != null && !mbd.cover.isEmpty()) { cb.onCover(mbd.cover); return; }
 String memo = COVER_MEM.get(track.bvid);
 if (memo != null) { cb.onCover(memo.isEmpty() ? null : memo); return; }
 POOL.execute(() -> {
@@ -423,6 +426,7 @@ public String ref = "";   // 源内定位：网易云/酷我=数字ID、QQ=songm
 public String name = "";
 public String artist = "";
 public long durMs;
+public String cover = "";  // 专辑封面 URL（网易云/QQ/酷我搜索自带；酷狗/LRCLIB 无）
 public String lrcText;    // 仅 LRCLIB：搜索结果自带歌词正文
 }
 
@@ -456,6 +460,8 @@ if (mid.isEmpty()) continue;
 MCand c = new MCand();
 c.src = "qq"; c.ref = mid;
 c.name = sj.optString("songname");
+String albummid = sj.optString("albummid");
+if (!albummid.isEmpty()) c.cover = "https://y.gtimg.cn/music/photo_new/T002R300x300M000" + albummid + ".jpg";
 StringBuilder ab = new StringBuilder();
 JSONArray sgs = sj.optJSONArray("singer");
 if (sgs != null) for (int a = 0; a < sgs.length(); a++) {
@@ -488,6 +494,11 @@ ab.append(ars.getJSONObject(a).optString("name"));
 }
 c.artist = ab.toString();
 c.durMs = sj.optLong("dt");
+JSONObject al = sj.optJSONObject("al");
+if (al != null) {
+String pu = al.optString("picUrl");
+if (!pu.isEmpty()) c.cover = pu + "?param=500y500";
+}
 out.add(c);
 }
 }
@@ -521,6 +532,9 @@ c.src = "kuwo"; c.ref = String.valueOf(rid);
 c.name = kuwoName(sj);
 c.artist = kuwoUnescape(sj.optString("ARTIST"));
 c.durMs = kuwoDurMs(sj);
+String shortPic = sj.optString("web_albumpic_short");
+if (!shortPic.isEmpty() && shortPic.indexOf('/') >= 0)
+c.cover = "https://img1.kuwo.cn/star/albumcover/500/" + shortPic.substring(shortPic.indexOf('/') + 1);
 out.add(c);
 }
 }
@@ -626,21 +640,23 @@ LrcPack p = fetchBoundPack(c);
 return p == null ? null : p.lrc;
 }
 
-/** 用户确认某版歌词：写入缓存并按 BV 锁定（存 lyrics.db），以后这首歌都用这版 */
-public static boolean applyManual(Context ctx, String bvid, MCand c, String lrcText) {
-if (lrcText == null || parseLrc(lrcText).size() < 5) return false;
+/** 用户确认某首歌：整包写入缓存（歌词+翻译+罗马音+逐字都在包里一次钉死，不再靠事后自动补齐碰运气）
+ *  并按 BV 锁定（存 lyrics.db，含封面与原歌名），以后这首歌都用它 */
+public static boolean applyManual(Context ctx, String bvid, MCand c, LrcPack pack) {
+if (pack == null || pack.lrc == null || parseLrc(pack.lrc).size() < 5) return false;
 String label = srcLabel(c.src) + "（手动）";
 try {
 File dir = new File(ctx.getFilesDir(), "lyrics_v4");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, bvid + ".lrc");
-writeFile(cache, "#src:" + label + "\n" + lrcText);
+if (acceptPack(cache, pack, label) == null) return false;
 new File(dir, bvid + ".none").delete();
-trimLyricsDir(cache);
 } catch (Exception ignored) {}
 LyricsDb.Bind b = new LyricsDb.Bind();
 b.src = c.src; b.ref = c.ref; b.name = c.name; b.artist = c.artist; b.durMs = c.durMs; b.label = label;
+b.cover = c.cover;
 LyricsDb.bind(ctx, bvid, b);
+COVER_MEM.remove(bvid);
 ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).edit().remove("alt_" + bvid).apply();
 return true;
 }
@@ -648,6 +664,7 @@ return true;
 /** 解除手动锁定并清掉歌词缓存，回到自动匹配 */
 public static void clearManual(Context ctx, String bvid) {
 LyricsDb.unbind(ctx, bvid);
+COVER_MEM.remove(bvid);
 try {
 File dir = new File(ctx.getFilesDir(), "lyrics_v4");
 new File(dir, bvid + ".lrc").delete();
@@ -657,6 +674,20 @@ new File(dir, bvid + ".none").delete();
 
 /** 这首歌的歌词是否被手动锁定 */
 public static boolean isBound(Context ctx, String bvid) { return LyricsDb.get(ctx, bvid) != null; }
+
+/** 播放/歌词页显示用的歌名：手动匹配过就用匹配到的原歌名，否则用视频标题 */
+public static String displayName(Context ctx, Track t) {
+if (t == null) return "";
+LyricsDb.Bind bd = LyricsDb.get(ctx, t.bvid);
+return bd != null && bd.name != null && !bd.name.isEmpty() ? bd.name : (t.title == null ? "" : t.title);
+}
+
+/** 显示用的歌手：手动匹配优先，否则视频 UP 主 */
+public static String displayArtist(Context ctx, Track t) {
+if (t == null) return "";
+LyricsDb.Bind bd = LyricsDb.get(ctx, t.bvid);
+return bd != null && bd.artist != null && !bd.artist.isEmpty() ? bd.artist : (t.author == null ? "" : t.author);
+}
 
 private static Result trySubtitles(Context ctx, Track track, BiliApi api, File cache) {
 try {
@@ -691,7 +722,7 @@ return new Result(box[0], "视频字幕");
 return null;
 }
 
-private static class LrcPack {
+static class LrcPack {
 String lrc; String trans; String roma; String words;
 LrcPack(String l) { lrc = l; }
 }

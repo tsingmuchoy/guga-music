@@ -73,7 +73,7 @@
                 android:paddingLeft="10dp"
                 android:paddingTop="2dp"
                 android:paddingBottom="8dp"
-                android:text="手动搜歌词 🔍"
+                android:text="手动匹配 🎯"
                 android:textColor="?attr/gAccent"
                 android:textSize="12sp"
                 android:visibility="gone" />

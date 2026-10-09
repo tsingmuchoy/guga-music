@@ -565,8 +565,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     public void onTrackChanged(Track t) {
         loadLyrics(t);
         scheduleSheetBlur(900);
-        tvTitle.setText(t.title);
-        tvAuthor.setText(t.author == null ? "" : t.author);
+        tvTitle.setText(Lyrics.displayName(this, t));
+        tvAuthor.setText(Lyrics.displayArtist(this, t));
         ImgLoader.loadDisc(ivCover, t.cover);
         if (backdropView != null) ImgLoader.load(backdropView, t.cover);
         Lyrics.fetchCover(this, t, url -> {

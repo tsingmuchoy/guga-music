@@ -38,6 +38,11 @@ public class LyricsSearchActivity extends Activity {
         @Override public View getView(int p, View cv, ViewGroup parent) {
             if (cv == null) cv = LayoutInflater.from(LyricsSearchActivity.this).inflate(R.layout.item_lyric_cand, parent, false);
             Lyrics.MCand c = shown.get(p);
+            android.widget.ImageView ivc = cv.findViewById(R.id.ivCandCover);
+            if (c.cover != null && !c.cover.isEmpty()) {
+                ivc.setVisibility(View.VISIBLE);
+                ImgLoader.load(ivc, c.cover);
+            } else ivc.setVisibility(View.GONE);
             ((TextView) cv.findViewById(R.id.tvCandName)).setText(c.name);
             String dur = c.durMs > 0 ? " · " + (c.durMs / 60000) + ":" + String.format(java.util.Locale.CHINA, "%02d", (c.durMs % 60000) / 1000) : "";
             ((TextView) cv.findViewById(R.id.tvCandSub)).setText(
@@ -75,12 +80,12 @@ public class LyricsSearchActivity extends Activity {
 
         if (Lyrics.isBound(this, bvid)) {
             btnAuto.setVisibility(View.VISIBLE);
-            tvStatus.setText("这首歌的歌词已手动锁定 🔒 重新选一版可覆盖，或恢复自动匹配");
+            tvStatus.setText("这首歌已手动匹配 🔒 封面与歌词都用你选中的那首；重新选一首可覆盖，或恢复自动匹配");
         }
         btnAuto.setOnClickListener(v -> {
             Haptics.tick(this);
             Lyrics.clearManual(this, bvid);
-            Toast.makeText(this, "已恢复自动匹配", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已恢复自动匹配（封面+歌词）", Toast.LENGTH_SHORT).show();
             setResult(RESULT_OK);
             finish();
         });
@@ -146,7 +151,7 @@ public class LyricsSearchActivity extends Activity {
         adapter.notifyDataSetChanged();
         if (!results.isEmpty()) {
             tvStatus.setText(srcFilter.isEmpty()
-                    ? "共 " + results.size() + " 个候选，点一个预览歌词（可按歌词源筛选）"
+                    ? "共 " + results.size() + " 个候选，点一个预览（应用后封面+歌词一起换成它）"
                     : Lyrics.srcName(srcFilter) + " 共 " + shown.size() + " 个候选（全部 " + results.size() + "）");
         }
     }
@@ -175,8 +180,9 @@ public class LyricsSearchActivity extends Activity {
         Haptics.tick(this);
         tvStatus.setText("正在取这版歌词…");
         new Thread(() -> {
-            final String lrc = Lyrics.fetchBoundLrc(c);
-            final List<Lyrics.Line> lines = lrc == null ? new ArrayList<>() : Lyrics.parseLrc(lrc);
+            final Lyrics.LrcPack pack = Lyrics.fetchBoundPack(c);
+            final List<Lyrics.Line> lines = pack == null || pack.lrc == null
+                    ? new ArrayList<>() : Lyrics.parseLrc(pack.lrc);
             runOnUiThread(() -> {
                 if (lines.size() < 5) {
                     tvStatus.setText(shown.isEmpty() ? "没搜到候选" : "共 " + shown.size() + " 个候选，点一个预览歌词");
@@ -186,6 +192,21 @@ public class LyricsSearchActivity extends Activity {
                 // 预览：不用系统灰弹窗——自家深色圆角卡，完整歌词放可拖动的滚动区里看全
                 View root = getLayoutInflater().inflate(R.layout.dialog_lyric_preview, null);
                 ((TextView) root.findViewById(R.id.tvPrevTitle)).setText(c.name + " · " + Lyrics.srcName(c.src));
+                android.widget.ImageView ivp = root.findViewById(R.id.ivPrevCover);
+                TextView note = root.findViewById(R.id.tvPrevCoverNote);
+                boolean hasCover = c.cover != null && !c.cover.isEmpty();
+                if (hasCover) {
+                    ivp.setVisibility(View.VISIBLE);
+                    ImgLoader.load(ivp, c.cover);
+                } else ivp.setVisibility(View.GONE);
+                boolean hasRoma = pack.roma != null && Lyrics.parseLrc(pack.roma).size() >= 3;
+                boolean hasTrans = pack.trans != null && Lyrics.parseLrc(pack.trans).size() >= 3;
+                note.setVisibility(View.VISIBLE);
+                note.setText("应用后：歌词用这版"
+                        + (hasRoma ? "（带罗马音 ✓）" : "")
+                        + (hasTrans ? "（带翻译）" : "")
+                        + (hasCover ? " · 封面换成这张 · 播放页显示原歌名"
+                                : " · 这条没有封面图，封面继续自动匹配"));
                 StringBuilder sb = new StringBuilder();
                 for (Lyrics.Line l : lines) {
                     if (sb.length() > 0) sb.append("\n");
@@ -199,7 +220,7 @@ public class LyricsSearchActivity extends Activity {
                 sv.setLayoutParams(slp);
                 final AlertDialog dlg = new AlertDialog.Builder(this).setView(root).create();
                 root.findViewById(R.id.btnPrevBack).setOnClickListener(v -> dlg.dismiss());
-                root.findViewById(R.id.btnPrevUse).setOnClickListener(v -> { dlg.dismiss(); applyChoice(c, lrc); });
+                root.findViewById(R.id.btnPrevUse).setOnClickListener(v -> { dlg.dismiss(); applyChoice(c, pack); });
                 dlg.show();
                 if (dlg.getWindow() != null) {
                     dlg.getWindow().setBackgroundDrawable(
@@ -209,12 +230,14 @@ public class LyricsSearchActivity extends Activity {
         }).start();
     }
 
-    private void applyChoice(final Lyrics.MCand c, final String lrc) {
+    private void applyChoice(final Lyrics.MCand c, final Lyrics.LrcPack pack) {
         new Thread(() -> {
-            final boolean ok = Lyrics.applyManual(getApplicationContext(), bvid, c, lrc);
+            final boolean ok = Lyrics.applyManual(getApplicationContext(), bvid, c, pack);
             runOnUiThread(() -> {
                 if (ok) {
-                    Toast.makeText(this, "已锁定这版歌词 ✓ 以后这首歌都用它", Toast.LENGTH_SHORT).show();
+                    boolean hasCover = c.cover != null && !c.cover.isEmpty();
+                    Toast.makeText(this, hasCover ? "已匹配 ✓ 封面和歌词都换成这首了"
+                            : "已锁定歌词 ✓（这条没封面，封面继续自动匹配）", Toast.LENGTH_SHORT).show();
                     setResult(RESULT_OK);
                     finish();
                 } else {

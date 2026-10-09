@@ -116,7 +116,7 @@ public class LyricsActivity extends Activity {
             it.putExtra("dur", t.durationSec);
             startActivityForResult(it, 7201);
         });
-        tvSong.setText(t.title);
+        tvSong.setText(Lyrics.displayName(this, t));
         tvSource.setText("歌词加载中…");
         loadLyrics(t, false);
         btnFix.setOnClickListener(v -> {

@@ -27,7 +27,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="手动搜索歌词"
+            android:text="手动匹配歌曲"
             android:textColor="?attr/gTextPri"
             android:textSize="17sp"
             android:textStyle="bold" />

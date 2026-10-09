@@ -11,7 +11,7 @@ import android.database.sqlite.SQLiteOpenHelper;
 public class LyricsDb extends SQLiteOpenHelper {
 
     public static class Bind {
-        public String src, ref, name, artist, label;
+        public String src, ref, name, artist, label, cover;
         public long durMs;
     }
 
@@ -22,19 +22,21 @@ public class LyricsDb extends SQLiteOpenHelper {
         return inst;
     }
 
-    private LyricsDb(Context ctx) { super(ctx, "lyrics.db", null, 1); }
+    private LyricsDb(Context ctx) { super(ctx, "lyrics.db", null, 2); }
 
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE lyric_bind (bvid TEXT PRIMARY KEY, src TEXT, ref TEXT,"
-                + " name TEXT, artist TEXT, dur INTEGER, label TEXT, ts INTEGER)");
+                + " name TEXT, artist TEXT, dur INTEGER, label TEXT, ts INTEGER, cover TEXT)");
     }
 
-    @Override public void onUpgrade(SQLiteDatabase db, int o, int n) {}
+    @Override public void onUpgrade(SQLiteDatabase db, int o, int n) {
+        if (o < 2) db.execSQL("ALTER TABLE lyric_bind ADD COLUMN cover TEXT");
+    }
 
     public static Bind get(Context ctx, String bvid) {
         if (bvid == null || bvid.isEmpty()) return null;
         Cursor c = of(ctx).getReadableDatabase().query("lyric_bind",
-                new String[]{"src", "ref", "name", "artist", "dur", "label"},
+                new String[]{"src", "ref", "name", "artist", "dur", "label", "cover"},
                 "bvid=?", new String[]{bvid}, null, null, null);
         try {
             if (!c.moveToFirst()) return null;
@@ -45,6 +47,7 @@ public class LyricsDb extends SQLiteOpenHelper {
             b.artist = c.getString(3);
             b.durMs = c.getLong(4);
             b.label = c.getString(5);
+            b.cover = c.getString(6);
             return b;
         } finally { c.close(); }
     }
@@ -58,6 +61,7 @@ public class LyricsDb extends SQLiteOpenHelper {
         v.put("artist", b.artist);
         v.put("dur", b.durMs);
         v.put("label", b.label);
+        v.put("cover", b.cover);
         v.put("ts", System.currentTimeMillis());
         of(ctx).getWritableDatabase().insertWithOnConflict("lyric_bind", null, v, SQLiteDatabase.CONFLICT_REPLACE);
     }
