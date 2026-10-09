@@ -64,7 +64,7 @@
         android:layout_marginTop="6dp"
         android:background="@drawable/bg_card"
         android:gravity="top"
-        android:hint="粘贴分享链接或整段分享文字&#10;支持网易云 / QQ音乐 / 酷狗 / 酷我 / 汽水"
+        android:hint="粘贴分享链接或整段分享文字&#10;支持网易云 / QQ音乐 / 酷狗 / 酷我 / 波点 / 汽水"
         android:maxLines="3"
         android:minLines="2"
         android:padding="12dp"

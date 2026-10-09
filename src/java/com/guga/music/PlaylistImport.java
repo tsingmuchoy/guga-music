@@ -36,11 +36,11 @@ public int skipped;
 }
 
 public static class Detected {
-public String platform, id, url;
+public String platform, id, url, extra;
 }
 
 public static final String[][] PLATFORMS = {
-{"netease", "网易云音乐"}, {"qq", "QQ音乐"}, {"kugou", "酷狗音乐"}, {"kuwo", "酷我音乐"}, {"qishui", "汽水音乐"}};
+{"netease", "网易云音乐"}, {"qq", "QQ音乐"}, {"kugou", "酷狗音乐"}, {"kuwo", "酷我音乐"}, {"bodian", "波点音乐"}, {"qishui", "汽水音乐"}};
 
 public static String platformName(String p) {
 for (String[] x : PLATFORMS) if (x[0].equals(p)) return x[1];
@@ -62,6 +62,15 @@ String probe = url != null ? url : text;
 Detected d = new Detected();
 d.url = url;
 String id;
+if (probe.contains("bodian")) {
+id = find(probe, "[?&]playlistId=(\\d+)");
+if (id != null) {
+d.platform = "bodian"; d.id = id;
+String src = find(probe, "[?&]source=(\\d+)");
+d.extra = src == null ? "5" : src;
+return d;
+}
+}
 if (probe.contains("163.com")) {
 id = find(probe, "[?#&]id=(\\d+)");
 if (id != null) { d.platform = "netease"; d.id = id; return d; }
@@ -175,6 +184,7 @@ if ("netease".equals(d.platform)) return fetchNetease(d.id);
 if ("qq".equals(d.platform)) return fetchQq(d.id);
 if ("kugou".equals(d.platform)) return fetchKugou(d.id);
 if ("kuwo".equals(d.platform)) return fetchKuwo(d.id);
+if ("bodian".equals(d.platform)) return fetchBodian(d.id, d.extra);
 if ("qishui".equals(d.platform)) return fetchQishui(d.url);
 throw new Exception("暂不支持这个平台");
 }
@@ -344,6 +354,78 @@ if (ml.length() < 100) break;
 pn++;
 }
 if (out.tracks.isEmpty()) throw new Exception("没能解析出歌曲（歌单可能已删除）");
+return out;
+}
+
+/** 波点音乐接口专用 GET：bd-api 必须带 plat:h5 头，否则回 402 */
+static String httpGetBd(String url) throws Exception {
+HttpURLConnection c = null;
+try {
+c = (HttpURLConnection) new URL(url).openConnection();
+c.setConnectTimeout(8000); c.setReadTimeout(12000);
+c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36");
+c.setRequestProperty("plat", "h5");
+if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
+InputStream in = c.getInputStream();
+ByteArrayOutputStream bos = new ByteArrayOutputStream();
+byte[] buf = new byte[8192]; int n;
+while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+in.close();
+return new String(bos.toByteArray(), "UTF-8");
+} finally { if (c != null) c.disconnect(); }
+}
+
+/** 波点音乐：分享页同款接口（bd-api.kuwo.cn），info 拿歌单名、musicList 分页拿曲目；
+ *  该接口分页有重复页怪癖，按歌曲 id 去重收集，集满 total 为止 */
+private static Parsed fetchBodian(String id, String source) throws Exception {
+if (source == null || source.isEmpty()) source = "5";
+Parsed out = new Parsed();
+out.platform = "bodian";
+out.title = "波点歌单";
+String rid = Long.toHexString(System.nanoTime());
+try {
+JSONObject info = new JSONObject(httpGetBd(
+"https://bd-api.kuwo.cn/api/service/playlist/info/" + id + "?source=" + source + "&reqId=" + rid));
+if (info.optInt("code") == 200) {
+JSONObject data = info.optJSONObject("data");
+if (data != null) {
+String t = data.optString("name", "");
+if (!t.isEmpty()) out.title = t;
+}
+}
+} catch (Exception ignored) {}
+Set<Long> seen = new HashSet<>();
+int total = -1;
+for (int pn = 0; pn < 12 && out.tracks.size() < 500; pn++) {
+JSONObject r = new JSONObject(httpGetBd(
+"https://bd-api.kuwo.cn/api/service/playlist/" + id + "/musicList?source=" + source
++ "&pn=" + pn + "&rn=100&reqId=" + rid + pn));
+if (r.optInt("code") != 200) {
+if (pn == 0) throw new Exception("波点接口拒绝了请求（歌单可能已设为私密）");
+break;
+}
+JSONObject data = r.optJSONObject("data");
+if (data == null) break;
+if (total < 0) total = data.optInt("total", 0);
+JSONArray list = data.optJSONArray("list");
+if (list == null || list.length() == 0) break;
+int added = 0;
+for (int i = 0; i < list.length(); i++) {
+JSONObject s = list.optJSONObject(i);
+if (s == null) continue;
+long mid = s.optLong("id", 0);
+if (mid > 0 && !seen.add(mid)) continue;
+String name = s.optString("name", "");
+if (name.isEmpty()) { out.skipped++; continue; }
+String artist = s.optString("artist", "");
+if (artist.isEmpty()) artist = joinArtists(s.optJSONArray("artists"), null);
+out.tracks.add(new Src(name, artist, s.optInt("duration", 0)));
+added++;
+}
+if (added == 0) break;
+if (total > 0 && out.tracks.size() >= total) break;
+}
+if (out.tracks.isEmpty()) throw new Exception("没能解析出歌曲（歌单可能已设为私密）");
 return out;
 }
 

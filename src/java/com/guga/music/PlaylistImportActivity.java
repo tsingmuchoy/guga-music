@@ -39,8 +39,8 @@ private BiliApi api;
 private String selectedPlatform; // null = 自动识别
 private boolean manualPick;
 private final List<TextView> chips = new ArrayList<>();
-private final String[] chipPlatforms = {null, "netease", "qq", "kugou", "kuwo", "qishui"};
-private final String[] chipLabels = {"自动识别", "网易云", "QQ音乐", "酷狗", "酷我", "汽水"};
+private final String[] chipPlatforms = {null, "netease", "qq", "kugou", "kuwo", "bodian", "qishui"};
+private final String[] chipLabels = {"自动识别", "网易云", "QQ音乐", "酷狗", "酷我", "波点", "汽水"};
 
 private volatile boolean working, cancelled;
 private Thread worker;
@@ -162,7 +162,7 @@ String platform = manualPick || selectedPlatform != null ? selectedPlatform
 : (det == null ? null : det.platform);
 if (platform == null && det != null) platform = det.platform;
 if (platform == null) {
-toast("没认出这个链接（支持网易云/QQ/酷狗/酷我/汽水歌单，也可粘贴纯数字ID再手动选平台）");
+toast("没认出这个链接（支持网易云/QQ/酷狗/酷我/波点/汽水歌单，也可粘贴纯数字ID再手动选平台）");
 return;
 }
 PlaylistImport.Detected use = new PlaylistImport.Detected();
@@ -171,6 +171,7 @@ use.url = extractUrl(raw);
 if (det != null && platform.equals(det.platform)) {
 use.id = det.id;
 if (det.url != null) use.url = det.url;
+if (det.extra != null) use.extra = det.extra;
 } else if (det != null && det.id != null) {
 use.id = det.id;
 } else if (raw.matches("\\d{5,}")) {
