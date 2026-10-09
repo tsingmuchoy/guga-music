@@ -587,8 +587,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
     // ---------- 统计：清空 / 备份导出 / 恢复 / 自定义范围 ----------
 
+    /** 弹窗换上 App 自家深色圆角底（系统默认灰板跟主题不搭） */
+    private void dlgDarkBg(AlertDialog dlg) {
+        dlg.show();
+        if (dlg.getWindow() != null) dlg.getWindow().setBackgroundDrawableResource(R.drawable.bg_dialog);
+    }
+
     private void confirmClearStats() {
-        new AlertDialog.Builder(this)
+        AlertDialog dlgClearStats = new AlertDialog.Builder(this)
                 .setTitle("清空播放统计？")
                 .setMessage("日/周/月/年所有听歌记录都会删掉，不可恢复。建议先导出一份备份。")
                 .setNegativeButton("取消", null)
@@ -597,7 +603,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                     refreshStatsHeader();
                     android.widget.Toast.makeText(this, "播放统计已清空", android.widget.Toast.LENGTH_SHORT).show();
                 })
-                .show();
+                .create();
+        dlgDarkBg(dlgClearStats);
     }
 
     private void exportStats() {
@@ -680,7 +687,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             final String ferr = err;
             runOnUiThread(() -> {
                 if (ferr != null) { android.widget.Toast.makeText(this, ferr, android.widget.Toast.LENGTH_LONG).show(); return; }
-                new AlertDialog.Builder(this)
+                AlertDialog dlgImport = new AlertDialog.Builder(this)
                         .setTitle("恢复这份备份？")
                         .setMessage("将导入 " + rows.size() + " 条记录，并覆盖当前全部播放统计。")
                         .setNegativeButton("取消", null)
@@ -691,7 +698,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                                 android.widget.Toast.makeText(this, "备份已恢复", android.widget.Toast.LENGTH_SHORT).show();
                             });
                         }).start())
-                        .show();
+                        .create();
+                dlgDarkBg(dlgImport);
             });
         }).start();
     }
@@ -713,36 +721,51 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         return c.getTimeInMillis();
     }
 
-    /** 自定义统计范围：连弹两次日历（起始 → 结束），选完存档并切到「自定义」档 */
+    private interface DatePickCb { void onPick(int y, int m0, int d); }
+
+    /** 自绘日期弹窗：系统 DatePickerDialog 是块大灰板，跟 App 风格不搭；
+     *  改成自家深色圆角卡 + 内嵌日历控件，选中色仍走系统强调色 */
+    private void showDatePick(String title, int[] init, long minMs, long maxMs, DatePickCb cb) {
+        View root = getLayoutInflater().inflate(R.layout.dialog_date_pick, null);
+        ((TextView) root.findViewById(R.id.tvPickTitle)).setText(title);
+        final android.widget.DatePicker dp = root.findViewById(R.id.dpPick);
+        dp.init(init[0], init[1], init[2], null);
+        if (minMs > 0) dp.setMinDate(minMs);
+        if (maxMs > 0) dp.setMaxDate(maxMs);
+        final AlertDialog dlg = new AlertDialog.Builder(this).setView(root).create();
+        root.findViewById(R.id.btnPickCancel).setOnClickListener(v -> dlg.dismiss());
+        root.findViewById(R.id.btnPickOk).setOnClickListener(v -> {
+            Haptics.press(this);
+            cb.onPick(dp.getYear(), dp.getMonth(), dp.getDayOfMonth());
+            dlg.dismiss();
+        });
+        dlg.show();
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+        }
+    }
+
+    /** 自定义统计范围：连选两次日期（开始 → 结束），选完存档并切到「自定义」档 */
     private void pickCustomRange() {
         SharedPreferences up = getSharedPreferences("ui", MODE_PRIVATE);
         int[] f0 = parseDayKey(up.getString("stats_custom_from", StatsDb.daysAgoKey(30)));
-        long today = dayMillis(parseDayKey(StatsDb.todayKey()));
-        android.app.DatePickerDialog d1 = new android.app.DatePickerDialog(this, (v, y, m, d) -> {
+        final long today = dayMillis(parseDayKey(StatsDb.todayKey()));
+        java.util.Calendar minC = java.util.Calendar.getInstance();
+        minC.add(java.util.Calendar.DAY_OF_YEAR, -399);
+        final long minAll = minC.getTimeInMillis();
+        showDatePick("选择开始日期", f0, minAll, today, (y, m, d) -> {
             final String fromKey = String.format(java.util.Locale.CHINA, "%04d-%02d-%02d", y, m + 1, d);
             int[] t0 = parseDayKey(up.getString("stats_custom_to", StatsDb.todayKey()));
-            android.app.DatePickerDialog dlg2 = new android.app.DatePickerDialog(this, (v2, y2, m2, dd2) -> {
-                String toKey = String.format(java.util.Locale.CHINA, "%04d-%02d-%02d", y2, m2 + 1, dd2);
-                if (toKey.compareTo(fromKey) < 0) {
-                    android.widget.Toast.makeText(this, "结束日期不能早于开始日期", android.widget.Toast.LENGTH_SHORT).show();
-                    return;
-                }
+            showDatePick("选择结束日期", t0, dayMillis(parseDayKey(fromKey)), today, (y2, m2, d2) -> {
+                String toKey = String.format(java.util.Locale.CHINA, "%04d-%02d-%02d", y2, m2 + 1, d2);
                 up.edit().putString("stats_custom_from", fromKey).putString("stats_custom_to", toKey).apply();
                 statPeriod = 5;
                 getSharedPreferences("ui", MODE_PRIVATE).edit().putInt("stats_period", 5).apply();
-                Haptics.press(this);
                 styleStatChips();
                 refreshStatsHeader();
-            }, t0[0], t0[1], t0[2]);
-            dlg2.getDatePicker().setMinDate(dayMillis(parseDayKey(fromKey)));
-            dlg2.getDatePicker().setMaxDate(today);
-            dlg2.show();
-        }, f0[0], f0[1], f0[2]);
-        java.util.Calendar min = java.util.Calendar.getInstance();
-        min.add(java.util.Calendar.DAY_OF_YEAR, -399);
-        d1.getDatePicker().setMinDate(min.getTimeInMillis());
-        d1.getDatePicker().setMaxDate(today);
-        d1.show();
+            });
+        });
     }
 
     private void styleStatChips() {
