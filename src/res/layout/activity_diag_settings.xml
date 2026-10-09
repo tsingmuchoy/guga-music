@@ -65,7 +65,10 @@
             android:background="@drawable/bg_card"
             android:gravity="center"
             android:padding="12dp"
-            android:text="🔄 刷新诊断"
+            android:text="刷新诊断"
+            android:drawableStart="@drawable/ic_refresh"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
             android:textColor="?attr/gTextPri"
             android:textSize="14sp" />
 
@@ -78,7 +81,10 @@
             android:background="@drawable/bg_card"
             android:gravity="center"
             android:padding="12dp"
-            android:text="🗑 清空日志"
+            android:text="清空日志"
+            android:drawableStart="@drawable/ic_trash"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
             android:textColor="?attr/gTextPri"
             android:textSize="14sp" />
     </LinearLayout>

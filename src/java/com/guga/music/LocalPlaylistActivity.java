@@ -48,7 +48,9 @@ public class LocalPlaylistActivity extends Activity {
         db = new LocalDb(this);
         pid = getIntent().getLongExtra("pid", -1);
         String name = getIntent().getStringExtra("name");
-        ((TextView) findViewById(R.id.tvListName)).setText("🎵 " + (name == null ? "本地歌单" : name));
+        TextView tvListName = (TextView) findViewById(R.id.tvListName);
+        tvListName.setText(name == null ? "本地歌单" : name);
+        IconUtil.leading(tvListName, R.drawable.ic_note, R.attr.gAccent);
         lv = findViewById(R.id.lvTracks);
         tvEmpty = findViewById(R.id.tvEmptyTracks);
         lv.setAdapter(adapter);
@@ -62,7 +64,7 @@ public class LocalPlaylistActivity extends Activity {
             final Track t = tracks.get(pos);
             new AlertDialog.Builder(this)
                     .setTitle(t.title)
-                    .setItems(new String[]{"🗑️ 从歌单移除"}, (d, w) -> {
+                    .setItems(new String[]{"从歌单移除"}, (d, w) -> {
                         db.removeTrack(pid, t.bvid);
                         reload();
                     })

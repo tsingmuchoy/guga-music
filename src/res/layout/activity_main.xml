@@ -90,7 +90,7 @@
                 android:paddingRight="14dp"
                 android:paddingTop="7dp"
                 android:paddingBottom="7dp"
-                android:text="⭐ B站收藏夹"
+                android:text="B站收藏夹"
                 android:textColor="?attr/gOnAccent"
                 android:textSize="13sp"
                 android:textStyle="bold" />
@@ -105,7 +105,7 @@
                 android:paddingRight="14dp"
                 android:paddingTop="7dp"
                 android:paddingBottom="7dp"
-                android:text="🎵 本地歌单"
+                android:text="本地歌单"
                 android:textColor="?attr/gTextSec"
                 android:textSize="13sp" />
 
@@ -209,11 +209,14 @@
                     <TextView
                         android:id="@+id/btnSettings"
                         android:layout_width="match_parent"
+                    android:drawableStart="@drawable/ic_gear"
+                    android:drawablePadding="8dp"
+                    android:drawableTint="?attr/gAccent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:background="@drawable/bg_card"
                         android:padding="16dp"
-                        android:text="⚙️ 设置（主题配色 / 音质 / 关于）"
+                        android:text="设置（主题配色 / 音质 / 关于）"
                         android:textColor="?attr/gTextPri"
                         android:textSize="15sp" />
                 </LinearLayout>
@@ -308,7 +311,7 @@
         <FrameLayout
             android:id="@+id/llTabs"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="62dp"
             android:layout_marginLeft="10dp"
             android:layout_marginRight="10dp"
             android:layout_marginBottom="10dp"
@@ -322,41 +325,97 @@
                 android:layout_height="match_parent"
                 android:orientation="horizontal">
 
-                <TextView
+                <LinearLayout
                     android:id="@+id/tabSearch"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="搜索"
-                    android:textSize="15sp" />
+                    android:orientation="vertical">
 
-                <TextView
+                    <ImageView
+                        android:id="@+id/tabIcon0"
+                        android:layout_width="21dp"
+                        android:layout_height="21dp"
+                        android:contentDescription="搜索" />
+
+                    <TextView
+                        android:id="@+id/tabLabel0"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:text="搜索"
+                        android:textSize="11.5sp" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/tabFav"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="收藏"
-                    android:textSize="15sp" />
+                    android:orientation="vertical">
 
-                <TextView
+                    <ImageView
+                        android:id="@+id/tabIcon1"
+                        android:layout_width="21dp"
+                        android:layout_height="21dp"
+                        android:contentDescription="收藏" />
+
+                    <TextView
+                        android:id="@+id/tabLabel1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:text="收藏"
+                        android:textSize="11.5sp" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/tabHistory"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="历史"
-                    android:textSize="15sp" />
+                    android:orientation="vertical">
 
-                <TextView
+                    <ImageView
+                        android:id="@+id/tabIcon2"
+                        android:layout_width="21dp"
+                        android:layout_height="21dp"
+                        android:contentDescription="历史" />
+
+                    <TextView
+                        android:id="@+id/tabLabel2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:text="历史"
+                        android:textSize="11.5sp" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/tabMine"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="我的"
-                    android:textSize="15sp" />
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:id="@+id/tabIcon3"
+                        android:layout_width="21dp"
+                        android:layout_height="21dp"
+                        android:contentDescription="我的" />
+
+                    <TextView
+                        android:id="@+id/tabLabel3"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:text="我的"
+                        android:textSize="11.5sp" />
+                </LinearLayout>
             </LinearLayout>
 
             <View

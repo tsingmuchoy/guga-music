@@ -53,15 +53,24 @@ public class SettingsActivity extends Activity {
         for (ThemeUtil.Def d : ThemeUtil.DEFS) {
             if (d.id.equals(themeName)) { themeName = d.name; break; }
         }
-        eTheme.setText("🎨 主题配色：" + themeName + " ›");
+        eTheme.setText("主题配色：" + themeName + " ›");
+        IconUtil.leading(eTheme, R.drawable.ic_palette, R.attr.gAccent);
         PlayerService svc = PlayerService.get();
         int tier = svc != null ? svc.getQualityTier()
                 : getSharedPreferences("player", MODE_PRIVATE).getBoolean("lowq", false) ? 0 : 2;
-        ePlayback.setText("🎵 播放：" + PlayerService.QUALITY_NAMES[tier] + " ›");
-        eLyrics.setText("🎤 歌词源顺序 ›");
-        eUpdate.setText("🔄 版本与更新：" + UpdateChecker.sourceName(UpdateChecker.sourcePref(this)) + " ›");
-        eDiag.setText("🩺 播放诊断 ›");
-        eHaptics.setText("📳 触感反馈：" + (Haptics.isOn(this) ? "开" : "关") + " ›");
+        ePlayback.setText("播放：" + PlayerService.QUALITY_NAMES[tier] + " ›");
+        IconUtil.leading(ePlayback, R.drawable.ic_note, R.attr.gAccent);
+        eLyrics.setText("歌词源顺序 ›");
+        IconUtil.leading(eLyrics, R.drawable.ic_mic, R.attr.gAccent);
+        eUpdate.setText("版本与更新：" + UpdateChecker.sourceName(UpdateChecker.sourcePref(this)) + " ›");
+        IconUtil.leading(eUpdate, R.drawable.ic_refresh, R.attr.gAccent);
+        eDiag.setText("播放诊断 ›");
+        IconUtil.leading(eDiag, R.drawable.ic_pulse, R.attr.gAccent);
+        eHaptics.setText("触感反馈：" + (Haptics.isOn(this) ? "开" : "关") + " ›");
+        IconUtil.leading(eHaptics, R.drawable.ic_vibrate, R.attr.gAccent);
+        IconUtil.leading((android.widget.TextView) findViewById(R.id.tvDataHeader), R.drawable.ic_disk, R.attr.gAccent);
+        IconUtil.leading((android.widget.TextView) findViewById(R.id.btnClearHistory), R.drawable.ic_trash, R.attr.gAccent);
+        IconUtil.leading((android.widget.TextView) findViewById(R.id.btnAbout), R.drawable.ic_tab_mine, R.attr.gAccent);
     }
 
     @Override

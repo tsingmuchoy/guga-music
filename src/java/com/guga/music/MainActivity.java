@@ -66,7 +66,9 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private ImageView ivFace, ivMiniCover;
     private TextView tvMiniTitle;
     private android.widget.ImageView btnMiniToggle;
-    private final TextView[] tabViews = new TextView[4];
+    private final View[] tabViews = new View[4];
+    private final ImageView[] tabIcons = new ImageView[4];
+    private final TextView[] tabLabels = new TextView[4];
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -115,6 +117,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         tabViews[1] = findViewById(R.id.tabFav);
         tabViews[2] = findViewById(R.id.tabHistory);
         tabViews[3] = findViewById(R.id.tabMine);
+        tabIcons[0] = findViewById(R.id.tabIcon0);
+        tabIcons[1] = findViewById(R.id.tabIcon1);
+        tabIcons[2] = findViewById(R.id.tabIcon2);
+        tabIcons[3] = findViewById(R.id.tabIcon3);
+        tabLabels[0] = findViewById(R.id.tabLabel0);
+        tabLabels[1] = findViewById(R.id.tabLabel1);
+        tabLabels[2] = findViewById(R.id.tabLabel2);
+        tabLabels[3] = findViewById(R.id.tabLabel3);
 
         EditText etSearch = findViewById(R.id.etSearch);
         findViewById(R.id.btnSearch).setOnClickListener(v -> { Haptics.tick(this); doSearch(etSearch.getText().toString().trim()); });
@@ -154,7 +164,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                     final LocalDb.Playlist pl = localLists.get(pos);
                     new android.app.AlertDialog.Builder(this)
                             .setTitle(pl.name)
-                            .setItems(new String[]{"✏️ 重命名", "🗑️ 删除歌单"}, (d, w) -> {
+                            .setItems(new String[]{"重命名", "删除歌单"}, (d, w) -> {
                                 if (w == 0) {
                                     PlaylistPicker.createDialog(this, "重命名歌单", pl.name, "保存", name -> {
                                         localDb.renamePlaylist(pl.id, name);
@@ -288,17 +298,16 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private static final int[] TAB_ICONS = {
             R.drawable.ic_tab_search, R.drawable.ic_tab_fav, R.drawable.ic_tab_history, R.drawable.ic_tab_mine};
 
-    /** 底栏图标 + 文字统一上色：未选次级色描边，选中主题色（收藏星选中变实心） */
+    /** 底栏竖排：图标在上、文字在下，未选次级色，选中主题色（收藏星选中变实心） */
     private void styleTabs(int sel) {
-        float den = getResources().getDisplayMetrics().density;
         for (int k = 0; k < 4; k++) {
             boolean on = k == sel;
             int res = k == 1 && on ? R.drawable.ic_tab_fav_fill : TAB_ICONS[k];
-            android.graphics.drawable.Drawable d = getDrawable(res).mutate();
-            d.setTint(ThemeUtil.color(this, on ? R.attr.gAccent : R.attr.gTextSec));
-            tabViews[k].setCompoundDrawablesWithIntrinsicBounds(d, null, null, null);
-            tabViews[k].setCompoundDrawablePadding((int) (5 * den));
-            tabViews[k].setTextColor(ThemeUtil.color(this, on ? R.attr.gAccent : R.attr.gTextSec));
+            tabIcons[k].setImageResource(res);
+            tabIcons[k].setColorFilter(ThemeUtil.color(this, on ? R.attr.gAccent : R.attr.gTextSec),
+                    android.graphics.PorterDuff.Mode.SRC_IN);
+            tabLabels[k].setTextColor(ThemeUtil.color(this, on ? R.attr.gAccent : R.attr.gTextSec));
+            tabLabels[k].setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         }
     }
 
@@ -686,6 +695,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
         chipFavLocal.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec));
         btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
+        IconUtil.leading(chipFavBili, R.drawable.ic_tab_fav, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent, 6);
+        IconUtil.leading(chipFavLocal, R.drawable.ic_note, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec, 6);
     }
 
     private void showLocalLists() {
@@ -802,7 +813,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         @Override public View getView(int p, View cv, ViewGroup parent) {
             if (cv == null) cv = LayoutInflater.from(MainActivity.this).inflate(R.layout.item_folder, parent, false);
             LocalDb.Playlist pl = localLists.get(p);
-            ((TextView) cv.findViewById(R.id.tvFolderTitle)).setText("🎵 " + pl.name);
+            ((TextView) cv.findViewById(R.id.tvFolderTitle)).setText(pl.name);
             ((TextView) cv.findViewById(R.id.tvFolderCount)).setText(pl.count + " 首");
             return cv;
         }

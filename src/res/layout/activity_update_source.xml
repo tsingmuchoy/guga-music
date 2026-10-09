@@ -31,7 +31,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🔄 版本与更新"
+                android:text="版本与更新"
+            android:drawableStart="@drawable/ic_refresh"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
                 android:textColor="?attr/gAccent"
                 android:textSize="15sp"
                 android:textStyle="bold" />
@@ -41,7 +44,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="⬆️ 检查更新（点一下，看看有没有新版）"
+                android:text="检查更新（点一下，看看有没有新版）"
+            android:drawableStart="@drawable/ic_download"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
 

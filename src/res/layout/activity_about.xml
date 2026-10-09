@@ -19,6 +19,9 @@
             android:src="@mipmap/ic_launcher" />
 
         <TextView
+            android:drawableStart="@drawable/ic_tab_mine"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
@@ -38,13 +41,16 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="👩‍💻 开发者介绍"
+                android:text="开发者介绍"
                 android:textColor="?attr/gAccent"
                 android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
-                android:layout_width="match_parent"
+                android:drawableStart="@drawable/ic_globe"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
+            android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:lineSpacingMultiplier="1.35"
@@ -64,35 +70,44 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🔗 清木的主页与联系"
+                android:text="清木的主页与联系"
                 android:textColor="?attr/gAccent"
                 android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvBili"
-                android:layout_width="match_parent"
+                android:drawableStart="@drawable/ic_note"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
+            android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="🎵 B站主页：space.bilibili.com/1432258677（点开）"
+                android:text="B站主页：space.bilibili.com/1432258677（点开）"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/tvGithub"
-                android:layout_width="match_parent"
+                android:drawableStart="@drawable/ic_code"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
+            android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="🐙 GitHub 开源仓库：github.com/tsingmuchoy/guga-music（点开）"
+                android:text="GitHub 开源仓库：github.com/tsingmuchoy/guga-music（点开）"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/tvEmail"
-                android:layout_width="match_parent"
+                android:drawableStart="@drawable/ic_mail"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
+            android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:text="✉️ 邮箱：tsingmu35607@gmail.com（点复制）"
+                android:text="邮箱：tsingmu35607@gmail.com（点复制）"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
         </LinearLayout>
@@ -108,7 +123,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🎖 军师"
+                android:drawableStart="@drawable/ic_medal"
+                android:drawablePadding="8dp"
+                android:drawableTint="?attr/gAccent"
+                android:text="军师"
                 android:textColor="?attr/gAccent"
                 android:textSize="15sp"
                 android:textStyle="bold" />
@@ -124,19 +142,25 @@
 
             <TextView
                 android:id="@+id/tvAdvisorBili"
-                android:layout_width="match_parent"
+                android:drawableStart="@drawable/ic_note"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
+            android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="🎵 B站主页：space.bilibili.com/432245733（点开）"
+                android:text="B站主页：space.bilibili.com/432245733（点开）"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/tvAdvisorGithub"
-                android:layout_width="match_parent"
+                android:drawableStart="@drawable/ic_code"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
+            android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="🐙 GitHub：github.com/MCfywb（点开）"
+                android:text="GitHub：github.com/MCfywb（点开）"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
         </LinearLayout>

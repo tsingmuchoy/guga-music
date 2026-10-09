@@ -8,11 +8,12 @@
     android:paddingBottom="13dp"
     android:paddingLeft="4dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="🎵"
-        android:textSize="20sp" />
+    <ImageView
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:contentDescription="歌单"
+        android:src="@drawable/ic_note"
+        android:tint="?attr/gAccent" />
 
     <TextView
         android:id="@+id/tvFolderTitle"

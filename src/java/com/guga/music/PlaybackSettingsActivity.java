@@ -94,21 +94,25 @@ public class PlaybackSettingsActivity extends Activity {
         int cap = pf.getInt("metered_cap_tier", 1);
         if (btnMetered != null) {
             btnMetered.setText(on
-                    ? "📶 流量下自动降档：开（上限 " + PlayerService.QUALITY_NAMES[cap] + "）"
-                    : "📶 流量下自动降档：关");
+                    ? "流量下自动降档：开（上限 " + PlayerService.QUALITY_NAMES[cap] + "）"
+                    : "流量下自动降档：关");
+            IconUtil.leading(btnMetered, R.drawable.ic_signal, R.attr.gAccent);
         }
         if (btnCacheCap != null) {
-            btnCacheCap.setText("🎚 音频缓存上限：" + pf.getInt("cache_cap_mb", 48) + " MB（可在 16/32/48/96 间切换）");
+            btnCacheCap.setText("音频缓存上限：" + pf.getInt("cache_cap_mb", 48) + " MB（可在 16/32/48/96 间切换）");
+            IconUtil.leading(btnCacheCap, R.drawable.ic_sliders, R.attr.gAccent);
         }
         if (btnCacheInfo != null) {
-            btnCacheInfo.setText("💾 音频缓存：已用 " + fmtBytes(StreamCache.usedBytes(this)));
+            btnCacheInfo.setText("音频缓存：已用 " + fmtBytes(StreamCache.usedBytes(this)));
+            IconUtil.leading(btnCacheInfo, R.drawable.ic_disk, R.attr.gAccent);
         }
         if (btnTraffic != null) {
             PlayerService svc = PlayerService.get();
             btnTraffic.setText(svc == null
-                    ? "📈 流量估算：播放服务未运行"
-                    : "📈 流量估算：本次约 " + fmtBytes(svc.trafficSessionBytes())
+                    ? "流量估算：播放服务未运行"
+                    : "流量估算：本次约 " + fmtBytes(svc.trafficSessionBytes())
                             + " · 本月约 " + fmtBytes(svc.trafficMonthBytes()));
+            IconUtil.leading(btnTraffic, R.drawable.ic_chart, R.attr.gAccent);
         }
     }
 
@@ -120,9 +124,10 @@ public class PlaybackSettingsActivity extends Activity {
         if (btnFloatIsland == null) return;
         boolean on = islandPref();
         boolean perm = android.provider.Settings.canDrawOverlays(this);
-        btnFloatIsland.setText(!on ? "🫧 悬浮岛（仿原子岛）：关"
-                : perm ? "🫧 悬浮岛（仿原子岛）：开（在别的 App 上方显示播控胶囊）"
-                : "🫧 悬浮岛（仿原子岛）：已开启，但缺悬浮窗权限（去授权）");
+        btnFloatIsland.setText(!on ? "悬浮岛（仿原子岛）：关"
+                : perm ? "悬浮岛（仿原子岛）：开（在别的 App 上方显示播控胶囊）"
+                : "悬浮岛（仿原子岛）：已开启，但缺悬浮窗权限（去授权）");
+        IconUtil.leading(btnFloatIsland, R.drawable.ic_island, R.attr.gAccent);
     }
 
     private void onFloatIslandClicked() {
@@ -156,11 +161,13 @@ public class PlaybackSettingsActivity extends Activity {
 
     private void refreshSbEntry() {
         if (btnSbLyricsEntry == null) return;
-        btnSbLyricsEntry.setText("🎤 状态栏歌词：" + (sbPref() ? "开" : "关") + "（位置/大小/颜色）");
+        btnSbLyricsEntry.setText("状态栏歌词：" + (sbPref() ? "开" : "关") + "（位置/大小/颜色）");
+        IconUtil.leading(btnSbLyricsEntry, R.drawable.ic_mic, R.attr.gAccent);
     }
 
     private void refreshAlbumCover() {
-        btnAlbumCover.setText("🖼 专辑封面：" + (Lyrics.isCoverArt(this) ? "开（歌曲自动换专辑原图）" : "关（用视频封面）"));
+        btnAlbumCover.setText("专辑封面：" + (Lyrics.isCoverArt(this) ? "开（歌曲自动换专辑原图）" : "关（用视频封面）"));
+        IconUtil.leading(btnAlbumCover, R.drawable.ic_image, R.attr.gAccent);
     }
 
     /** 音质五档选择行，档位存 player 偏好 quality_tier */

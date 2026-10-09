@@ -37,12 +37,12 @@ public class PlaylistPicker {
         }
         LinearLayout box = root.findViewById(R.id.llPickerItems);
         for (final LocalDb.Playlist pl : pls) {
-            box.addView(row(act, "🎵  " + pl.name, pl.count + " 首", v -> {
+            box.addView(row(act, pl.name, pl.count + " 首", R.drawable.ic_note, v -> {
                 dlg.dismiss();
                 addToast(act, db.addTrack(pl.id, track), pl.name);
             }));
         }
-        box.addView(row(act, "＋  新建歌单…", "", v -> {
+        box.addView(row(act, "＋ 新建歌单…", "", 0, v -> {
             dlg.dismiss();
             createDialog(act, name -> {
                 long id = db.createPlaylist(name);
@@ -53,11 +53,12 @@ public class PlaylistPicker {
         dlg.show();
     }
 
-    private static View row(Activity act, String main, String sub, View.OnClickListener cb) {
+    private static View row(Activity act, String main, String sub, int icon, View.OnClickListener cb) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         TextView tv = new TextView(act);
         tv.setLayoutParams(lp);
+        if (icon != 0) IconUtil.leading(tv, icon, R.attr.gAccent);
         tv.setPadding(6, 30, 6, 30);
         tv.setText(sub.isEmpty() ? main : main + "   ·   " + sub);
         tv.setTextSize(15.5f);

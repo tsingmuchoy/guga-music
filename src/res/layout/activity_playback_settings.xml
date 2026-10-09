@@ -111,7 +111,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
-            android:text="📶 省流量与缓存"
+            android:text="省流量与缓存"
+            android:drawableStart="@drawable/ic_signal"
+            android:drawablePadding="8dp"
+            android:drawableTint="?attr/gAccent"
             android:textColor="?attr/gAccent"
             android:textSize="14sp"
             android:textStyle="bold" />
