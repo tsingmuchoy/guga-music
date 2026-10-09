@@ -173,8 +173,8 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 });
 }
 
-// ---------------- 专辑封面（轻量化设计·双源） ----------------
-// 网易云 + QQ 两源汇池统一排序：歌手命中组绝对优先（防同名翻唱抢位，v1.17.0 教训），
+// ---------------- 专辑封面（轻量化设计·三源） ----------------
+// 网易云 + QQ + 酷我三源汇池统一排序：歌手命中组绝对优先（防同名翻唱抢位，v1.17.0 教训），
 // 组内按歌名分、时长差排；无歌手命中时仅接受「歌名完全一致且时长差≤3秒」。
 // 结果只存内存（进程级 Map），图片走 ImgLoader 原有内存缓存；不写任何磁盘文件。
 public interface CoverCb { void onCover(String url); }
@@ -221,6 +221,7 @@ java.util.List<String> cands = coverCandsOf(hints);
 java.util.Map<String, CoverCand> byUrl = new java.util.LinkedHashMap<>();
 try { collectNetEaseCovers(track, hints, cands, byUrl); } catch (Exception ignored) {}
 try { collectQqCovers(track, hints, cands, byUrl); } catch (Exception ignored) {}
+try { collectKuwoCovers(track, hints, cands, byUrl); } catch (Exception ignored) {}
 CoverCand bestHit = null, bestLoose = null;
 for (CoverCand c : byUrl.values()) {
 if (c.artistHit && c.score >= 80) {
@@ -344,6 +345,7 @@ String lrc = null;
 if (key.equals("qq")) lrc = qqLyrics(track, hints, alt);
 else if (key.equals("netease")) lrc = neteaseLyrics(track, hints, alt);
 else if (key.equals("kugou")) lrc = kugouLyrics(track, hints, alt);
+else if (key.equals("kuwo")) lrc = kuwoLyrics(track, hints, alt);
 else if (key.equals("amll")) lrc = amllLyrics(track, hints, alt);
 else if (key.equals("lrclib")) lrc = lrclibLyrics(track, hints, alt);
 Result r = acceptLrc(cache, lrc, srcLabel(key));
@@ -585,10 +587,136 @@ if (text.contains("[")) return text;
 return null;
 }
 
+
+// ---------------- 酷我 ----------------
+// 搜索走 search.kuwo.cn 经典 r.s 接口（免令牌）；歌词走 www.kuwo.cn openapi（lrclist 时间+文本）；
+// 封面用搜索自带的 web_albumpic_short，把尺寸段 120 换成 500 取大图。老歌/冷门歌库存是它的强项。
+private static JSONArray kuwoSearch(String q, int rn) throws Exception {
+String url = "https://search.kuwo.cn/r.s?client=kt&all=" + URLEncoder.encode(q, "UTF-8")
++ "&pn=0&rn=" + rn + "&uid=221260053&ver=kwplayer_ar_9.2.2.1&vipver=1&show_copyright_off=1&newver=1"
++ "&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1&issubtitle=1";
+JSONObject r = new JSONObject(httpGet(url, "https://www.kuwo.cn/"));
+JSONArray out = new JSONArray();
+JSONArray abs = r.optJSONArray("abslist");
+if (abs == null) return out;
+for (int i = 0; i < abs.length(); i++) {
+JSONObject sj = abs.getJSONObject(i);
+out.put(sj);
+JSONArray sub = sj.optJSONArray("SUBLIST");
+if (sub != null) for (int j = 0; j < sub.length(); j++) out.put(sub.getJSONObject(j));
+}
+return out;
+}
+
+private static String kuwoUnescape(String s) {
+if (s == null) return "";
+return s.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'")
+.replace("&lt;", "<").replace("&gt;", ">");
+}
+
+private static String kuwoName(JSONObject sj) {
+String n = kuwoUnescape(sj.optString("SONGNAME"));
+return n.isEmpty() ? kuwoUnescape(sj.optString("NAME")) : n;
+}
+
+private static long kuwoRid(JSONObject sj) {
+String rid = sj.optString("MUSICRID").replace("MUSIC_", "").trim();
+try { return Long.parseLong(rid); } catch (Exception e) { return sj.optLong("DC_TARGETID"); }
+}
+
+private static long kuwoDurMs(JSONObject sj) {
+try { return Long.parseLong(sj.optString("DURATION").trim()) * 1000L; } catch (Exception e) { return 0; }
+}
+
+private static String kuwoLyrics(Track track, Hints hints, int alt) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+Map<Long, Cand> byId = new HashMap<>();
+for (String q : hints.queries) {
+if (!byId.isEmpty()) break; // 首个有候选的查询就够了（同酷狗策略，省请求）
+JSONArray list = kuwoSearch(q, 20);
+for (int i = 0; i < list.length(); i++) {
+JSONObject sj = list.getJSONObject(i);
+long rid = kuwoRid(sj);
+if (rid <= 0 || byId.containsKey(rid)) continue;
+int score = nameScore(kuwoName(sj), hints.nameCands);
+long diff = wantDur > 0 ? Math.abs(kuwoDurMs(sj) - wantDur) : Long.MAX_VALUE / 2;
+if (wantDur > 0 && diff > 12000) continue;
+String singer = kuwoUnescape(sj.optString("ARTIST"));
+boolean artistHit = singer.length() >= 2 && track.title != null
+&& (track.title.contains(singer) || singer.equals(hints.artist));
+int group;
+if (score >= 80) group = 0;
+else if (score == 50 && artistHit) group = 1;
+else if (score == 0 && artistHit && diff <= 5000) group = 2;
+else continue;
+byId.put(rid, new Cand(rid, group, diff));
+}
+}
+List<Cand> pool = new ArrayList<>(byId.values());
+Collections.sort(pool, (a, b) -> a.group != b.group ? Integer.compare(a.group, b.group)
+: Long.compare(a.diff, b.diff));
+if (pool.isEmpty()) return null;
+for (int k = 0; k < pool.size(); k++) {
+Cand c = pool.get(Math.floorMod(alt + k, pool.size()));
+try {
+String lrc = kuwoFetchLrc(c.id);
+if (lrc != null) return lrc;
+} catch (Exception ignored) {}
+}
+return null;
+}
+
+private static String kuwoFetchLrc(long rid) throws Exception {
+JSONObject r = new JSONObject(httpGet(
+"https://www.kuwo.cn/openapi/v1/www/lyric/getlyric?musicId=" + rid,
+"https://www.kuwo.cn/"));
+JSONObject data = r.optJSONObject("data");
+JSONArray list = data == null ? null : data.optJSONArray("lrclist");
+if (list == null) return null;
+StringBuilder sb = new StringBuilder();
+int count = 0;
+for (int i = 0; i < list.length(); i++) {
+JSONObject lj = list.getJSONObject(i);
+String text = kuwoUnescape(lj.optString("lineLyric")).trim();
+if (text.isEmpty()) continue;
+double sec;
+try { sec = Double.parseDouble(lj.optString("time")); } catch (Exception e) { continue; }
+long ms = Math.round(sec * 1000);
+sb.append(String.format("[%02d:%02d.%03d]", ms / 60000, (ms % 60000) / 1000, ms % 1000))
+.append(text).append("\n");
+count++;
+}
+return count >= 5 ? sb.toString() : null;
+}
+
+private static void collectKuwoCovers(Track track, Hints hints, java.util.List<String> cands,
+java.util.Map<String, CoverCand> byUrl) throws Exception {
+long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
+int used = 0;
+for (String q : hints.queries) {
+if (used++ >= 3) break;
+JSONArray list = kuwoSearch(q, 10);
+for (int i = 0; i < list.length(); i++) {
+JSONObject sj = list.getJSONObject(i);
+int score = nameScore(kuwoName(sj), cands);
+if (score < 80) continue;
+String shortPic = sj.optString("web_albumpic_short");
+if (shortPic.isEmpty() || shortPic.indexOf('/') < 0) continue;
+long diff = wantDur > 0 ? Math.abs(kuwoDurMs(sj) - wantDur) : Long.MAX_VALUE / 2;
+String singer = kuwoUnescape(sj.optString("ARTIST"));
+boolean artistHit = singer.length() >= 2 && ((track.title != null && track.title.contains(singer))
+|| (!hints.artist.isEmpty() && (hints.artist.contains(singer) || singer.contains(hints.artist))));
+String url = "https://img1.kuwo.cn/star/albumcover/500/"
++ shortPic.substring(shortPic.indexOf('/') + 1);
+byUrl.put(url, new CoverCand(url, "酷我", score, artistHit, diff));
+}
+}
+}
+
 // ---------------- 歌词源顺序配置 ----------------
-public static final String[] SRC_KEYS = {"qq", "netease", "kugou", "amll", "lrclib"};
-public static final String[] SRC_NAMES = {"QQ音乐", "网易云音乐", "酷狗音乐", "AMLL TTML", "LRCLIB"};
-private static final String DEFAULT_ORDER = "qq,netease,kugou,amll,lrclib";
+public static final String[] SRC_KEYS = {"qq", "netease", "kugou", "kuwo", "amll", "lrclib"};
+public static final String[] SRC_NAMES = {"QQ音乐", "网易云音乐", "酷狗音乐", "酷我音乐", "AMLL TTML", "LRCLIB"};
+private static final String DEFAULT_ORDER = "qq,netease,kugou,kuwo,amll,lrclib";
 
 public static List<String> sourceOrder(Context ctx) {
 String saved = ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getString("source_order", "");
@@ -625,6 +753,7 @@ if (key.equals("qq")) return "QQ音乐歌词";
 if (key.equals("amll")) return "AMLL TTML 歌词";
 if (key.equals("lrclib")) return "LRCLIB 歌词";
 if (key.equals("kugou")) return "酷狗歌词";
+if (key.equals("kuwo")) return "酷我歌词";
 return "网易云歌词";
 }
 
@@ -633,6 +762,7 @@ if (key.equals("qq")) return "QQ音乐";
 if (key.equals("amll")) return "AMLL TTML";
 if (key.equals("lrclib")) return "LRCLIB";
 if (key.equals("kugou")) return "酷狗";
+if (key.equals("kuwo")) return "酷我";
 return "网易云";
 }
 
