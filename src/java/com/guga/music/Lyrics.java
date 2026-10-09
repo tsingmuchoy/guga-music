@@ -690,18 +690,72 @@ return new Result(lines, src);
 }
 
 private static void align(List<Line> main, String extraLrc, boolean isTrans) {
-List<Line> ex = parseLrc(extraLrc);
-for (Line e : ex) {
-if (e.text == null || e.text.trim().isEmpty()) continue;
-Line best = null; long bd = Long.MAX_VALUE;
-for (Line m : main) {
-long d = Math.abs(m.timeMs - e.timeMs);
-if (d < bd) { bd = d; best = m; }
+List<Line> sub = new ArrayList<>();
+for (Line e : parseLrc(extraLrc)) {
+if (e.text != null && !e.text.trim().isEmpty()) sub.add(e);
 }
-if (best != null && bd <= 800) {
-if (isTrans) { if (best.trans == null) best.trans = e.text; }
-else if (best.roma == null) best.roma = e.text;
+if (sub.isEmpty() || main.isEmpty()) return;
+// 全局偏移估计：所有 ±3s 内配对的时间差取最密集的 200ms 桶中位数（两源时间轴整体漂移时先校正）
+long off = 0;
+List<Long> deltas = new ArrayList<>();
+for (Line e : sub) for (Line m : main) {
+long dd = e.timeMs - m.timeMs;
+if (Math.abs(dd) <= 3000) deltas.add(dd);
 }
+if (deltas.size() >= 3) {
+java.util.Map<Long, Integer> buckets = new java.util.HashMap<>();
+for (long dd : deltas) {
+long b = Math.round(dd / 200.0);
+Integer c = buckets.get(b);
+buckets.put(b, c == null ? 1 : c + 1);
+}
+long bestB = 0; int bestC = -1;
+for (java.util.Map.Entry<Long, Integer> en : buckets.entrySet()) {
+if (en.getValue() > bestC) { bestC = en.getValue(); bestB = en.getKey(); }
+}
+List<Long> sel = new ArrayList<>();
+for (long dd : deltas) if (Math.round(dd / 200.0) == bestB) sel.add(dd);
+java.util.Collections.sort(sel);
+off = sel.get(sel.size() / 2);
+}
+// 第一遍：校正后 ±800ms 内按距离从小到大贪心分配（每行只用一次，防相邻行抢位丢行）
+int[] m2s = new int[main.size()];
+java.util.Arrays.fill(m2s, -1);
+boolean[] usedS = new boolean[sub.size()];
+List<long[]> pairs = new ArrayList<>();
+for (int j = 0; j < sub.size(); j++) for (int i = 0; i < main.size(); i++) {
+long dd = Math.abs(main.get(i).timeMs - (sub.get(j).timeMs - off));
+if (dd <= 800) pairs.add(new long[]{dd, i, j});
+}
+java.util.Collections.sort(pairs, (a, b) -> Long.compare(a[0], b[0]));
+int assigned = 0;
+for (long[] p : pairs) {
+int i = (int) p[1], j = (int) p[2];
+if (m2s[i] >= 0 || usedS[j]) continue;
+m2s[i] = j; usedS[j] = true; assigned++;
+}
+// 第二遍：顺序填充——未配上的行只许用「前后已配行之间」未被占用的副行，校正后 ±2000ms 内取最近（救单行漂移/时间戳重复造成的疏漏）
+if (assigned >= 3) {
+for (int i = 0; i < main.size(); i++) {
+if (m2s[i] >= 0) continue;
+int lo = -1, hi = Integer.MAX_VALUE;
+for (int k = 0; k < i; k++) if (m2s[k] > lo) lo = m2s[k];
+for (int k = i + 1; k < main.size(); k++) if (m2s[k] >= 0 && m2s[k] < hi) hi = m2s[k];
+int best = -1; long bd = Long.MAX_VALUE;
+for (int j = 0; j < sub.size(); j++) {
+if (usedS[j] || j <= lo || j >= hi) continue;
+long cd = Math.abs(main.get(i).timeMs - (sub.get(j).timeMs - off));
+if (cd <= 2000 && cd < bd) { bd = cd; best = j; }
+}
+if (best >= 0) { m2s[i] = best; usedS[best] = true; }
+}
+}
+for (int i = 0; i < main.size(); i++) {
+if (m2s[i] < 0) continue;
+Line m = main.get(i);
+String txt = sub.get(m2s[i]).text;
+if (isTrans) { if (m.trans == null) m.trans = txt; }
+else if (m.roma == null) m.roma = txt;
 }
 }
 
@@ -786,7 +840,7 @@ return n >= 3 ? sb.toString() : null;
 private static Result maybeEnrich(Context ctx, Track track, Result r, File cache, File dir) {
 try {
 if (r == null || r.lines == null || r.lines.size() < 5) return r;
-if (new File(dir, track.bvid + ".x").exists()) return r;
+if (new File(dir, track.bvid + ".x2").exists()) return r;
 int total = 0, nt = 0, nr = 0;
 boolean foreign = false;
 for (Line l : r.lines) {
@@ -801,7 +855,7 @@ boolean wantT = isShowTrans(ctx) && nt * 3 < total;
 boolean wantR = isShowRoma(ctx) && nr * 3 < total;
 if (!wantT && !wantR) return r;
 long nid = neteaseBestId(track, hintsOf(track));
-File mark = new File(dir, track.bvid + ".x");
+File mark = new File(dir, track.bvid + ".x2");
 if (nid <= 0) { mark.createNewFile(); return r; }
 JSONObject d = new JSONObject(httpGet(
 "https://music.163.com/api/song/lyric/v1?id=" + nid + "&cp=false&lv=0&kv=0&tv=1&rv=1",
