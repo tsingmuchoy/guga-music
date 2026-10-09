@@ -19,7 +19,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** 跨平台歌单导入引擎：识别分享链接 → 解析曲目 → 逐首匹配 B 站。
- *  平台：netease 网易云 / qq QQ音乐 / kugou 酷狗 / kuwo 酷我 / qishui 汽水音乐。
+ *  平台：netease 网易云 / qq QQ音乐 / kugou 酷狗 / kuwo 酷我 / bodian 波点 / qishui 汽水音乐。
  *  匹配口径：宁可不配、不可错配（歌名对版是硬门槛，歌手/时长加权，过线才收）。 */
 public class PlaylistImport {
 
@@ -97,10 +97,11 @@ id = find(probe, "playlist_detail/(\\d+)");
 if (id == null) id = find(probe, "[?&]pid=(\\d+)");
 if (id != null) { d.platform = "kuwo"; d.id = id; return d; }
 }
-if (probe.contains("qishui.douyin.com") || probe.contains("ssmusic.com")) {
+if (probe.contains("qishui")) {
 d.platform = "qishui";
-d.id = find(probe, "/s/([A-Za-z0-9]+)");
-if (d.id == null) d.id = find(probe, "playlist/([A-Za-z0-9]+)");
+d.id = find(probe, "playlist_id=(\\d+)");
+if (d.id == null) d.id = find(probe, "/s/([A-Za-z0-9]+)");
+if (d.id == null) d.id = find(probe, "share/playlist/([A-Za-z0-9]+)");
 if (d.url == null) d.url = probe;
 return d;
 }
@@ -201,7 +202,8 @@ if ("qq".equals(d.platform)) return fetchQq(d.id);
 if ("kugou".equals(d.platform)) return fetchKugou(d.id);
 if ("kuwo".equals(d.platform)) return fetchKuwo(d.id);
 if ("bodian".equals(d.platform)) return fetchBodian(d.id, d.extra);
-if ("qishui".equals(d.platform)) return fetchQishui(d.url);
+if ("qishui".equals(d.platform)) return fetchQishui(d.url != null ? d.url
+: (d.id != null && d.id.matches("\\d+") ? "https://music.douyin.com/qishui/share/playlist?playlist_id=" + d.id : null));
 throw new Exception("暂不支持这个平台");
 }
 
@@ -445,8 +447,47 @@ if (out.tracks.isEmpty()) throw new Exception("没能解析出歌曲（歌单可
 return out;
 }
 
-/** 汽水音乐：分享页 HTML 里的 _ROUTER_DATA JSON 递归找曲目（name + artists 数组的对象） */
-private static Parsed fetchQishui(String url) throws Exception {
+/** 汽水音乐（已用真实歌单实测）：短链落地页地址拼 __loader=playlist_page&__ssrDirect=true
+ *  即歌单 JSON：medias[] 里 type=track 的 entity.track{name, artists[], duration毫秒}；
+ *  type=video 的是用户投稿短视频（标题是文案不是歌名），计数跳过不导 */
+private static Parsed fetchQishui(String shareUrl) throws Exception {
+if (shareUrl == null || shareUrl.isEmpty()) throw new Exception("汽水需要完整的分享链接");
+String page = shareUrl;
+String fin = resolveFinalUrl(shareUrl);
+if (fin != null && !fin.isEmpty() && fin.contains("playlist_id=")) page = fin;
+String api = page + (page.contains("?") ? "&" : "?") + "__loader=playlist_page&__ssrDirect=true";
+JSONObject root;
+try { root = new JSONObject(httpGet(api, "https://music.douyin.com/")); }
+catch (Exception e) { return fetchQishuiHtml(shareUrl); }
+JSONArray medias = root.optJSONArray("medias");
+if (medias == null || medias.length() == 0) return fetchQishuiHtml(shareUrl);
+Parsed out = new Parsed();
+out.platform = "qishui";
+out.title = "汽水歌单";
+JSONObject info = root.optJSONObject("playlistInfo");
+if (info != null) {
+String t = info.optString("title", "");
+if (!t.isEmpty()) out.title = t;
+}
+for (int i = 0; i < medias.length(); i++) {
+JSONObject m = medias.optJSONObject(i);
+if (m == null) continue;
+if (!"track".equals(m.optString("type"))) { out.skipped++; continue; }
+JSONObject ent = m.optJSONObject("entity");
+JSONObject tr = ent == null ? null : ent.optJSONObject("track");
+if (tr == null) { out.skipped++; continue; }
+String name = tr.optString("name", "");
+if (name.isEmpty()) { out.skipped++; continue; }
+out.tracks.add(new Src(name, joinArtists(tr.optJSONArray("artists"), null),
+(int) (tr.optLong("duration", 0) / 1000)));
+if (out.tracks.size() >= 500) break;
+}
+if (out.tracks.isEmpty()) throw new Exception("没能解析出歌曲（链接可能已失效）");
+return out;
+}
+
+/** 汽水兜底：分享页 HTML 里的 _ROUTER_DATA JSON 递归找曲目（name + artists 数组的对象） */
+private static Parsed fetchQishuiHtml(String url) throws Exception {
 if (url == null || url.isEmpty()) throw new Exception("汽水分享链接无效");
 HttpURLConnection c = null;
 String html;

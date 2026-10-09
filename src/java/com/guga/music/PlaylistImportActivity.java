@@ -228,7 +228,7 @@ use.id = det.id;
 use.id = raw;
 }
 if ("qishui".equals(platform)) {
-if (use.url == null) { showFail("😢 汽水需要完整的分享链接，光有数字ID不够"); return; }
+if (use.url == null && (use.id == null || !use.id.matches("\\d+"))) { showFail("😢 汽水需要完整的分享链接，或纯数字歌单ID"); return; }
 } else if (use.id == null) {
 showFail("😢 没找到歌单ID，检查一下链接有没有复制全");
 return;
