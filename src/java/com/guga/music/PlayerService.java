@@ -45,6 +45,8 @@ public class PlayerService extends Service {
     public static PlayerService get() { return inst; }
 
     private MediaPlayer mp;
+    private long bufferingSince = 0;
+    private int lastBufPct = -1;
     private BiliApi api;
     private HistoryDb history;
     private StatsDb statsDb;
@@ -164,6 +166,24 @@ public class PlayerService extends Service {
             updateNotification();
         });
         mp.setOnCompletionListener(m -> onComplete());
+        // 缓冲取证：播放中途网络跟不上时 MediaPlayer 会发 BUFFERING_START/END，原先没人记录、
+        // 卡顿无据可查。现在写进播放诊断（开始位置、停顿时长、结束时缓冲百分比）
+        mp.setOnInfoListener((m, what, extra) -> {
+            if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
+                bufferingSince = System.currentTimeMillis();
+                int p = 0;
+                try { p = m.getCurrentPosition() / 1000; } catch (Exception ignored) {}
+                Diag.log(this, "🐌 开始缓冲（播放停顿）@ " + p + "s"
+                        + (curFromCache ? "（本地缓存）" : "（在线流）"));
+            } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
+                long dur = bufferingSince > 0 ? System.currentTimeMillis() - bufferingSince : 0;
+                bufferingSince = 0;
+                Diag.log(this, "🐌 缓冲结束，停顿约 " + String.format(java.util.Locale.CHINA, "%.1f", dur / 1000.0)
+                        + "s，缓冲进度 " + lastBufPct + "%");
+            }
+            return false;
+        });
+        mp.setOnBufferingUpdateListener((m, percent) -> lastBufPct = percent);
         mp.setOnErrorListener((m, what, extra) -> {
             // 播放器常在一次失败后连环补发好几条旧报错（典型 -38 连发），
             // 若不拦，后到的旧报错会把正在进行的恢复（降档/换址）误判成新失败甚至跳歌
