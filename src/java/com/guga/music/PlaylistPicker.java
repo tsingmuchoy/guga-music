@@ -27,6 +27,7 @@ public class PlaylistPicker {
         final Dialog dlg = new Dialog(act);
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);
         View root = LayoutInflater.from(act).inflate(R.layout.dialog_playlist_picker, null);
+        Haptics.ratchetView(root);
         dlg.setContentView(root);
         Window w = dlg.getWindow();
         if (w != null) {

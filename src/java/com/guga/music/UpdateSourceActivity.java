@@ -15,6 +15,7 @@ public class UpdateSourceActivity extends Activity {
         ThemeUtil.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_update_source);
+        Haptics.ratchetPage(this);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         buildUpdateSourceRows();
         initUpdateCard();

@@ -75,6 +75,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_main);
+        Haptics.attachScrollRatchet(findViewById(R.id.svMine));
+        Haptics.attachScrollRatchet(findViewById(R.id.svStats));
         UpdateChecker.autoCheck(this);
         api = new BiliApi(this);
         history = new HistoryDb(this);

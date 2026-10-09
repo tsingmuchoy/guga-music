@@ -15,6 +15,7 @@ public class LyricsOrderActivity extends Activity {
         ThemeUtil.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_lyrics_order);
+        Haptics.ratchetPage(this);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         buildLyricOrderRows();
         findViewById(R.id.btnLyricOrderReset).setOnClickListener(v -> {

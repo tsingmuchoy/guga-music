@@ -22,6 +22,9 @@ public class LyricsActivity extends Activity {
     private List<Lyrics.Line> lines = new ArrayList<>();
     private int curIdx = -2;
     private long lastUserScrollAt = 0;
+    private boolean lyrUserDriven;
+    private int lyrIdx = -1;
+    private long lyrAt;
     private final Handler handler = new Handler();
 
     private final Runnable ticker = new Runnable() {
@@ -56,8 +59,17 @@ public class LyricsActivity extends Activity {
         lv.setOnScrollListener(new AbsListView.OnScrollListener() {
             @Override public void onScrollStateChanged(AbsListView v, int state) {
                 if (state != SCROLL_STATE_IDLE) lastUserScrollAt = System.currentTimeMillis();
+                // 棘轮触感只认手指驱动：触摸滚动置真、静止复位；自动跟随是 setSelectionFromTop 直跳、不经触摸态
+                if (state == SCROLL_STATE_TOUCH_SCROLL) lyrUserDriven = true;
+                else if (state == SCROLL_STATE_IDLE) lyrUserDriven = false;
             }
-            @Override public void onScroll(AbsListView v, int f, int c, int t) {}
+            @Override public void onScroll(AbsListView v, int f, int c, int t) {
+                if (lyrUserDriven && lyrIdx >= 0 && f != lyrIdx) {
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now - lyrAt >= 45) { lyrAt = now; Haptics.tick(LyricsActivity.this); }
+                }
+                lyrIdx = f;
+            }
         });
         lv.setOnItemClickListener((p, v, pos, id) -> {
             PlayerService s = PlayerService.get();

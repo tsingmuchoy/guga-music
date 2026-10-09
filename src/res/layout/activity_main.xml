@@ -134,6 +134,7 @@
             <include layout="@layout/view_stats_header" />
 
             <ScrollView
+                android:id="@+id/svStats"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"

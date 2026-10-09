@@ -12,6 +12,8 @@ public class DiagSettingsActivity extends Activity {
         ThemeUtil.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_diag_settings);
+        Haptics.ratchetPage(this);
+        Haptics.attachScrollRatchet(findViewById(R.id.svDiagLog));
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         refreshDiag();
         findViewById(R.id.btnDiagRefresh).setOnClickListener(v -> refreshDiag());

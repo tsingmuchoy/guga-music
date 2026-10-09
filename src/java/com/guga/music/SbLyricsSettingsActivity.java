@@ -47,6 +47,7 @@ public class SbLyricsSettingsActivity extends Activity {
         ThemeUtil.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_sb_lyrics);
+        Haptics.ratchetPage(this);
 
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         btnSbMaster = findViewById(R.id.btnSbMaster);
