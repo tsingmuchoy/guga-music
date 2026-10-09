@@ -102,6 +102,55 @@ public class StatsDb extends SQLiteOpenHelper {
         public long plays, seconds, tracks;
     }
 
+    /** 清空全部播放统计 */
+    public synchronized void clearAll() {
+        getWritableDatabase().delete("play_day", null, null);
+    }
+
+    /** 导出全部记录（备份用）：每行 [bvid, day, plays, seconds, title, author, cover] */
+    public synchronized List<String[]> exportRows() {
+        List<String[]> out = new ArrayList<>();
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT bvid, day, plays, seconds, title, author, cover FROM play_day ORDER BY day, bvid", null);
+        try {
+            while (c.moveToNext()) {
+                out.add(new String[]{
+                        c.getString(0), c.getString(1),
+                        String.valueOf(c.getLong(2)), String.valueOf(c.getLong(3)),
+                        c.getString(4) == null ? "" : c.getString(4),
+                        c.getString(5) == null ? "" : c.getString(5),
+                        c.getString(6) == null ? "" : c.getString(6)});
+            }
+        } finally { c.close(); }
+        return out;
+    }
+
+    /** 导入备份：整表替换（先清后灌、一个事务） */
+    public synchronized void importRows(List<String[]> rows) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("play_day", null, null);
+            for (String[] r : rows) {
+                if (r == null || r.length < 4 || r[0] == null || r[0].isEmpty() || r[1] == null) continue;
+                ContentValues v = new ContentValues();
+                v.put("bvid", r[0]);
+                v.put("day", r[1]);
+                v.put("plays", parseLongSafe(r[2]));
+                v.put("seconds", parseLongSafe(r[3]));
+                v.put("title", r.length > 4 ? r[4] : "");
+                v.put("author", r.length > 5 ? r[5] : "");
+                v.put("cover", r.length > 6 ? r[6] : "");
+                db.insertWithOnConflict("play_day", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    private static long parseLongSafe(String s) {
+        try { return Long.parseLong(s.trim()); } catch (Exception e) { return 0; }
+    }
+
     public synchronized Sum summary(String fromDay, String toDay) {
         Sum s = new Sum();
         Cursor c = getReadableDatabase().rawQuery(

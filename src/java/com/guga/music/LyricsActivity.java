@@ -1,6 +1,7 @@
 package com.guga.music;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.view.LayoutInflater;
@@ -17,7 +18,8 @@ import java.util.List;
 /** 全屏歌词页：自动滚动跟随播放，点任意一行跳到那句 */
 public class LyricsActivity extends Activity {
 
-    private TextView tvSong, tvSource, tvEmpty, btnFix;
+    private TextView tvSong, tvSource, tvEmpty, btnFix, btnManual;
+    private Track curTrack;
     private ListView lv;
     private List<Lyrics.Line> lines = new ArrayList<>();
     private int curIdx = -2;
@@ -53,6 +55,7 @@ public class LyricsActivity extends Activity {
         tvSource = findViewById(R.id.tvSource);
         tvEmpty = findViewById(R.id.tvEmpty);
         btnFix = findViewById(R.id.btnFixLyrics);
+        btnManual = findViewById(R.id.btnManualLyrics);
         lv = findViewById(R.id.lvLyrics);
         lv.setAdapter(adapter);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
@@ -86,6 +89,15 @@ public class LyricsActivity extends Activity {
             return;
         }
         final Track t = s.current();
+        curTrack = t;
+        btnManual.setVisibility(View.VISIBLE);
+        btnManual.setOnClickListener(v -> {
+            Intent it = new Intent(this, LyricsSearchActivity.class);
+            it.putExtra("bvid", t.bvid);
+            it.putExtra("title", t.title);
+            it.putExtra("dur", t.durationSec);
+            startActivityForResult(it, 7201);
+        });
         tvSong.setText(t.title);
         tvSource.setText("歌词加载中…");
         loadLyrics(t, false);
@@ -94,6 +106,13 @@ public class LyricsActivity extends Activity {
             tvSource.setText("正在换一版歌词…");
             loadLyrics(t, true);
         });
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        // 手动搜索页里锁定/解锁了歌词：回来立刻按新结果重载
+        if (req == 7201 && res == RESULT_OK && curTrack != null) loadLyrics(curTrack, false);
     }
 
     private void loadLyrics(final Track t, boolean next) {

@@ -308,6 +308,7 @@ Context app = ctx.getApplicationContext();
 android.content.SharedPreferences sp = app.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE);
 int next = sp.getInt("alt_" + track.bvid, 0) + 1;
 sp.edit().putInt("alt_" + track.bvid, next).apply();
+LyricsDb.unbind(app, track.bvid); // 用户主动换版本：解除手动锁定，回到自动匹配
 try {
 File dir = new File(app.getFilesDir(), "lyrics_v4");
 new File(dir, track.bvid + ".lrc").delete();
@@ -323,12 +324,24 @@ File dir = new File(ctx.getFilesDir(), "lyrics_v4");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, track.bvid + ".lrc");
 File none = new File(dir, track.bvid + ".none");
+// 手动锁定的歌词版本（歌词页手动搜索确认后按 BV 存进 lyrics.db）：优先于自动匹配
+LyricsDb.Bind bind = LyricsDb.get(ctx, track.bvid);
 try {
 if (cache.exists()) {
 String content = readFile(cache);
 String src = content.startsWith("#src:") ? content.substring(5, content.indexOf('\n')) : "缓存";
 List<Line> lines = parseLrc(content);
-if (!lines.isEmpty()) return new Result(lines, src);
+// 有锁定时只有「正是锁定版」的缓存才直接用；没锁定走原逻辑
+if (!lines.isEmpty() && (bind == null || src.equals(bind.label))) return new Result(lines, src);
+}
+if (bind != null) {
+try {
+MCand mc = new MCand();
+mc.src = bind.src; mc.ref = bind.ref; mc.name = bind.name; mc.artist = bind.artist; mc.durMs = bind.durMs;
+Result br = acceptLrc(cache, fetchBoundLrc(mc), bind.label);
+if (br != null) { Diag.log(ctx, "🎤 歌词命中：手动锁定（" + srcShort(bind.src) + "）"); return br; }
+} catch (Exception ignored) {}
+// 锁定源这次没取到：落到下面自动流程兜底，绑定保留、下次播放再试
 }
 if (none.exists() && System.currentTimeMillis() - none.lastModified() < 3L * 24 * 3600 * 1000) {
 return new Result(new ArrayList<>(), "");
@@ -361,6 +374,217 @@ try { writeFile(none, ""); trimLyricsDir(none); } catch (Exception ignored) {}
 Diag.log(ctx, "🎤 歌词未命中：《" + hints.name + "》");
 return new Result(new ArrayList<>(), "");
 }
+
+// ---------------- 手动搜索歌词（用户亲选 + 按 BV 锁定） ----------------
+public static class MCand {
+public String src = "";   // 源 key（qq/netease/kugou/kuwo/lrclib；amll 无独立搜索不参与）
+public String ref = "";   // 源内定位：网易云/酷我=数字ID、QQ=songmid、酷狗=id:accesskey、LRCLIB=记录ID
+public String name = "";
+public String artist = "";
+public long durMs;
+public String lrcText;    // 仅 LRCLIB：搜索结果自带歌词正文
+}
+
+/** 手动搜索：按用户设置的源顺序给原始候选（不做自动打分过滤，用户自己挑）。须在后台线程调用 */
+public static List<MCand> manualSearch(Context ctx, String name, String artist) {
+List<MCand> out = new ArrayList<>();
+String q = artist == null || artist.trim().isEmpty() ? name : name + " " + artist.trim();
+for (String key : sourceOrder(ctx)) {
+try {
+if (key.equals("qq")) manualQq(q, out);
+else if (key.equals("netease")) manualNetease(q, out);
+else if (key.equals("kugou")) manualKugou(q, out);
+else if (key.equals("kuwo")) manualKuwo(q, out);
+else if (key.equals("lrclib")) manualLrclib(name, artist, out);
+} catch (Exception ignored) {}
+}
+return out;
+}
+
+private static void manualQq(String q, List<MCand> out) throws Exception {
+JSONObject r = new JSONObject(httpGet("https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?format=json&p=1&n=15&w="
++ URLEncoder.encode(q, "UTF-8"), "https://y.qq.com/"));
+JSONObject data = r.optJSONObject("data");
+JSONObject song = data == null ? null : data.optJSONObject("song");
+JSONArray list = song == null ? null : song.optJSONArray("list");
+if (list == null) return;
+for (int i = 0; i < list.length(); i++) {
+JSONObject sj = list.getJSONObject(i);
+String mid = sj.optString("songmid");
+if (mid.isEmpty()) continue;
+MCand c = new MCand();
+c.src = "qq"; c.ref = mid;
+c.name = sj.optString("songname");
+StringBuilder ab = new StringBuilder();
+JSONArray sgs = sj.optJSONArray("singer");
+if (sgs != null) for (int a = 0; a < sgs.length(); a++) {
+if (ab.length() > 0) ab.append("、");
+ab.append(sgs.getJSONObject(a).optString("name"));
+}
+c.artist = ab.toString();
+c.durMs = sj.optLong("interval") * 1000L;
+out.add(c);
+}
+}
+
+private static void manualNetease(String q, List<MCand> out) throws Exception {
+JSONObject r = new JSONObject(httpGet("https://music.163.com/api/cloudsearch/pc?type=1&limit=15&offset=0&s="
++ URLEncoder.encode(q, "UTF-8"), "https://music.163.com"));
+JSONArray songs = r.optJSONObject("result") == null ? null : r.getJSONObject("result").optJSONArray("songs");
+if (songs == null) return;
+for (int i = 0; i < songs.length(); i++) {
+JSONObject sj = songs.getJSONObject(i);
+long id = sj.optLong("id");
+if (id <= 0) continue;
+MCand c = new MCand();
+c.src = "netease"; c.ref = String.valueOf(id);
+c.name = sj.optString("name");
+StringBuilder ab = new StringBuilder();
+JSONArray ars = sj.optJSONArray("ar");
+if (ars != null) for (int a = 0; a < ars.length(); a++) {
+if (ab.length() > 0) ab.append("、");
+ab.append(ars.getJSONObject(a).optString("name"));
+}
+c.artist = ab.toString();
+c.durMs = sj.optLong("dt");
+out.add(c);
+}
+}
+
+private static void manualKugou(String q, List<MCand> out) throws Exception {
+JSONObject r = new JSONObject(httpGet("https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword="
++ URLEncoder.encode(q, "UTF-8"), null));
+JSONArray cands = r.optJSONArray("candidates");
+if (cands == null) return;
+for (int i = 0; i < cands.length() && i < 15; i++) {
+JSONObject cj = cands.getJSONObject(i);
+long id = cj.optLong("id");
+if (id <= 0) continue;
+MCand c = new MCand();
+c.src = "kugou"; c.ref = id + ":" + cj.optString("accesskey");
+c.name = cj.optString("song");
+c.artist = cj.optString("singer");
+c.durMs = cj.optLong("duration");
+out.add(c);
+}
+}
+
+private static void manualKuwo(String q, List<MCand> out) throws Exception {
+JSONArray list = kuwoSearch(q, 20);
+for (int i = 0; i < list.length(); i++) {
+JSONObject sj = list.getJSONObject(i);
+long rid = kuwoRid(sj);
+if (rid <= 0) continue;
+MCand c = new MCand();
+c.src = "kuwo"; c.ref = String.valueOf(rid);
+c.name = kuwoName(sj);
+c.artist = kuwoUnescape(sj.optString("ARTIST"));
+c.durMs = kuwoDurMs(sj);
+out.add(c);
+}
+}
+
+private static void manualLrclib(String name, String artist, List<MCand> out) throws Exception {
+String u = "https://lrclib.net/api/search?track_name=" + URLEncoder.encode(name, "UTF-8")
++ (artist == null || artist.trim().isEmpty() ? "" : "&artist_name=" + URLEncoder.encode(artist.trim(), "UTF-8"));
+JSONArray arr = new JSONArray(httpGet(u, null));
+for (int i = 0; i < arr.length() && i < 15; i++) {
+JSONObject r = arr.getJSONObject(i);
+String syn = r.optString("syncedLyrics");
+if (syn == null || !syn.contains("[")) continue;
+MCand c = new MCand();
+c.src = "lrclib"; c.ref = String.valueOf(r.optLong("id"));
+c.name = r.optString("trackName");
+c.artist = r.optString("artistName");
+c.durMs = (long) (r.optDouble("duration") * 1000);
+c.lrcText = syn;
+out.add(c);
+}
+}
+
+/** 按手动候选的定位直接取歌词原文（后台线程调用） */
+public static String fetchBoundLrc(MCand c) {
+try {
+if (c.src.equals("qq")) {
+JSONObject r = new JSONObject(httpGet(
+"https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + c.ref
++ "&format=json&nobase64=1&g_tk=5381", "https://y.qq.com/portal/player.html"));
+String text = r.optString("lyric");
+if (text != null && !text.contains("[")) {
+try {
+String dec = new String(Base64.decode(text, Base64.DEFAULT), StandardCharsets.UTF_8);
+if (dec.contains("[")) text = dec;
+} catch (Exception ignored) {}
+}
+if (text != null && text.contains("[")) return text;
+} else if (c.src.equals("netease")) {
+JSONObject lr = new JSONObject(httpGet(
+"https://music.163.com/api/song/lyric?lv=1&kv=1&tv=-1&id=" + c.ref, "https://music.163.com"));
+JSONObject lrc = lr.optJSONObject("lrc");
+if (lrc != null) {
+String text = lrc.optString("lyric");
+if (text != null && text.contains("[")) return text;
+}
+} else if (c.src.equals("kugou")) {
+int p = c.ref.indexOf(':');
+if (p > 0) {
+JSONObject r = new JSONObject(httpGet(
+"https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=" + c.ref.substring(0, p)
++ "&accesskey=" + c.ref.substring(p + 1), null));
+String content = r.optString("content");
+if (content != null && !content.isEmpty()) {
+String text;
+try { text = new String(Base64.decode(content, Base64.DEFAULT), StandardCharsets.UTF_8); }
+catch (Exception e) { text = content; }
+if (text.contains("[")) return text;
+}
+}
+} else if (c.src.equals("kuwo")) {
+return kuwoFetchLrc(Long.parseLong(c.ref));
+} else if (c.src.equals("lrclib")) {
+if (c.lrcText != null && c.lrcText.contains("[")) return c.lrcText;
+String u = "https://lrclib.net/api/get?track_name=" + URLEncoder.encode(c.name, "UTF-8")
++ "&artist_name=" + URLEncoder.encode(c.artist == null ? "" : c.artist, "UTF-8")
++ (c.durMs > 0 ? "&duration=" + (c.durMs / 1000) : "");
+JSONObject r = new JSONObject(httpGet(u, null));
+String syn = r.optString("syncedLyrics");
+if (syn != null && syn.contains("[")) return syn;
+}
+} catch (Exception ignored) {}
+return null;
+}
+
+/** 用户确认某版歌词：写入缓存并按 BV 锁定（存 lyrics.db），以后这首歌都用这版 */
+public static boolean applyManual(Context ctx, String bvid, MCand c, String lrcText) {
+if (lrcText == null || parseLrc(lrcText).size() < 5) return false;
+String label = srcLabel(c.src) + "（手动）";
+try {
+File dir = new File(ctx.getFilesDir(), "lyrics_v4");
+if (!dir.exists()) dir.mkdirs();
+File cache = new File(dir, bvid + ".lrc");
+writeFile(cache, "#src:" + label + "\n" + lrcText);
+new File(dir, bvid + ".none").delete();
+trimLyricsDir(cache);
+} catch (Exception ignored) {}
+LyricsDb.Bind b = new LyricsDb.Bind();
+b.src = c.src; b.ref = c.ref; b.name = c.name; b.artist = c.artist; b.durMs = c.durMs; b.label = label;
+LyricsDb.bind(ctx, bvid, b);
+ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).edit().remove("alt_" + bvid).apply();
+return true;
+}
+
+/** 解除手动锁定并清掉歌词缓存，回到自动匹配 */
+public static void clearManual(Context ctx, String bvid) {
+LyricsDb.unbind(ctx, bvid);
+try {
+File dir = new File(ctx.getFilesDir(), "lyrics_v4");
+new File(dir, bvid + ".lrc").delete();
+new File(dir, bvid + ".none").delete();
+} catch (Exception ignored) {}
+}
+
+/** 这首歌的歌词是否被手动锁定 */
+public static boolean isBound(Context ctx, String bvid) { return LyricsDb.get(ctx, bvid) != null; }
 
 private static Result trySubtitles(Context ctx, Track track, BiliApi api, File cache) {
 try {

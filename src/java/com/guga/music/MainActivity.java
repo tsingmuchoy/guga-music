@@ -8,6 +8,9 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.ColorMatrix;
@@ -455,10 +458,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     };
     private StatsDb statsDb;
     private int statPeriod = 1;
-    private final TextView[] statChips = new TextView[5];
+    private final TextView[] statChips = new TextView[6];
     private final List<StatsDb.Row> statRows = new ArrayList<>();
-    private static final String[] STAT_PERIOD_NAMES = {"日", "周", "月", "年", "总"};
-    private static final int[] STAT_PERIOD_DAYS = {1, 7, 30, 365, 0};
+    private static final String[] STAT_PERIOD_NAMES = {"日", "周", "月", "年", "总", "自定义"};
+    private static final int[] STAT_PERIOD_DAYS = {1, 7, 30, 365, 0, -1};
+    private static final int REQ_STAT_EXPORT = 7101, REQ_STAT_IMPORT = 7102;
 
     private void attachStatsHeader() {
         if (statsDb == null) statsDb = new StatsDb(this);
@@ -549,10 +553,13 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private void buildStatsHeader() {
         statsHeaderView = findViewById(R.id.llStatsPane);
         setupSplitDrag();
+        statsHeaderView.findViewById(R.id.btnStatExport).setOnClickListener(v -> { Haptics.tick(this); exportStats(); });
+        statsHeaderView.findViewById(R.id.btnStatImport).setOnClickListener(v -> { Haptics.tick(this); importStats(); });
+        statsHeaderView.findViewById(R.id.btnStatClear).setOnClickListener(v -> { Haptics.tick(this); confirmClearStats(); });
         statPeriod = getSharedPreferences("ui", MODE_PRIVATE).getInt("stats_period", 1);
         LinearLayout box = statsHeaderView.findViewById(R.id.llStatPeriods);
         float den = getResources().getDisplayMetrics().density;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < STAT_PERIOD_NAMES.length; i++) {
             final int idx = i;
             TextView chip = new TextView(this);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, (int) (34 * den), 1);
@@ -563,6 +570,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             chip.setTextSize(12.5f);
             chip.setSingleLine(true);
             chip.setOnClickListener(v -> {
+                if (idx == 5) { Haptics.tick(this); pickCustomRange(); return; }
                 if (statPeriod != idx) {
                     Haptics.tick(this);
                     statPeriod = idx;
@@ -577,8 +585,168 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         styleStatChips();
     }
 
+    // ---------- 统计：清空 / 备份导出 / 恢复 / 自定义范围 ----------
+
+    private void confirmClearStats() {
+        new AlertDialog.Builder(this)
+                .setTitle("清空播放统计？")
+                .setMessage("日/周/月/年所有听歌记录都会删掉，不可恢复。建议先导出一份备份。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("清空", (d, w) -> {
+                    statsDb.clearAll();
+                    refreshStatsHeader();
+                    android.widget.Toast.makeText(this, "播放统计已清空", android.widget.Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
+    private void exportStats() {
+        Intent it = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        it.addCategory(Intent.CATEGORY_OPENABLE);
+        it.setType("application/json");
+        it.putExtra(Intent.EXTRA_TITLE, "guga-stats-" + StatsDb.todayKey() + ".json");
+        try { startActivityForResult(it, REQ_STAT_EXPORT); }
+        catch (Exception e) { android.widget.Toast.makeText(this, "打不开文件保存界面", android.widget.Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void importStats() {
+        Intent it = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        it.addCategory(Intent.CATEGORY_OPENABLE);
+        it.setType("*/*");
+        try { startActivityForResult(it, REQ_STAT_IMPORT); }
+        catch (Exception e) { android.widget.Toast.makeText(this, "打不开文件选择界面", android.widget.Toast.LENGTH_SHORT).show(); }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (res != RESULT_OK || data == null || data.getData() == null) return;
+        if (req == REQ_STAT_EXPORT) writeStatsBackup(data.getData());
+        else if (req == REQ_STAT_IMPORT) readStatsBackup(data.getData());
+    }
+
+    private void writeStatsBackup(final android.net.Uri uri) {
+        new Thread(() -> {
+            String msg;
+            try {
+                java.util.List<String[]> rows = statsDb.exportRows();
+                JSONObject root = new JSONObject();
+                root.put("app", "guga-music");
+                root.put("kind", "stats-backup");
+                root.put("ver", 1);
+                root.put("exportedAt", StatsDb.todayKey());
+                JSONArray arr = new JSONArray();
+                for (String[] r : rows) {
+                    JSONArray jr = new JSONArray();
+                    jr.put(r[0]); jr.put(r[1]);
+                    jr.put(Long.parseLong(r[2])); jr.put(Long.parseLong(r[3]));
+                    jr.put(r[4]); jr.put(r[5]); jr.put(r[6]);
+                    arr.put(jr);
+                }
+                root.put("rows", arr);
+                java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                os.write(root.toString().getBytes("UTF-8"));
+                os.flush(); os.close();
+                msg = "备份已导出（" + rows.size() + " 天×歌 记录）";
+            } catch (Exception e) { msg = "导出失败：" + e.getMessage(); }
+            final String m = msg;
+            runOnUiThread(() -> android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show());
+        }).start();
+    }
+
+    private void readStatsBackup(final android.net.Uri uri) {
+        new Thread(() -> {
+            final java.util.List<String[]> rows = new java.util.ArrayList<>();
+            String err = null;
+            try {
+                java.io.InputStream is = getContentResolver().openInputStream(uri);
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n; while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                is.close();
+                JSONObject root = new JSONObject(new String(bos.toByteArray(), "UTF-8"));
+                if (!"stats-backup".equals(root.optString("kind"))) { err = "这不是咕嘎音乐的统计备份文件"; }
+                else {
+                    JSONArray arr = root.optJSONArray("rows");
+                    if (arr != null) for (int i = 0; i < arr.length(); i++) {
+                        JSONArray jr = arr.optJSONArray(i);
+                        if (jr == null || jr.length() < 4) continue;
+                        rows.add(new String[]{jr.optString(0), jr.optString(1),
+                                String.valueOf(jr.optLong(2)), String.valueOf(jr.optLong(3)),
+                                jr.optString(4), jr.optString(5), jr.optString(6)});
+                    }
+                }
+            } catch (Exception e) { err = "读取备份失败：" + e.getMessage(); }
+            final String ferr = err;
+            runOnUiThread(() -> {
+                if (ferr != null) { android.widget.Toast.makeText(this, ferr, android.widget.Toast.LENGTH_LONG).show(); return; }
+                new AlertDialog.Builder(this)
+                        .setTitle("恢复这份备份？")
+                        .setMessage("将导入 " + rows.size() + " 条记录，并覆盖当前全部播放统计。")
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("恢复", (d, w) -> new Thread(() -> {
+                            statsDb.importRows(rows);
+                            runOnUiThread(() -> {
+                                refreshStatsHeader();
+                                android.widget.Toast.makeText(this, "备份已恢复", android.widget.Toast.LENGTH_SHORT).show();
+                            });
+                        }).start())
+                        .show();
+            });
+        }).start();
+    }
+
+    private static int[] parseDayKey(String key) {
+        try {
+            String[] p = key.split("-");
+            return new int[]{Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2])};
+        } catch (Exception e) {
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            return new int[]{c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)};
+        }
+    }
+
+    private static long dayMillis(int[] ymd) {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.set(ymd[0], ymd[1], ymd[2], 0, 0, 0);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        return c.getTimeInMillis();
+    }
+
+    /** 自定义统计范围：连弹两次日历（起始 → 结束），选完存档并切到「自定义」档 */
+    private void pickCustomRange() {
+        SharedPreferences up = getSharedPreferences("ui", MODE_PRIVATE);
+        int[] f0 = parseDayKey(up.getString("stats_custom_from", StatsDb.daysAgoKey(30)));
+        long today = dayMillis(parseDayKey(StatsDb.todayKey()));
+        android.app.DatePickerDialog d1 = new android.app.DatePickerDialog(this, (v, y, m, d) -> {
+            final String fromKey = String.format(java.util.Locale.CHINA, "%04d-%02d-%02d", y, m + 1, d);
+            int[] t0 = parseDayKey(up.getString("stats_custom_to", StatsDb.todayKey()));
+            android.app.DatePickerDialog dlg2 = new android.app.DatePickerDialog(this, (v2, y2, m2, dd2) -> {
+                String toKey = String.format(java.util.Locale.CHINA, "%04d-%02d-%02d", y2, m2 + 1, dd2);
+                if (toKey.compareTo(fromKey) < 0) {
+                    android.widget.Toast.makeText(this, "结束日期不能早于开始日期", android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                up.edit().putString("stats_custom_from", fromKey).putString("stats_custom_to", toKey).apply();
+                statPeriod = 5;
+                getSharedPreferences("ui", MODE_PRIVATE).edit().putInt("stats_period", 5).apply();
+                Haptics.press(this);
+                styleStatChips();
+                refreshStatsHeader();
+            }, t0[0], t0[1], t0[2]);
+            dlg2.getDatePicker().setMinDate(dayMillis(parseDayKey(fromKey)));
+            dlg2.getDatePicker().setMaxDate(today);
+            dlg2.show();
+        }, f0[0], f0[1], f0[2]);
+        java.util.Calendar min = java.util.Calendar.getInstance();
+        min.add(java.util.Calendar.DAY_OF_YEAR, -399);
+        d1.getDatePicker().setMinDate(min.getTimeInMillis());
+        d1.getDatePicker().setMaxDate(today);
+        d1.show();
+    }
+
     private void styleStatChips() {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < STAT_PERIOD_NAMES.length; i++) {
             boolean on = i == statPeriod;
             if (on) {
                 statChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
@@ -594,10 +762,18 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
     private void refreshStatsHeader() {
         if (statsHeaderView == null || statsDb == null) return;
-        String to = StatsDb.todayKey();
-        String from = STAT_PERIOD_DAYS[statPeriod] == 0 ? "0000-01-01" : StatsDb.daysAgoKey(STAT_PERIOD_DAYS[statPeriod]);
-        String rangeText = STAT_PERIOD_DAYS[statPeriod] == 0 ? "全部记录"
-                : STAT_PERIOD_DAYS[statPeriod] == 1 ? "今天 · " + to : from + " ~ " + to;
+        String to, from, rangeText;
+        if (statPeriod == 5) { // 自定义：日历里选的起止日期（存在 ui 配置）
+            SharedPreferences up = getSharedPreferences("ui", MODE_PRIVATE);
+            from = up.getString("stats_custom_from", StatsDb.daysAgoKey(30));
+            to = up.getString("stats_custom_to", StatsDb.todayKey());
+            rangeText = from + " ~ " + to + " · 自定义";
+        } else {
+            to = StatsDb.todayKey();
+            from = STAT_PERIOD_DAYS[statPeriod] == 0 ? "0000-01-01" : StatsDb.daysAgoKey(STAT_PERIOD_DAYS[statPeriod]);
+            rangeText = STAT_PERIOD_DAYS[statPeriod] == 0 ? "全部记录"
+                    : STAT_PERIOD_DAYS[statPeriod] == 1 ? "今天 · " + to : from + " ~ " + to;
+        }
         ((TextView) statsHeaderView.findViewById(R.id.tvStatRange)).setText(rangeText);
         // 汇总/曲目数/Top 榜的查询与聚类挪到后台线程，数据攒多后切历史页也不在主线程卡帧；
         // gen 守卫：连点档位时只认最后一次的结果
