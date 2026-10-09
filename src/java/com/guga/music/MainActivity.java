@@ -57,7 +57,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private String searchOrder = "";
     private final List<BiliApi.FavFolder> folders = new ArrayList<>();
     private View llFavSwitch;
-    private TextView chipFavBili, chipFavLocal, btnNewLocal;
+    private TextView chipFavBili, chipFavLocal, btnNewLocal, btnImportLocal;
     private boolean favLocalMode = false;
     private final List<LocalDb.Playlist> localLists = new ArrayList<>();
     private LocalDb localDb;
@@ -262,6 +262,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             localDb.createPlaylist(name);
             showLocalLists();
         }));
+        btnImportLocal = findViewById(R.id.btnImportLocal);
+        btnImportLocal.setOnClickListener(v -> {
+            Haptics.tick(this);
+            startActivity(new android.content.Intent(this, PlaylistImportActivity.class));
+        });
 
         selectTab(0);
         hint("搜一首歌，开始听吧 🎧");
@@ -988,6 +993,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
         chipFavLocal.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec));
         btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
+        if (btnImportLocal != null) btnImportLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
         IconUtil.leading(chipFavBili, R.drawable.ic_tab_fav, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent, 6);
         IconUtil.leading(chipFavLocal, R.drawable.ic_note, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec, 6);
     }
@@ -998,7 +1004,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         lvMain.setAdapter(localAdapter);
         localAdapter.notifyDataSetChanged();
         btnFavBack.setVisibility(View.GONE);
-        hint(localLists.isEmpty() ? "还没有本地歌单 🎵\n点右上角「＋ 新建」建一个\n或长按任意歌曲加入歌单" : null);
+        hint(localLists.isEmpty() ? "还没有本地歌单 🎵\n点右上角「＋ 新建」建一个，或「⇩ 导入」把其他软件的歌单搬进来\n或长按任意歌曲加入歌单" : null);
     }
 
     private void openFolder(BiliApi.FavFolder f) {

@@ -110,6 +110,17 @@
                 android:textSize="13sp" />
 
             <TextView
+                android:id="@+id/btnImportLocal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingLeft="12dp"
+                android:text="⇩ 导入"
+                android:textColor="?attr/gAccent"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/btnNewLocal"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
