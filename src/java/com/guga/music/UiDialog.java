@@ -2,6 +2,7 @@ package com.guga.music;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -9,6 +10,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 /** 全 App 统一弹窗：自绘深色圆角卡（bg_dialog），不许再用系统灰底弹窗（用户明令：不要大灰块） */
@@ -121,5 +123,78 @@ public class UiDialog {
         tv.setTextSize(15f);
         tv.setPadding(dp(a, 6), dp(a, 6), dp(a, 6), dp(a, 6));
         return tv;
+    }
+
+    /** 进度卡句柄：调用方在任意线程更新进度/文案（内部切主线程），取消键置 cancelled 并回调 */
+    public static class Progress {
+        public AlertDialog dialog;
+        public ProgressBar bar;
+        public TextView msg;
+        public volatile boolean cancelled = false;
+
+        public void setProgress(final int pct) {
+            if (bar == null) return;
+            bar.post(() -> {
+                if (pct < 0) {
+                    bar.setIndeterminate(true);
+                } else {
+                    bar.setIndeterminate(false);
+                    bar.setProgress(Math.max(0, Math.min(100, pct)));
+                }
+            });
+        }
+
+        public void setMessage(final String s) {
+            if (msg == null) return;
+            msg.post(() -> msg.setText(s));
+        }
+
+        public void dismiss() {
+            if (dialog != null && dialog.isShowing()) dialog.dismiss();
+        }
+    }
+
+    /** 进度框：标题 + 状态文案 + 横向进度条 + 取消键；下载类长任务用，禁点外部/返回键关掉防状态错乱 */
+    public static Progress progress(final Activity a, String title, String message, final Runnable onCancel) {
+        final Progress p = new Progress();
+        LinearLayout ll = card(a);
+        ll.addView(titleView(a, title));
+        TextView m = new TextView(a);
+        m.setText(message);
+        m.setTextColor(0xFFC9C9D4);
+        m.setTextSize(14f);
+        m.setLineSpacing(0, 1.25f);
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, -2);
+        mlp.topMargin = dp(a, 10);
+        ll.addView(m, mlp);
+        p.msg = m;
+        ProgressBar bar = new ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgressTintList(ColorStateList.valueOf(accent(a)));
+        bar.setProgressBackgroundTintList(ColorStateList.valueOf(0x33FFFFFF));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, -2);
+        blp.topMargin = dp(a, 14);
+        ll.addView(bar, blp);
+        p.bar = bar;
+        LinearLayout row = new LinearLayout(a);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.END);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+        rlp.topMargin = dp(a, 12);
+        ll.addView(row, rlp);
+        final AlertDialog[] holder = new AlertDialog[1];
+        TextView cancel = btn(a, "取消", 0xFFC9C9D4);
+        cancel.setOnClickListener(v -> {
+            p.cancelled = true;
+            if (holder[0] != null) holder[0].dismiss();
+            if (onCancel != null) onCancel.run();
+        });
+        row.addView(cancel);
+        AlertDialog d = show(a, ll);
+        d.setCancelable(false);
+        d.setCanceledOnTouchOutside(false);
+        holder[0] = d;
+        p.dialog = d;
+        return p;
     }
 }

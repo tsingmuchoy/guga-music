@@ -21,6 +21,13 @@ public class UpdateSourceActivity extends Activity {
         initUpdateCard();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 从「安装未知应用」设置页授权回来时在本页也能自动续装
+        UpdateChecker.checkPendingInstall(this);
+    }
+
     /** 版本与更新卡（v1.25.0 起从「关于」页迁入，与更新源同页管理） */
     private void initUpdateCard() {
         final TextView tvHint = findViewById(R.id.tvUpdateHint);

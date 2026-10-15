@@ -51,13 +51,11 @@
         <activity android:name=".AboutActivity" android:exported="false" />
         <activity android:name=".LocalPlaylistActivity" android:exported="false" />
 
-        <receiver
-            android:name=".UpdateReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
-            </intent-filter>
-        </receiver>
+        <provider
+            android:name=".UpdateFileProvider"
+            android:authorities="com.guga.music.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <service
             android:name=".PlayerService"
