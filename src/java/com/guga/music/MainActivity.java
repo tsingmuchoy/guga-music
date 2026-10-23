@@ -666,7 +666,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 int n; while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
                 is.close();
                 JSONObject root = new JSONObject(new String(bos.toByteArray(), "UTF-8"));
-                if (!"stats-backup".equals(root.optString("kind"))) { err = "这不是咕嘎音乐的统计备份文件"; }
+                if (!"stats-backup".equals(root.optString("kind"))) { err = "这不是 Apollo 的统计备份文件"; }
                 else {
                     JSONArray arr = root.optJSONArray("rows");
                     if (arr != null) for (int i = 0; i < arr.length(); i++) {

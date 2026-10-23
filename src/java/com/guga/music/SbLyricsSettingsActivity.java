@@ -160,7 +160,7 @@ public class SbLyricsSettingsActivity extends Activity {
                 startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         android.net.Uri.parse("package:" + getPackageName())));
             } catch (Exception e) {
-                Toast.makeText(this, "打不开权限页，请在系统设置里手动给咕嘎音乐开悬浮窗权限", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "打不开权限页，请在系统设置里手动给 Apollo 开悬浮窗权限", Toast.LENGTH_LONG).show();
             }
         }
         refreshMaster();

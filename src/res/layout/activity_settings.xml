@@ -106,7 +106,7 @@
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card"
             android:padding="16dp"
-            android:text="关于咕嘎音乐 / 开发者介绍"
+            android:text="关于 Apollo / 开发者介绍"
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
     </LinearLayout>

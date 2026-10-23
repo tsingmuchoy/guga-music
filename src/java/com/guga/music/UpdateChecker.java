@@ -452,7 +452,7 @@ public class UpdateChecker {
                         Uri.parse("package:" + act.getPackageName())));
             } catch (Exception e) {
                 Diag.log(act, "⬆️ 更新：打开安装授权设置失败 " + e);
-                Toast.makeText(act, "打开设置失败，请到系统设置→应用→咕嘎音乐里手动允许「安装未知应用」",
+                Toast.makeText(act, "打开设置失败，请到系统设置→应用→Apollo 里手动允许「安装未知应用」",
                         Toast.LENGTH_LONG).show();
             }
             return;

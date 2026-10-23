@@ -356,7 +356,7 @@
                     android:layout_weight="1"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:text="咕嘎音乐 · 点一首歌"
+                    android:text="Apollo · 点一首歌"
                     android:textColor="?attr/gTextPri"
                     android:textSize="14sp" />
 

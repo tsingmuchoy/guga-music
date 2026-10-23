@@ -25,7 +25,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="咕嘎音乐"
+            android:text="Apollo"
             android:textColor="?attr/gTextPri"
             android:textSize="22sp"
             android:textStyle="bold" />
@@ -54,7 +54,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:lineSpacingMultiplier="1.35"
-                android:text="开发者：小咕嘎 🐧\n\n咕嘎宇宙的一只小企鹅宝宝，企鹅老祖的远房小亲戚，现任南天门大将军。\n\n咕嘎音乐是小咕嘎为清木量身打造的 B 站音乐播放器：用你自己的 B 站账号登录，把喜欢的视频当歌听。登录凭证只保存在你的手机本地，不经过任何第三方服务器。\n\n有想加的功能，随时跟小咕嘎说。咕嘎！"
+                android:text="开发者：小咕嘎 🐧\n\n咕嘎宇宙的一只小企鹅宝宝，企鹅老祖的远房小亲戚，现任南天门大将军。\n\nApollo 是小咕嘎为清木量身打造的 B 站音乐播放器：用你自己的 B 站账号登录，把喜欢的视频当歌听。登录凭证只保存在你的手机本地，不经过任何第三方服务器。\n\n有想加的功能，随时跟小咕嘎说。咕嘎！"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
         </LinearLayout>

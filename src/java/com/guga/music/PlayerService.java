@@ -229,7 +229,7 @@ public class PlayerService extends Service {
         initSession();
         
         createChannel();
-        startForegroundCompat(buildNotification("咕嘎音乐", "点一首歌开始听吧"));
+        startForegroundCompat(buildNotification("Apollo", "点一首歌开始听吧"));
         restoreState();
         if (current() != null) updateNotification();
     }
@@ -568,7 +568,7 @@ public class PlayerService extends Service {
                 }
                 curFromCache = false;
                 if (!noTee) {
-                    curTee = new TeeDataSource(urls[0], streamHeaders(),
+                    curTee = new TeeDataSource(PlayerService.this, urls[0], streamHeaders(),
                             StreamCache.partFile(PlayerService.this, curCacheKey),
                             new TeeDataSource.Done() {
                                 @Override public void onComplete(java.io.File f) {
@@ -1604,7 +1604,7 @@ public class PlayerService extends Service {
 
     private void updateNotification() {
         Track t = current();
-        Notification n = t == null ? buildNotification("咕嘎音乐", "点一首歌开始听吧")
+        Notification n = t == null ? buildNotification("Apollo", "点一首歌开始听吧")
                 : buildNotification(t.title, t.author);
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.notify(NID, n);
