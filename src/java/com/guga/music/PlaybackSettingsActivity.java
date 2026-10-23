@@ -78,12 +78,7 @@ public class PlaybackSettingsActivity extends Activity {
         });
         findViewById(R.id.rowCacheCap).setOnClickListener(v -> {
             Haptics.tick(this);
-            android.content.SharedPreferences pf = getSharedPreferences("player", MODE_PRIVATE);
-            int cur = pf.getInt("cache_cap_mb", 48);
-            int nxt = cur == 16 ? 32 : cur == 32 ? 48 : cur == 48 ? 96 : 16;
-            pf.edit().putInt("cache_cap_mb", nxt).apply();
-            StreamCache.trim(this);
-            refreshDataRows();
+            showCacheCapDialog();
         });
         findViewById(R.id.rowCacheInfo).setOnClickListener(v -> {
             Haptics.tick(this);
@@ -116,7 +111,7 @@ public class PlaybackSettingsActivity extends Activity {
             IconUtil.leading(btnMetered, R.drawable.ic_signal, R.attr.gAccent);
         }
         if (btnCacheCap != null) {
-            btnCacheCap.setText("音频缓存上限：" + pf.getInt("cache_cap_mb", 48) + " MB（可在 16/32/48/96 间切换）");
+            btnCacheCap.setText("音频缓存上限：" + pf.getInt("cache_cap_mb", 48) + " MB（拖动自定义）");
             IconUtil.leading(btnCacheCap, R.drawable.ic_sliders, R.attr.gAccent);
         }
         if (btnCacheInfo != null) {
@@ -131,6 +126,134 @@ public class PlaybackSettingsActivity extends Activity {
                             + " · 本月约 " + fmtBytes(svc.trafficMonthBytes()));
             IconUtil.leading(btnTraffic, R.drawable.ic_chart, R.attr.gAccent);
         }
+    }
+
+    // 音频缓存上限：16–1024 MB、步进 8 MB 的滑杆自定义（v1.43.3 起，替代旧的 16/32/48/96 四档轮换点击）
+    private static final int CAP_MIN_MB = 16;
+    private static final int CAP_MAX_MB = 1024;
+    private static final int CAP_STEP_MB = 8;
+    private static final int CAP_DEFAULT_MB = 48;
+
+    private void applyCacheCap(int mb) {
+        getSharedPreferences("player", MODE_PRIVATE).edit().putInt("cache_cap_mb", mb).apply();
+        StreamCache.trim(this);
+        refreshDataRows();
+    }
+
+    private String cacheUsedLine() {
+        return "当前已用 " + fmtBytes(StreamCache.usedBytes(this)) + " · 松手即生效，调小立刻删最旧的缓存";
+    }
+
+    private void showCacheCapDialog() {
+        float dp = getResources().getDisplayMetrics().density;
+        int accent = ThemeUtil.color(this, R.attr.gAccent);
+        int cur = getSharedPreferences("player", MODE_PRIVATE).getInt("cache_cap_mb", CAP_DEFAULT_MB);
+        cur = Math.max(CAP_MIN_MB, Math.min(CAP_MAX_MB, cur));
+        cur = CAP_MIN_MB + (cur - CAP_MIN_MB) / CAP_STEP_MB * CAP_STEP_MB;
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundResource(R.drawable.bg_dialog);
+        root.setPadding((int) (22 * dp), (int) (20 * dp), (int) (22 * dp), (int) (16 * dp));
+
+        TextView title = new TextView(this);
+        title.setText("音频缓存上限");
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(16.5f);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        root.addView(title);
+
+        final TextView val = new TextView(this);
+        val.setText(cur + " MB");
+        val.setTextColor(accent);
+        val.setTextSize(22);
+        val.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(-1, -2);
+        vlp.topMargin = (int) (14 * dp);
+        root.addView(val, vlp);
+
+        final TextView used = new TextView(this);
+        used.setText(cacheUsedLine());
+        used.setTextColor(0xFFC9C9D4);
+        used.setTextSize(12);
+        used.setGravity(Gravity.CENTER);
+        root.addView(used);
+
+        final android.widget.SeekBar sb = new android.widget.SeekBar(this);
+        sb.setMax((CAP_MAX_MB - CAP_MIN_MB) / CAP_STEP_MB);
+        sb.setProgress((cur - CAP_MIN_MB) / CAP_STEP_MB);
+        sb.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
+        sb.setThumbTintList(android.content.res.ColorStateList.valueOf(accent));
+        sb.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x33FFFFFF));
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
+        slp.topMargin = (int) (10 * dp);
+        root.addView(sb, slp);
+
+        LinearLayout ends = new LinearLayout(this);
+        ends.setOrientation(LinearLayout.HORIZONTAL);
+        TextView lo = new TextView(this);
+        lo.setText(CAP_MIN_MB + " MB");
+        lo.setTextColor(0xFF8E8E99);
+        lo.setTextSize(11);
+        lo.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
+        ends.addView(lo);
+        TextView hi = new TextView(this);
+        hi.setText(CAP_MAX_MB + " MB");
+        hi.setTextColor(0xFF8E8E99);
+        hi.setTextSize(11);
+        hi.setGravity(Gravity.END);
+        ends.addView(hi);
+        root.addView(ends);
+
+        sb.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar s, int prog, boolean fromUser) {
+                if (!fromUser) return;
+                val.setText((CAP_MIN_MB + prog * CAP_STEP_MB) + " MB");
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar s) {}
+            @Override public void onStopTrackingTouch(android.widget.SeekBar s) {
+                Haptics.tick(PlaybackSettingsActivity.this);
+                applyCacheCap(CAP_MIN_MB + s.getProgress() * CAP_STEP_MB);
+                used.setText(cacheUsedLine());
+            }
+        });
+
+        LinearLayout brow = new LinearLayout(this);
+        brow.setOrientation(LinearLayout.HORIZONTAL);
+        brow.setGravity(Gravity.END);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, -2);
+        blp.topMargin = (int) (12 * dp);
+        root.addView(brow, blp);
+        final android.app.AlertDialog[] holder = new android.app.AlertDialog[1];
+        TextView reset = new TextView(this);
+        reset.setText("恢复默认 " + CAP_DEFAULT_MB);
+        reset.setTextColor(0xFFC9C9D4);
+        reset.setTextSize(15);
+        reset.setPadding((int) (6 * dp), (int) (6 * dp), (int) (6 * dp), (int) (6 * dp));
+        reset.setOnClickListener(v -> {
+            sb.setProgress((CAP_DEFAULT_MB - CAP_MIN_MB) / CAP_STEP_MB);
+            val.setText(CAP_DEFAULT_MB + " MB");
+            applyCacheCap(CAP_DEFAULT_MB);
+            used.setText(cacheUsedLine());
+        });
+        brow.addView(reset);
+        TextView done = new TextView(this);
+        done.setText("完成");
+        done.setTextColor(accent);
+        done.setTextSize(15);
+        done.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        done.setPadding((int) (6 * dp), (int) (6 * dp), (int) (6 * dp), (int) (6 * dp));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-2, -2);
+        dlp.leftMargin = (int) (26 * dp);
+        done.setOnClickListener(v -> { if (holder[0] != null) holder[0].dismiss(); });
+        brow.addView(done, dlp);
+
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this).setView(root).create();
+        holder[0] = dlg;
+        dlg.show();
+        if (dlg.getWindow() != null)
+            dlg.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
     }
 
     private boolean islandPref() {

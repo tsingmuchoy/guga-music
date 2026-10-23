@@ -77,10 +77,11 @@ public class StreamCache {
             Arrays.sort(fs, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
             long used = 0;
             for (File f : fs) used += f.length();
-            for (File f : fs) {
+            for (int i = 0; i < fs.length; i++) {
                 if (used <= cap) break;
-                used -= f.length();
-                f.delete();
+                if (i == fs.length - 1) break; // 最新一个文件永远保留：单文件比上限还大时也不删它，免得刚下完/正在听的歌被自己删掉
+                used -= fs[i].length();
+                fs[i].delete();
             }
         } catch (Exception ignored) {}
     }
