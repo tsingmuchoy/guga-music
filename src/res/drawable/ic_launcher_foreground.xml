@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Apollo 新图标前景：几何 A 琴弦（蓝）。由定稿草图 m2.svg 按 512→108 等比映射，
+     Muse 系蓝色线性渐变 #0082FB → #0064E0 → #0040DC（对角：左下→右上）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- A 的双腿 -->
+    <path
+        android:pathData="M34.17,81 L54,26.58 L73.83,81"
+        android:fillColor="#00000000"
+        android:strokeWidth="5.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="31.64"
+                android:startY="84.38"
+                android:endX="76.36"
+                android:endY="23.2">
+                <item android:color="#0082FB" android:offset="0" />
+                <item android:color="#0064E0" android:offset="0.55" />
+                <item android:color="#0040DC" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- A 的横梁 -->
+    <path
+        android:pathData="M43.24,61.17 L64.76,61.17"
+        android:fillColor="#00000000"
+        android:strokeWidth="4.22"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="31.64"
+                android:startY="84.38"
+                android:endX="76.36"
+                android:endY="23.2">
+                <item android:color="#0082FB" android:offset="0" />
+                <item android:color="#0064E0" android:offset="0.55" />
+                <item android:color="#0040DC" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 横梁下垂的 5 根琴弦（中间长、两侧渐短） -->
+    <path
+        android:pathData="M48.09,61.17 L48.09,72.56 M51.05,61.17 L51.05,75.52 M54,61.17 L54,76.36 M56.95,61.17 L56.95,75.52 M59.91,61.17 L59.91,72.56"
+        android:fillColor="#00000000"
+        android:strokeWidth="1.69"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="31.64"
+                android:startY="84.38"
+                android:endX="76.36"
+                android:endY="23.2">
+                <item android:color="#0082FB" android:offset="0" />
+                <item android:color="#0064E0" android:offset="0.55" />
+                <item android:color="#0040DC" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 底部弧线（里拉琴身） -->
+    <path
+        android:pathData="M40.5,82.27 C45.98,86.06 62.02,86.06 67.5,82.27"
+        android:fillColor="#00000000"
+        android:strokeWidth="2.95"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="31.64"
+                android:startY="84.38"
+                android:endX="76.36"
+                android:endY="23.2">
+                <item android:color="#0082FB" android:offset="0" />
+                <item android:color="#0064E0" android:offset="0.55" />
+                <item android:color="#0040DC" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
