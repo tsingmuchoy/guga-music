@@ -83,6 +83,13 @@ public class PlayerService extends Service {
     private boolean flacActive = false;
     private boolean flacHandlingError = false;
     private final java.util.Set<String> flacSoftBad = new java.util.HashSet<>();
+    // 降档护盾（v1.43.2）：软解失败降到 192K 后的首轮 MediaPlayer 尝试，在就绪前若遭
+    // -38（播放器状态类迟发错误），允许用同一地址干净直连重试一次，不让一条状态类
+    // 报错在 1 秒内连穿主址/备用/取址三级恢复链直接跳歌（v1.43.1 真机实锤此坑）
+    private String lastPlayUrl = null;              // 最近一次取到的主播放地址
+    private boolean downgradeShield = false;
+    private long downgradeShieldAtMs = 0;
+    private int downgradeShieldToken = -1;
     private long prepareStartAt = 0;
     private int fetchSeq = 0;
     private int playToken = 0;
@@ -169,6 +176,7 @@ public class PlayerService extends Service {
                 ps.edit().remove("pos").remove("pos_bvid").apply();
             } catch (Exception ignored) {}
             failStreak = 0;
+            downgradeShield = false;   // 任何一次成功就绪都解除降档护盾（v1.43.2）
             if (restartPaused) {
                 restartPaused = false;
                 setPlaying(false);
@@ -223,6 +231,23 @@ public class PlayerService extends Service {
                 Diag.log(this, "（旧世代报错已忽略 what=" + what + " extra=" + extra
                         + "，当前世代已就绪且进度在推进）");
                 return true;
+            }
+            // 降档护盾（v1.43.2）：软解刚降到 192K 的首轮 MP 尝试还没就绪就遭 -38——
+            // isStaleError 只护「已就绪后」的迟发报错，这里补上就绪前的防线：同址
+            // 干净直连重试一次（reset 后重拉同一 URL），不消耗备用/取址两级恢复链。
+            // 触发面严格收窄：仅护盾布防中、仅 -38、仅布防 10 秒内、仅同一 playToken、
+            // 仅播放器未在播；命中一次即解除，之后仍败走正常恢复链。
+            if (downgradeShield && what == -38 && downgradeShieldToken == playToken
+                    && System.currentTimeMillis() - downgradeShieldAtMs < 10000
+                    && lastPlayUrl != null) {
+                boolean mpPlaying = false;
+                try { mpPlaying = m.isPlaying(); } catch (Exception ignored) {}
+                if (!mpPlaying) {
+                    downgradeShield = false;
+                    Diag.log(this, "⛑ 降档护盾：首试遭 -38，同址干净重试一次");
+                    if (tryStream(lastPlayUrl)) return true;
+                    Diag.log(this, "⛑ 降档护盾：干净重试拉起失败，继续恢复链");
+                }
             }
             handlingError = true;
             // 恢复链各分支都会 reset 重拉流、默认从头播：趁播放器还没 reset，先把当前
@@ -629,6 +654,7 @@ public class PlayerService extends Service {
                 if (token != playToken || seq != fetchSeq) return;
                 Diag.log(PlayerService.this, "🔗 取址完成（" + ((System.currentTimeMillis() - fetchStart) + 500) / 1000 + " 秒）");
                 backupUrl = urls.length > 1 ? urls[1] : null;
+                lastPlayUrl = urls[0];
                 curStreamKind = urls.length > 2 && urls[2] != null ? urls[2] : "aac";
                 if (urls.length > 3 && urls[3] != null) {
                     try { actualTier = Integer.parseInt(urls[3]); } catch (Exception ignored) {}
@@ -807,6 +833,14 @@ public class PlayerService extends Service {
                 Diag.log(this, "⛑ 恢复链：已记进度 " + (pos / 1000) + "s，降档重拉后从该处续播");
             }
             Diag.log(this, "⛑ 恢复链：FLAC 软解失败，降到 192K 重试");
+            // 降档现场卫生（v1.43.2）：AudioTrack 已由 killFlac 同步 release；这里再
+            // 清掉软解时代的 prepared（否则看门狗会误以为新尝试已就绪而失联），
+            // 并布防降档护盾，保住首轮 MP 尝试不被一条状态类 -38 直接连穿跳歌
+            prepared = false;
+            downgradeShield = true;
+            downgradeShieldAtMs = System.currentTimeMillis();
+            downgradeShieldToken = playToken;
+            Diag.log(this, "⛑ 降档护盾已布防（首轮 MP 尝试若遭 -38，可同址干净重试一次）");
             preparing = true;
             prepareStartAt = System.currentTimeMillis();
             fetchAndPlay(t, playToken);

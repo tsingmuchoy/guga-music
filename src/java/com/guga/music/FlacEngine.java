@@ -31,7 +31,13 @@ import java.io.RandomAccessFile;
  *  - seek：本地文件走解码器原生定位（seek 表/帧同步搜索）；在线流重开解码器顺序
  *    解码跳过（FLAC 解码远快于实时，等待主要是等数据），落地帧按采样精确对齐；
  *  - 本地文件单帧损坏（CRC/格式错误）时用帧同步找回跳过坏帧续播（每首至多 3 次），
- *    在线流不做重同步（随机读代价不可控），直接失败走降档，避免长时间无声。 */
+ *    在线流不做重同步（随机读代价不可控），直接失败走降档，避免长时间无声。
+ *
+ *  输出容错（v1.43.2）：真机实锤 24bit 歌建轨成功、软解开播后第一批 write 即被
+ *  HAL 回 -3（ERROR_INVALID_OPERATION）。writePcm 因此带容错阶梯：负值先记全
+ *  现场（返回值/播放状态/世代/已写帧/通道），再同参重建 AudioTrack 一次；float
+ *  通道仍败则降 16bit PCM 重建续播；垂死线程（已 stop/世代已换）的写入失败只
+ *  静默退出，绝不上报引擎失败误触发降档。 */
 public class FlacEngine {
 
     public interface Callback {
@@ -50,6 +56,7 @@ public class FlacEngine {
 
     private volatile boolean stopped = false;
     private volatile boolean playing = false;       // 期望播放态（服务驱动）
+    private volatile int runGen = 0;                // 启停世代：start/stop 各递增，垂死线程据此静默（v1.43.2）
     private volatile long seekTargetSamples = -1;   // 待处理 seek（绝对采样序号），-1 无
     private volatile int pendingSeekMs = -1;        // 就绪前收到的 seek（毫秒）
     private volatile boolean decodeEof = false;
@@ -65,7 +72,11 @@ public class FlacEngine {
     private int outChannels = 2;
     private int depth = 16;
     private boolean floatPath = false;
+    private boolean force16 = false;                // float 通道被真机拒绝后置真，本次运行余下重建一律 16bit（v1.43.2）
     private byte[] pcmBuf;
+    private boolean firstWriteOk = false;           // 首写成功 Diag 只记一次
+    private int ladderStep = 0;                     // 连续写失败的阶梯级（整块写成即复位）
+    private int totalRebuilds = 0;                  // 本次运行累计重建次数（封顶防病态循环）
 
     // 位置账本（单位：采样帧，每声道一帧）
     private long totalFrames = -1;                  // STREAMINFO 总采样，-1 未知
@@ -79,6 +90,9 @@ public class FlacEngine {
     private int resyncs = 0;
     private boolean endedFired = false;
 
+    /** 垂死信号：引擎已 stop 或世代已换，解码线程据此静默退出，绝不走 onError */
+    private static final class StoppedSignal extends RuntimeException {}
+
     public FlacEngine(Context ctx, Callback cb) {
         this.ctx = ctx.getApplicationContext();
         this.cb = cb;
@@ -87,6 +101,7 @@ public class FlacEngine {
     // ---------------- 对外控制（任意线程可调） ----------------
 
     public void start(TeeDataSource tee, File file) {
+        runGen++;
         savedTee = tee;
         savedFile = file;
         teeBacked = file == null;
@@ -96,10 +111,24 @@ public class FlacEngine {
     }
 
     public void play() {
-        playing = true;
+        // 先启动轨道并确认进入 PLAYING，再置期望态唤醒解码线程（v1.43.2 时序修正：
+        // 旧实现先置 flag 后 play、且吞掉 play 的异常，解码线程 250ms 轮询醒来时
+        // 可能抢在轨真正启动之前写入未启动的轨、被 HAL 回 -3）
         AudioTrack t = track;
-        if (t != null) { try { t.play(); } catch (Exception ignored) {} }
+        if (t != null) startTrackNow(t);
+        playing = true;
         synchronized (gate) { gate.notifyAll(); }
+    }
+
+    /** 启动轨道并核对播放状态；已在播返回 true。失败只返回 false 不抛——
+     *  写路径的容错阶梯会接管（重建轨道），不在这里判死 */
+    private boolean startTrackNow(AudioTrack t) {
+        try {
+            if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) t.play();
+            return t.getPlayState() == AudioTrack.PLAYSTATE_PLAYING;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public void pause() {
@@ -134,8 +163,10 @@ public class FlacEngine {
         return (int) (totalFrames * 1000L / si.sampleRate);
     }
 
-    /** 立即停机：置停机位、释放 AudioTrack（能立刻打断阻塞中的 write），解码线程自行收尾 */
+    /** 立即停机：换世代+置停机位、同步释放 AudioTrack（能立刻打断阻塞中的 write），
+     *  再尽力等解码线程收尾；垂死线程残余的写入失败凭世代号静默，绝不上报（v1.43.2） */
     public void stop() {
+        runGen++;
         stopped = true;
         playing = false;
         synchronized (gate) { gate.notifyAll(); }
@@ -145,7 +176,10 @@ public class FlacEngine {
             try { t.release(); } catch (Exception ignored) {}
         }
         Thread th = thread;
-        if (th != null) th.interrupt();
+        if (th != null) {
+            th.interrupt();
+            try { th.join(200); } catch (InterruptedException ignored) {}
+        }
     }
 
     // ---------------- 播放头账本 ----------------
@@ -168,6 +202,15 @@ public class FlacEngine {
 
     private long playedSinceEpoch() {
         return Math.max(0, playedFramesRaw() - epochHead0);
+    }
+
+    /** 换轨时播放头账本清零：新轨的播放头从 0 起，原回绕展开状态不得带过来 */
+    private void resetHeadLedger() {
+        synchronized (headLock) {
+            lastRawHead = 0;
+            headWraps = 0;
+            lastPlayedRaw = 0;
+        }
     }
 
     // ---------------- 输入 ----------------
@@ -341,6 +384,8 @@ public class FlacEngine {
                 decNext += n;
                 writePcm(samples, 0, n);
             }
+        } catch (StoppedSignal ss) {
+            // 已停机/世代已换：垂死线程静默退出，绝不上报失败触发降档（v1.43.2）
         } catch (Exception e) {
             if (!stopped) {
                 String why = shortWhy(e);
@@ -418,7 +463,7 @@ public class FlacEngine {
         int rate = info.sampleRate;
         outChannels = Math.min(2, info.numChannels);
         depth = info.sampleDepth;
-        floatPath = depth > 16;
+        floatPath = depth > 16 && !force16;
         int chMask = outChannels == 1 ? AudioFormat.CHANNEL_OUT_MONO : AudioFormat.CHANNEL_OUT_STEREO;
         int enc = floatPath ? AudioFormat.ENCODING_PCM_FLOAT : AudioFormat.ENCODING_PCM_16BIT;
         int bps = floatPath ? 4 : 2;
@@ -442,10 +487,82 @@ public class FlacEngine {
             throw new IOException("AudioTrack 初始化失败（" + rate + "Hz）");
         }
         pcmBuf = new byte[65536 * outChannels * bps];
+        resetHeadLedger();
+        Diag.log(ctx, "🎧 AudioTrack 建轨（" + rate + "Hz/" + (floatPath ? "FLOAT" : "PCM16")
+                + "/" + outChannels + "ch/缓冲 " + bufSize + "B/状态 " + track.getState() + "）");
     }
 
-    /** int 采样 → PCM 字节（16bit 小端或 float 小端）并整帧阻塞写进 AudioTrack */
-    private void writePcm(int[][] samples, int off, int frames) throws IOException {
+    private int frameBytes() { return outChannels * (floatPath ? 4 : 2); }
+
+    private void releaseTrackQuiet() {
+        AudioTrack t = track;
+        track = null;
+        if (t != null) {
+            try { t.stop(); } catch (Exception ignored) {}
+            try { t.release(); } catch (Exception ignored) {}
+        }
+    }
+
+    private static String playStateName(AudioTrack t) {
+        if (t == null) return "无轨";
+        try {
+            switch (t.getPlayState()) {
+                case AudioTrack.PLAYSTATE_PLAYING: return "PLAYING";
+                case AudioTrack.PLAYSTATE_PAUSED: return "PAUSED";
+                case AudioTrack.PLAYSTATE_STOPPED: return "STOPPED";
+                default: return "?" + t.getPlayState();
+            }
+        } catch (Exception e) { return "异常"; }
+    }
+
+    /** 容错阶梯（v1.43.2）：write 负值/轨道没启动时调用。返回重建后应从本块第几帧
+     *  续写（= 旧轨已实际播出的本块帧数，未播出的部分会重写给新轨，账本不回退）；
+     *  -1 = 阶梯走完，放弃。阶梯形态：① 同参重建一次；②（仅 float）降 16bit 重建，
+     *  且该次运行后续重建一律 16bit；③ 仍败才判死。总重建数封顶 4 防病态循环。
+     *  heardBase/epochWrittenBefore 由 writePcm 维护：同一块内多次重建时，
+     *  已播帧按「此前纪元已确认播出 + 本纪元实际播出」累计，不重复不倒退。 */
+    private int recoverTrack(int myGen, long chunkAbs, long epochWrittenBefore, int heardBase, int accepted) {
+        if (stopped || myGen != runGen) return -1;
+        if (totalRebuilds >= 4) return -1;
+        // 先量旧轨把本块播出了多少（release 后就量不到了）
+        long playedChunk = heardBase + (playedSinceEpoch() - epochWrittenBefore);
+        if (playedChunk < heardBase) playedChunk = heardBase;
+        if (playedChunk > accepted) playedChunk = accepted;
+        ladderStep++;
+        final boolean to16;
+        if (ladderStep == 1) {
+            to16 = false;
+        } else if (ladderStep == 2 && floatPath) {
+            to16 = true;
+        } else {
+            return -1;
+        }
+        totalRebuilds++;
+        try {
+            releaseTrackQuiet();
+            if (to16) {
+                force16 = true;
+                Diag.log(ctx, "🎧 输出通道降级 float→16bit（AudioTrack 重建续播，第 "
+                        + totalRebuilds + " 次重建）");
+            } else {
+                Diag.log(ctx, "🎧 AudioTrack 重建（同参，第 " + totalRebuilds + " 次）");
+            }
+            buildTrack();
+            AudioTrack t = track;
+            if (t == null) return -1;
+            if (playing && !startTrackNow(t)) return -1;
+            epochBase = chunkAbs + playedChunk;
+            epochHead0 = playedFramesRaw();
+            writtenInEpoch = 0;
+            return (int) playedChunk;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /** int 采样 → 当前输出编码的 PCM 字节（写入 pcmBuf，返回字节数）。
+     *  float 通道：采样归一化为 -1..1 的 float 小端；16bit 通道：按位深移位收敛。 */
+    private int convertPcm(int[][] samples, int off, int frames) {
         int ch = outChannels;
         int p = 0;
         if (floatPath) {
@@ -473,13 +590,53 @@ public class FlacEngine {
                 }
             }
         }
-        int done = 0;
-        while (done < p && !stopped) {
-            int w = track.write(pcmBuf, done, p - done, AudioTrack.WRITE_BLOCKING);
-            if (w < 0) throw new IOException("AudioTrack write " + w);
-            done += w;
+        return p;
+    }
+
+    /** 整帧阻塞写入 AudioTrack；负值不一次判死，走 recoverTrack 阶梯续写。
+     *  期望暂停时（seek 预卷落地帧）不强行启动轨道——预卷写入是标准姿势；
+     *  期望播放时写入前必须确认轨道已 PLAYING（v1.43.2：绝不写未启动的轨）。 */
+    private void writePcm(int[][] samples, int off, int frames) throws IOException {
+        final int myGen = runGen;
+        final long chunkAbs = decNext - frames;    // 本块首帧的绝对样本序号
+        long epochWrittenBefore = writtenInEpoch;   // 当前纪元在本块之前已写帧数（重建后归 0）
+        int heardBase = 0;                          // 此前纪元已确认播出的本块帧数
+        int accepted = 0;                           // 本块已被历代轨接受的帧数
+        while (accepted < frames) {
+            if (stopped || myGen != runGen) throw new StoppedSignal();
+            AudioTrack t = track;
+            if (t == null || (playing && !startTrackNow(t))) {
+                int na = recoverTrack(myGen, chunkAbs, epochWrittenBefore, heardBase, accepted);
+                if (na < 0) throw new IOException("AudioTrack 无法启动/已失效");
+                heardBase = na;
+                accepted = na;
+                epochWrittenBefore = 0;   // 新纪元从本块续写处起算
+                continue;
+            }
+            int p = convertPcm(samples, off + accepted, frames - accepted);
+            int w = t.write(pcmBuf, 0, p, AudioTrack.WRITE_BLOCKING);
+            if (w < 0) {
+                if (stopped || myGen != runGen) throw new StoppedSignal();
+                Diag.log(ctx, "🎧 AudioTrack write 返回 " + w + "（状态 " + playStateName(t)
+                        + "/世代 " + myGen + "/本纪元已写 " + writtenInEpoch + " 帧/通道 "
+                        + (floatPath ? "FLOAT" : "PCM16") + "）");
+                int na = recoverTrack(myGen, chunkAbs, epochWrittenBefore, heardBase, accepted);
+                if (na < 0) throw new IOException("AudioTrack write " + w);
+                heardBase = na;
+                accepted = na;
+                epochWrittenBefore = 0;
+                continue;
+            }
+            int framesW = w / frameBytes();
+            accepted += framesW;
+            writtenInEpoch += framesW;
+            if (!firstWriteOk && framesW > 0) {
+                firstWriteOk = true;
+                Diag.log(ctx, "🎧 AudioTrack 首写成功（" + w + "B）");
+            }
+            // WRITE_BLOCKING 理论上写满才返回；防御性地对部分写继续循环补齐
         }
-        writtenInEpoch += frames;
+        ladderStep = 0;   // 整块写成，阶梯复位（总重建数不清，防整首反复重建）
     }
 
     private static void sleepQuiet(long ms) {
