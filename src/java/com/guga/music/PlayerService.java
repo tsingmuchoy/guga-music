@@ -77,6 +77,12 @@ public class PlayerService extends Service {
     private int staleSwallowedGen = -1;      // 已吞过旧世代报错的世代（每代最多吞一次）
     private boolean restartPaused = false;   // 音质原地重载后保持暂停（原本是暂停状态时）
     private final java.util.Set<String> flacBad = new java.util.HashSet<>(); // 本次运行内已知 FLAC 损坏的歌（bvid）
+    // FLAC 软解（v1.43.0）：flac 流改走 FlacEngine 纯 Java 解码 + AudioTrack 直出，
+    // MediaPlayer 保持空闲；flacSoftBad 记「软解也失败过」的歌（flacBad 的语义顺延至此）
+    private FlacEngine flac;
+    private boolean flacActive = false;
+    private boolean flacHandlingError = false;
+    private final java.util.Set<String> flacSoftBad = new java.util.HashSet<>();
     private long prepareStartAt = 0;
     private int fetchSeq = 0;
     private int playToken = 0;
@@ -197,6 +203,12 @@ public class PlayerService extends Service {
         });
         mp.setOnBufferingUpdateListener((m, percent) -> lastBufPct = percent);
         mp.setOnErrorListener((m, what, extra) -> {
+            // FLAC 软解播放中 MediaPlayer 是空闲的：它若迟发报错（多为上一首残留），
+            // 与当前发声引擎无关，直接吞掉，绝不能让它触发恢复链误杀软解播放
+            if (flacActive) {
+                Diag.log(this, "（软解播放中，忽略系统播放器报错 what=" + what + " extra=" + extra + "）");
+                return true;
+            }
             // 播放器常在一次失败后连环补发好几条旧报错（典型 -38 连发），
             // 若不拦，后到的旧报错会把正在进行的恢复（降档/换址）误判成新失败甚至跳歌
             if (handlingError) {
@@ -413,7 +425,7 @@ public class PlayerService extends Service {
         if (t == null) return;
         if (!prepared && !playing && !preparing) return; // 还没播过：新档位下次播放自然生效
         int pos = 0;
-        try { pos = prepared ? mp.getCurrentPosition() : 0; } catch (Exception ignored) {}
+        try { pos = prepared ? getPosition() : 0; } catch (Exception ignored) {}
         if (pos > 3000) {
             getSharedPreferences("player_state", MODE_PRIVATE).edit()
                     .putInt("pos", pos).putString("pos_bvid", t.bvid).apply();
@@ -423,9 +435,23 @@ public class PlayerService extends Service {
         startTrack();
     }
 
-    public int getPosition() { try { return prepared ? mp.getCurrentPosition() : 0; } catch (Exception e) { return 0; } }
-    public int getDuration() { try { return prepared ? mp.getDuration() : 0; } catch (Exception e) { return 0; } }
-    public void seekTo(int ms) { if (prepared) { mp.seekTo(ms); publishState(); } }
+    public int getPosition() {
+        if (flacActive && flac != null) return flac.getPositionMs();
+        try { return prepared ? mp.getCurrentPosition() : 0; } catch (Exception e) { return 0; }
+    }
+    public int getDuration() {
+        if (flacActive && flac != null) {
+            int d = flac.getDurationMs();
+            if (d > 0) return d;
+            Track t = current();
+            return t != null ? t.durationSec * 1000 : 0;
+        }
+        try { return prepared ? mp.getDuration() : 0; } catch (Exception e) { return 0; }
+    }
+    public void seekTo(int ms) {
+        if (flacActive && flac != null) { flac.seekTo(ms); publishState(); return; }
+        if (prepared) { mp.seekTo(ms); publishState(); }
+    }
 
     public void playQueue(List<Track> tracks, int start) {
         Track target = tracks != null && start >= 0 && start < tracks.size() ? tracks.get(start) : null;
@@ -478,6 +504,12 @@ public class PlayerService extends Service {
             return;
         }
         if (!prepared) { startTrack(); return; }
+        if (flacActive && flac != null) {
+            if (playing) { flac.pause(); setPlaying(false); persistPos(); }
+            else { requestFocus(); flac.play(); setPlaying(true); }
+            updateNotification();
+            return;
+        }
         try {
             if (mp.isPlaying()) {
                 mp.pause();
@@ -534,6 +566,7 @@ public class PlayerService extends Service {
         refetchTried = false;
         refetchTrack = t;
         killTee();
+        killFlac();
         curFromCache = false;
         noTee = false;
         activeTier = resolveActiveTier();
@@ -608,19 +641,24 @@ public class PlayerService extends Service {
                     }
                     availTiers = av2;
                 }
-                if ("flac".equals(curStreamKind) && flacBad.contains(t.bvid) && !downgradeTried) {
+                // FLAC 改走应用内软解（v1.43.0）：不再经过系统 MediaPlayer，也就不再受
+                // 「已知放不动」（系统解码器拒播）的历史结论影响——flacBad 语义顺延：
+                // 只有软解也失败过的歌（flacSoftBad）才跳过软解、直落 192K。
+                if ("flac".equals(curStreamKind) && flacSoftBad.contains(t.bvid) && !downgradeTried) {
                     downgradeTried = true;
                     activeTier = BiliApi.TIER_192K;
-                    Diag.log(PlayerService.this, "⏭ 这首歌的 FLAC 已知放不动，直接用 192K");
+                    Diag.log(PlayerService.this, "⏭ 这首歌的 FLAC 软解已知失败，直接用 192K");
                     fetchAndPlay(t, token);
                     return;
                 }
+                final boolean flacKind = "flac".equals(curStreamKind);
                 final int tierKey = actualTier >= 0 ? actualTier : activeTier;
                 curCacheKey = StreamCache.key(t.bvid, tierKey);
-                java.io.File hit = noTee ? null : StreamCache.hitFile(PlayerService.this, curCacheKey);
+                java.io.File hit = noTee && !flacKind ? null : StreamCache.hitFile(PlayerService.this, curCacheKey);
                 if (hit != null) {
                     curFromCache = true;
                     Diag.log(PlayerService.this, "💾 本地缓存播放（0 流量）");
+                    if (flacKind) { startFlac(t, token, null, hit); return; }
                     if (!tryStreamFile(hit)) {
                         preparing = false;
                         onPlayError("播放器异常");
@@ -628,7 +666,7 @@ public class PlayerService extends Service {
                     return;
                 }
                 curFromCache = false;
-                if (!noTee) {
+                if (!noTee || flacKind) {
                     curTee = new TeeDataSource(PlayerService.this, urls[0], streamHeaders(),
                             StreamCache.partFile(PlayerService.this, curCacheKey),
                             new TeeDataSource.Done() {
@@ -638,6 +676,7 @@ public class PlayerService extends Service {
                                 }
                                 @Override public void onFail() {}
                             });
+                    if (flacKind) { startFlac(t, token, curTee, null); return; }
                     if (tryStreamTee(curTee)) return;
                     killTee();
                 }
@@ -673,6 +712,107 @@ public class PlayerService extends Service {
         if (curTee != null) {
             curTee.abort();
             curTee = null;
+        }
+    }
+
+    private void killFlac() {
+        FlacEngine e = flac;
+        flac = null;
+        flacActive = false;
+        if (e != null) e.stop();
+    }
+
+    /** FLAC 软解起播（v1.43.0）：tee 在线流或本地缓存文件二选一喂 FlacEngine，
+     *  MediaPlayer 全程空闲；引擎的就绪/结束/失败回调都切回主线程走既有状态机，
+     *  与 MediaPlayer 路径共用同一套 prepared/playing/世代/恢复语义，杜绝双引擎出声。 */
+    private void startFlac(final Track t, final int token, final TeeDataSource tee, final java.io.File file) {
+        killFlac();
+        flacActive = true;
+        flacHandlingError = false;
+        streamGen++;
+        handlingError = false;
+        prepareStartAt = System.currentTimeMillis();
+        Diag.log(this, "🎧 FLAC 改走应用内软解（" + (file != null ? "本地缓存文件" : "在线流") + "）");
+        final FlacEngine[] engBox = new FlacEngine[1];
+        FlacEngine eng = new FlacEngine(getApplicationContext(), new FlacEngine.Callback() {
+            @Override public void onReady(final int durationMs, int rate, int ch, int depth) {
+                watchdog.post(() -> {
+                    if (token != playToken || flac != engBox[0]) return;
+                    prepared = true;
+                    preparing = false;
+                    cancelWatchdog();
+                    Diag.log(PlayerService.this, "✔ 已就绪开播");
+                    // 与 MediaPlayer 就绪同一口径：恢复/重载续播回到上次进度
+                    try {
+                        android.content.SharedPreferences ps = getSharedPreferences("player_state", MODE_PRIVATE);
+                        Track cur = current();
+                        if (cur != null && cur.bvid.equals(ps.getString("pos_bvid", ""))) {
+                            int pos = ps.getInt("pos", 0);
+                            if (pos > 3000 && (durationMs <= 0 || pos < durationMs)) engBox[0].seekTo(pos);
+                        }
+                        ps.edit().remove("pos").remove("pos_bvid").apply();
+                    } catch (Exception ignored) {}
+                    failStreak = 0;
+                    preparedGen = streamGen;
+                    preparedAtMs = System.currentTimeMillis();
+                    preparedPosMs = 0;
+                    if (restartPaused) {
+                        restartPaused = false;
+                        setPlaying(false);
+                    } else {
+                        engBox[0].play();
+                        setPlaying(true);
+                    }
+                    updateNotification();
+                });
+            }
+            @Override public void onEnded() {
+                watchdog.post(() -> { if (flac == engBox[0] && flacActive) onComplete(); });
+            }
+            @Override public void onError(final String why) {
+                watchdog.post(() -> { if (flac == engBox[0]) handleFlacError(why); });
+            }
+        });
+        engBox[0] = eng;
+        flac = eng;
+        armStall();
+        eng.start(tee, file);
+    }
+
+    /** FLAC 软解失败处理（主线程）：记仇（软解+系统两本账都记）、删坏缓存、记进度，
+     *  未降过档就降 192K 走 MediaPlayer 老链重拉；已降过档则按播放失败跳歌。 */
+    private void handleFlacError(String why) {
+        if (!flacActive || flacHandlingError) return;
+        flacHandlingError = true;
+        Track t = current();
+        int pos = 0;
+        try { pos = getPosition(); } catch (Exception ignored) {}
+        Diag.log(this, "🎧 FLAC 软解失败：" + why);
+        if (curFromCache && curCacheKey != null) {
+            StreamCache.deleteKey(this, curCacheKey);
+            curFromCache = false;
+        }
+        killFlac();
+        noTee = true;   // 与 MediaPlayer 报错链同口径：tee 已不可信，降档重拉走直连
+        killTee();
+        cancelWatchdog();
+        if (t != null && !downgradeTried) {
+            flacSoftBad.add(t.bvid);
+            flacBad.add(t.bvid);
+            downgradeTried = true;
+            activeTier = BiliApi.TIER_192K;
+            if (prepared && pos > 3000) {
+                getSharedPreferences("player_state", MODE_PRIVATE).edit()
+                        .putInt("pos", pos).putString("pos_bvid", t.bvid).apply();
+                Diag.log(this, "⛑ 恢复链：已记进度 " + (pos / 1000) + "s，降档重拉后从该处续播");
+            }
+            Diag.log(this, "⛑ 恢复链：FLAC 软解失败，降到 192K 重试");
+            preparing = true;
+            prepareStartAt = System.currentTimeMillis();
+            fetchAndPlay(t, playToken);
+        } else {
+            preparing = false;
+            onPlayError("播放失败（FLAC 软解失败），已自动跳下一首");
         }
     }
 
@@ -808,6 +948,17 @@ public class PlayerService extends Service {
         watchdogTask = () -> {
             if (token != playToken || prepared || !preparing) return;
             long idle = System.currentTimeMillis() - prepareStartAt;
+            if (flacActive) {
+                // FLAC 软解起播巡检：软解失败有自己的回调，这里只兜「迟迟不就绪」，
+                // 绝不走下面 MediaPlayer 的切备节点/重取址分支（会与软解双引擎出声）
+                if (idle >= 15000) {
+                    Diag.log(this, "⏱ FLAC 软解 15 秒未就绪，走软解失败处理");
+                    handleFlacError("起播超时");
+                } else {
+                    watchdog.postDelayed(watchdogTask, 3000);
+                }
+                return;
+            }
             if (backupUrl != null && !backupTried && idle >= 6000) {
                 Diag.log(this, "⏩ 主节点 6 秒没动静，提前切备用节点");
                 backupTried = true;
@@ -878,7 +1029,7 @@ public class PlayerService extends Service {
             Track t = current();
             if (t == null) return;
             getSharedPreferences("player_state", MODE_PRIVATE).edit()
-                    .putInt("pos", mp.getCurrentPosition())
+                    .putInt("pos", getPosition())
                     .putString("pos_bvid", t.bvid)
                     .apply();
         } catch (Exception ignored) {}
@@ -974,7 +1125,7 @@ public class PlayerService extends Service {
             refreshSbLyrics();
             if (playing && wasHeld) {
                 Diag.log(this, "焦点被抢，自动暂停");
-                try { mp.pause(); } catch (Exception ignored) {}
+                try { if (flacActive && flac != null) flac.pause(); else mp.pause(); } catch (Exception ignored) {}
                 setPlaying(false);
                 persistPos();
                 updateNotification();
@@ -1715,6 +1866,7 @@ public class PlayerService extends Service {
         islandShown = false;
         hideSb();
         try { if (session != null) { session.setActive(false); session.release(); } } catch (Exception ignored) {}
+        killFlac();
         try { mp.release(); } catch (Exception ignored) {}
         inst = null;
         super.onDestroy();
