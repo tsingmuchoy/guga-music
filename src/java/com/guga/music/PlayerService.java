@@ -1832,10 +1832,10 @@ public class PlayerService extends Service {
                 .setContentIntent(content)
                 .setDeleteIntent(act("repost", 4))
                 .setOngoing(true)
-                .addAction(android.R.drawable.ic_media_previous, "上一首", act("prev", 1))
-                .addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+                .addAction(R.drawable.ic_prev, "上一首", act("prev", 1))
+                .addAction(playing ? R.drawable.ic_pause : R.drawable.ic_play,
                         playing ? "暂停" : "播放", act("toggle", 2))
-                .addAction(android.R.drawable.ic_media_next, "下一首", act("next", 3));
+                .addAction(R.drawable.ic_next, "下一首", act("next", 3));
         if (session != null) {
             try {
                 b.setStyle(new Notification.MediaStyle()
