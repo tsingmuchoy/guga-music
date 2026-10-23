@@ -1011,11 +1011,98 @@ else sb.append(c);
 return sb.toString();
 }
 
+/** 逐字轴可用性校验：防「有轴但轴是坏的」（起始塌缩/跨度≈0/TTML 相对轴使 start≈0）骗过只数个数的
+ *  门控、挤掉模拟扫字兜底。规则全过才可用；dur 全零但 start 分散的轴是合法可扫的，不误杀。 */
+static boolean axisUsable(List<Word> ws, long lineStartMs, long lineEndMs) {
+return axisUsable(ws, null, lineStartMs, lineEndMs);
+}
+
+static boolean axisUsable(List<Word> ws, String lineText, long lineStartMs, long lineEndMs) {
+if (ws == null || ws.size() < 2) return false;
+// start 序列非递减（容忍 ≤50ms 局部回退）
+for (int i = 1; i < ws.size(); i++) {
+if (ws.get(i).startMs < ws.get(i - 1).startMs - 50) return false;
+}
+long first = Long.MAX_VALUE, lastEnd = Long.MIN_VALUE;
+java.util.Set<Long> starts = new java.util.HashSet<>();
+long textLen = 0;
+for (Word w : ws) {
+if (w.startMs < first) first = w.startMs;
+long e = w.startMs + Math.max(0, w.durMs);
+if (e > lastEnd) lastEnd = e;
+starts.add(w.startMs);
+if (w.text != null) textLen += w.text.length();
+}
+// distinct 起点足够分散（全词同 start 的塌缩轴在此出局）
+if (starts.size() < 2 || starts.size() * 3 < ws.size()) return false;
+// 跨度要占到行窗像样的比例（行窗上限 12s，跨度下限 400ms）
+long win = Math.min(lineEndMs - lineStartMs, 12000);
+if (lastEnd - first < Math.max(400, (long) (win * 0.3))) return false;
+// 位置合理：轴不能整体飘离本行（相对轴 start≈0 在此出局）
+if (first < lineStartMs - 1000 || lastEnd > lineEndMs + 2000) return false;
+// 文本覆盖：轴文本至少要覆盖行文本一半（挂错行/残轴在此出局）
+if (lineText != null && textLen * 2 < lineText.trim().length()) return false;
+return true;
+}
+
+/** 轴体检明细 [跨度ms, distinct(startMs)数, 首词startMs]，供判定日志的坏行样本使用 */
+private static long[] axisDetail(List<Word> ws) {
+long first = Long.MAX_VALUE, lastEnd = Long.MIN_VALUE;
+java.util.Set<Long> starts = new java.util.HashSet<>();
+for (Word w : ws) {
+if (w.startMs < first) first = w.startMs;
+long e = w.startMs + Math.max(0, w.durMs);
+if (e > lastEnd) lastEnd = e;
+starts.add(w.startMs);
+}
+return new long[]{ lastEnd - first, starts.size(), ws.get(0).startMs };
+}
+
+/** 经轴校验的逐字访问器：坏轴视为无逐字（返回 null），调用方据此回落模拟扫字；存量坏缓存当场治愈 */
+public static List<Word> usableWords(Line l, long nextMs) {
+if (l == null || l.words == null) return null;
+return axisUsable(l.words, l.text, l.timeMs, nextMs) ? l.words : null;
+}
+
+/** 逐字判定汇总（每首歌一条）：统计轴行/可用行并给首个坏行样本，写进诊断便于真机回传微调阈值 */
+private static void logWordsVerdict(Context ctx, Track track, Result r, String wsrc) {
+try {
+if (r == null || r.lines == null || r.lines.isEmpty()) return;
+int total = r.lines.size(), axis = 0, usable = 0;
+String sample = null;
+for (int i = 0; i < total; i++) {
+Line l = r.lines.get(i);
+if (l.words == null || l.words.size() < 2) continue;
+axis++;
+long end = i + 1 < total ? r.lines.get(i + 1).timeMs : l.timeMs + 6000;
+if (axisUsable(l.words, l.text, l.timeMs, end)) { usable++; continue; }
+if (sample == null) {
+long[] d = axisDetail(l.words);
+sample = " 坏行样本[行" + i + " 跨度=" + d[0] + "ms distinct=" + d[1] + " 首词起=" + (d[2] - l.timeMs) + "ms]";
+}
+}
+String verdict;
+if (axis == 0) verdict = "无逐字→模拟";
+else if (usable == axis) verdict = "真逐字";
+else if (usable == 0) verdict = "坏轴降级→模拟";
+else verdict = "真逐字（坏行" + (axis - usable) + "行回落模拟）";
+String src = (wsrc != null && !wsrc.isEmpty()) ? wsrc
+: (r.source == null || r.source.isEmpty() ? "?" : r.source);
+Diag.log(ctx, "🎤 逐字判定：《" + track.title + "》 来源=" + src
++ " 轴行=" + axis + "/" + total + " 可用=" + usable
++ (sample == null ? "" : sample) + " 判定=" + verdict);
+} catch (Exception ignored) {}
+}
+
 /** 逐字轴序列化（缓存 #words 段）：每行一条「行时间<TAB>相对起,时长,字;相对起,时长,字…」 */
 private static String serializeWords(List<Line> lines) {
 StringBuilder sb = new StringBuilder();
-for (Line l : lines) {
+for (int li = 0; li < lines.size(); li++) {
+Line l = lines.get(li);
 if (l.words == null || l.words.isEmpty()) continue;
+// 坏轴不落盘：免得写进 #words 段后被回读复活、逐歌永久复现
+long serEnd = li + 1 < lines.size() ? lines.get(li + 1).timeMs : l.timeMs + 6000;
+if (!axisUsable(l.words, l.text, l.timeMs, serEnd)) continue;
 sb.append(l.timeMs).append('\t');
 for (int i = 0; i < l.words.size(); i++) {
 Word w = l.words.get(i);
@@ -1058,7 +1145,10 @@ String text = unescWord(seg.substring(c2 + 1));
 if (!text.isEmpty()) ws.add(new Word(target.timeMs + rel, dur, text));
 } catch (Exception ignored) {}
 }
-if (ws.size() >= 2) target.words = ws;
+int ti = lines.indexOf(target);
+long attEnd = ti >= 0 && ti + 1 < lines.size() ? lines.get(ti + 1).timeMs : target.timeMs + 6000;
+// 回读自愈：缓存里的坏轴挂载前丢弃（存量坏缓存不删文件也能失效）
+if (ws.size() >= 2 && axisUsable(ws, target.text, target.timeMs, attEnd)) target.words = ws;
 }
 }
 
@@ -1073,10 +1163,12 @@ if (yo == null) return;
 List<YLine> yl = parseYrc(yo.optString("lyric"));
 if (yl.isEmpty()) return;
 List<Line> lines = parseLrc(p.lrc);
-for (Line m : lines) {
+for (int mi = 0; mi < lines.size(); mi++) {
+Line m = lines.get(mi);
 YLine best = null; long bd = Long.MAX_VALUE;
 for (YLine y : yl) { long dd = Math.abs(y.startMs - m.timeMs); if (dd < bd) { bd = dd; best = y; } }
-if (best != null && bd <= 150) m.words = best.words;
+long nwEnd = mi + 1 < lines.size() ? lines.get(mi + 1).timeMs : m.timeMs + 6000;
+if (best != null && bd <= 150 && axisUsable(best.words, m.text, m.timeMs, nwEnd)) m.words = best.words;
 }
 p.words = serializeWords(lines);
 } catch (Exception ignored) {}
@@ -1113,9 +1205,11 @@ return n >= 3 ? sb.toString() : null;
 private static Result maybeWords(Context ctx, Track track, Result r, File cache, File dir) {
 try {
 if (r == null || r.lines == null || r.lines.size() < 5) return r;
-for (Line l : r.lines) if (l.words != null && !l.words.isEmpty()) return r;
+boolean hasWords = false;
+for (Line l : r.lines) if (l.words != null && !l.words.isEmpty()) { hasWords = true; break; }
+if (hasWords) { logWordsVerdict(ctx, track, r, null); return r; }
 File mark = new File(dir, track.bvid + ".w4");
-if (mark.exists() && System.currentTimeMillis() - mark.lastModified() < 7L * 24 * 3600 * 1000) return r;
+if (mark.exists() && System.currentTimeMillis() - mark.lastModified() < 7L * 24 * 3600 * 1000) { logWordsVerdict(ctx, track, r, null); return r; }
 try { new java.io.FileOutputStream(mark).close(); } catch (Exception ignored) {}
 Hints hints = hintsOf(track);
 boolean done = false;
@@ -1143,7 +1237,7 @@ try {
 if (tryKugouKrc(track, hints, r)) { done = true; wsrc = "酷狗KRC"; }
 } catch (Exception ignored) {}
 }
-if (!done) return r;
+if (!done) { logWordsVerdict(ctx, track, r, null); return r; }
 StringBuilder sb = new StringBuilder("#src:" + r.source + "\n");
 sb.append(lrcTextOf(r.lines));
 String ts = extraTextOf(r.lines, true);
@@ -1154,6 +1248,7 @@ String wd = serializeWords(r.lines);
 if (wd != null) sb.append("\n#words:\n").append(wd);
 writeFile(cache, sb.toString());
 Diag.log(ctx, "🎤 已补齐逐字歌词（" + wsrc + "）《" + track.title + "》");
+logWordsVerdict(ctx, track, r, wsrc);
 } catch (Exception ignored) {}
 return r;
 }
@@ -1201,7 +1296,10 @@ for (int i = 0; i < r.lines.size(); i++) {
 Line m = r.lines.get(i);
 if (m.text == null || m.text.trim().isEmpty()) continue;
 total++;
-if (perLine.get(i).size() >= 2) { m.words = perLine.get(i); covered++; }
+if (perLine.get(i).size() >= 2) {
+long yEnd = i + 1 < r.lines.size() ? r.lines.get(i + 1).timeMs : m.timeMs + 6000;
+if (axisUsable(perLine.get(i), m.text, m.timeMs, yEnd)) { m.words = perLine.get(i); covered++; }
+}
 }
 if (total == 0 || covered * 2 < total) {
 for (Line m : r.lines) m.words = null;
@@ -1983,7 +2081,8 @@ if (ws.size() >= 2) byBegin.put(pBegin, ws);
 }
 if (byBegin.isEmpty()) return null;
 List<Line> lines = parseLrc(lrcText);
-for (Line ln : lines) {
+for (int li = 0; li < lines.size(); li++) {
+Line ln = lines.get(li);
 List<Word> ws = byBegin.get(ln.timeMs);
 if (ws == null) {
 long bd = Long.MAX_VALUE;
@@ -1993,7 +2092,8 @@ if (dd < bd) { bd = dd; ws = e.getValue(); }
 }
 if (bd > 150) ws = null;
 }
-if (ws != null) ln.words = ws;
+long tEnd = li + 1 < lines.size() ? lines.get(li + 1).timeMs : ln.timeMs + 6000;
+if (ws != null && axisUsable(ws, ln.text, ln.timeMs, tEnd)) ln.words = ws;
 }
 return serializeWords(lines);
 } catch (Exception e) { return null; }

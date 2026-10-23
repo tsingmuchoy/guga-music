@@ -338,9 +338,9 @@ public class LyricsActivity extends Activity {
             boolean cur = p == curIdx;
             // 逐字模式：当前行且这行有逐字轴时，用 SyllableView 逐字扫光替代普通文本；
             // 没真逐字且用户开了「模拟扫字」时，按行时长现算一份模拟轴兜底（真数据永远优先）
-            List<Lyrics.Word> wlist = line.words;
-            if ((wlist == null || wlist.size() < 2) && Lyrics.isSimWords(LyricsActivity.this)) {
-                long nextMs = p + 1 < lines.size() ? lines.get(p + 1).timeMs : line.timeMs + 6000;
+            long nextMs = p + 1 < lines.size() ? lines.get(p + 1).timeMs : line.timeMs + 6000;
+            List<Lyrics.Word> wlist = Lyrics.usableWords(line, nextMs);
+            if (wlist == null && Lyrics.isSimWords(LyricsActivity.this)) {
                 wlist = Lyrics.simWords(line, nextMs);
             }
             boolean useWords = cur && Lyrics.isShowWords(LyricsActivity.this)
