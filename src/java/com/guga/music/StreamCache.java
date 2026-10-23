@@ -27,6 +27,14 @@ public class StreamCache {
         return new File(dir(c), key + ".bin");
     }
 
+    /** 由 .part 文件推其转正后的正式文件（同目录、后缀 .part→.bin）；非 .part 名返回 null。
+     *  TeeDataSource 在下载完成后靠它跟住被 finish() 改名的数据文件继续读。 */
+    public static File finalForPart(File part) {
+        String n = part.getName();
+        if (!n.endsWith(".part")) return null;
+        return new File(part.getParentFile(), n.substring(0, n.length() - ".part".length()) + ".bin");
+    }
+
     /** 完整缓存命中返回文件（并刷新 LRU 时间），否则 null */
     public static File hitFile(Context c, String key) {
         File f = finalFile(c, key);

@@ -21,7 +21,9 @@ import java.util.Map;
  *  - 起播预缓冲垫：开头 1MB 未攒够前 readAt 先等（总上限 5 秒，赶在备节点看门狗之前）；
  *  - readAt 等不到数据的一次性 Range 补拉会写回 .part 对应偏移；
  *  - 卡顿取证：预缓冲达标 / 前沿等待 / Range 补拉 / 下载速度采样写 Diag（带 🐌 前缀）。
- *  下载被 abort 后 .part 与 .meta 保留待续；Done 回调只由 lead 触发一次。 */
+ *  下载被 abort 后 .part 与 .meta 保留待续；Done 回调只由 lead 触发一次。
+ *  v1.42.4：Done 触发的 StreamCache.finish 会把 .part 改名 .bin——数据源的本地读必须
+ *  跟住改名（part 优先、final 兜底解析），completed 绝不是对 pos<total 返回 -1 的理由。 */
 public class TeeDataSource extends MediaDataSource {
 
     public interface Done {
@@ -64,6 +66,7 @@ public class TeeDataSource extends MediaDataSource {
     // 取证
     private long lastFrontierLogAt = 0;
     private int rangeCount = 0;
+    private boolean completedFailLogged = false;       // 「已完成却读失败」只记第一次
     private volatile long bytesFetched = 0;              // 实际经网络写入文件的字节（测速用）
     private long lastSpeedBytes = 0;
     private long lastSpeedAt;
@@ -553,6 +556,19 @@ public class TeeDataSource extends MediaDataSource {
                 why, position, downloaded, total, failed, completed, rangeTries));
     }
 
+    /** 「下载已完成却读不出本地数据」取证（每实例只记第一次）：带异常类型与两条候选
+     *  路径的存在状态，区分是转正改名没跟住、文件被修剪、还是别的本地 IO 故障 */
+    private void logCompletedReadFail(long position, Exception e) {
+        if (completedFailLogged) return;
+        completedFailLogged = true;
+        File fin = StreamCache.finalForPart(part);
+        Diag.log(ctx, String.format(Locale.CHINA,
+                "🐌 已完成却读失败 pos=%d 已下=%d 总量=%d 异常=%s，part存在=%s final存在=%s",
+                position, downloaded, total,
+                e == null ? "无（本地读未返回数据）" : e.getClass().getSimpleName(),
+                part.exists(), fin != null && fin.exists()));
+    }
+
     @Override
     public int readAt(long position, byte[] buffer, int offset, int size) {
         if (size == 0) return 0;
@@ -564,19 +580,35 @@ public class TeeDataSource extends MediaDataSource {
         logFrontierIfNeeded(position, startAt);
         // 第二阶段：补拉重试循环。下载还活着且没到文件尾时，一次补拉失败绝不直接 -1
         // ——那会被框架判成 MEDIA_ERROR_IO 误杀整首歌（v1.42.2 实测教训）。
-        // 补拉带退避（0.4/0.9/1.6/2.5s…）重试并继续等下载推进；只有下载已失败/已结束、
-        // 被 abort、或总等待超过 45 秒上限，才允许返回 -1，且放弃必留快照。
+        // 补拉带退避（0.4/0.9/1.6/2.5s…）重试并继续等下载推进；允许返回 -1 的只有：
+        // 下载已失败、被 abort、仍在下载但总等待超过 45 秒、或 pos≥total（真 EOF）。
+        // 特别地：completed 不是 pos<total 的放弃理由——数据 100% 在本地，读不到只能是
+        // 本地通道断裂（如 finish 转正把 .part 改名），走 readFromPart 的双路径自救，
+        // 实在读不出才记「已完成却读失败」快照后返回 -1（v1.42.3 真机实锤的回归点）。
         int rangeTries = 0;
         while (true) {
+            Exception readErr = null;
             if (position < downloaded) {
                 try {
                     int n = readFromPart(position, buffer, offset, size);
                     if (n > 0) return n;
-                } catch (Exception ignored) {}
+                } catch (Exception e) { readErr = e; }
             }
             if (aborted) return -1; // 切歌/回退直连的主动拆除，不算放弃、不留痕
-            if (failed || completed) {
-                logReadGiveUp(position, rangeTries, failed ? "下载失败" : "下载已结束");
+            if (failed) {
+                logReadGiveUp(position, rangeTries, "下载失败");
+                return -1;
+            }
+            if (completed) {
+                // 顺序模式（total 未知）下 pos 已到已下载末尾＝真 EOF，正常返回 -1
+                if (position >= downloaded) return -1;
+                // 数据声称全在本地：换路径再自救读一次（readFromPart 内部已含改名竞态重试）
+                try {
+                    int n = readFromPart(position, buffer, offset, size);
+                    if (n > 0) return n;
+                } catch (Exception e) { if (readErr == null) readErr = e; }
+                logCompletedReadFail(position, readErr);
+                logReadGiveUp(position, rangeTries, "已完成却读失败");
                 return -1;
             }
             if (total >= 0 && position >= total) return -1;
@@ -667,12 +699,35 @@ public class TeeDataSource extends MediaDataSource {
         } catch (Exception ignored) {}
     }
 
+    /** 本地读的目标文件解析：下载中数据在 .part；Done 后 StreamCache.finish 把 .part
+     *  改名 .bin 转正，.part 路径随即消失——读取必须跟住改名（part 优先、final 兜底），
+     *  否则 completed 后播放器回读 pos<total 必 FileNotFound（v1.42.3 真机实锤断裂点）。
+     *  已打开的句柄不受改名影响（同一 inode），只有「改名后新开文件」才需要走兜底路径。 */
+    private File resolveReadFile() {
+        if (part.exists()) return part;
+        File fin = StreamCache.finalForPart(part);
+        if (fin != null && fin.exists()) return fin;
+        return part;
+    }
+
     private int readFromPart(long position, byte[] buffer, int offset, int size) throws Exception {
         long avail = downloaded - position;
         int want = (int) Math.min(size, avail);
         if (total >= 0) want = (int) Math.min(want, Math.max(0, total - position));
         if (want <= 0) return -1;
-        try (RandomAccessFile raf = new RandomAccessFile(part, "r")) {
+        File f = resolveReadFile();
+        try {
+            return readFromFile(f, position, buffer, offset, want);
+        } catch (java.io.FileNotFoundException e) {
+            // 与转正改名擦肩（exists 检查后、open 前被改名）：换另一候选路径再试一次
+            File alt = resolveReadFile();
+            if (alt.equals(f)) throw e;
+            return readFromFile(alt, position, buffer, offset, want);
+        }
+    }
+
+    private int readFromFile(File f, long position, byte[] buffer, int offset, int want) throws Exception {
+        try (RandomAccessFile raf = new RandomAccessFile(f, "r")) {
             raf.seek(position);
             int got = 0;
             while (got < want) {

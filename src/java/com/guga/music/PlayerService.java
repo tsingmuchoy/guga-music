@@ -213,6 +213,19 @@ public class PlayerService extends Service {
                 return true;
             }
             handlingError = true;
+            // 恢复链各分支都会 reset 重拉流、默认从头播：趁播放器还没 reset，先把当前
+            // 进度按既有「重载续播」口径记进 player_state（pos/pos_bvid，与切音质原地
+            // 重载同一通道），重拉 prepare 成功后 OnPrepared 命中同 bvid 会自动 seek
+            // 回原进度续播（v1.42.4；此前恢复开播一律从头，用户听感是整首重来）。
+            try {
+                Track curTk = current();
+                int p = m.getCurrentPosition();
+                if (curTk != null && prepared && p > 3000) {
+                    getSharedPreferences("player_state", MODE_PRIVATE).edit()
+                            .putInt("pos", p).putString("pos_bvid", curTk.bvid).apply();
+                    Diag.log(this, "⛑ 恢复链：已记进度 " + (p / 1000) + "s，重拉开播后从该处续播");
+                }
+            } catch (Exception ignored) {}
             if (curTee != null) { noTee = true; killTee(); }
             if (curFromCache && curCacheKey != null) {
                 StreamCache.deleteKey(this, curCacheKey);
