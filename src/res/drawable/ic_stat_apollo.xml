@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Apollo 通知小图标：定稿图标「几何 A 琴弦」的白色剪影版（M2 几何等比映射到 24dp）。
+     通知小图标只能单色白+透明底，故去渐变、全白描边；24dp 下 5 根弦会糊成团，
+     减为 3 根（中长侧短），线条相对定稿加粗保辨识。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- A 的双腿 -->
+    <path
+        android:pathData="M6.8,18.6 L12,4.6 L17.2,18.6"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- A 的横梁 -->
+    <path
+        android:pathData="M9.2,13.8 L14.8,13.8"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+
+    <!-- 横梁下垂的 3 根琴弦（小尺寸取舍：5 根减为 3 根） -->
+    <path
+        android:pathData="M10.9,13.8 L10.9,16.8 M12,13.8 L12,17.4 M13.1,13.8 L13.1,16.8"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round" />
+
+    <!-- 底部弧线（里拉琴身） -->
+    <path
+        android:pathData="M8.6,19.2 C10.1,20.1 13.9,20.1 15.4,19.2"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round" />
+</vector>

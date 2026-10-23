@@ -68,6 +68,13 @@ public class PlayerService extends Service {
     private boolean[] availTiers = null;     // 本首歌可用的档位集合（null=未知）
     private boolean downgradeTried = false;  // 高音质流报错后降到 192K 的重试是否已用
     private boolean handlingError = false;   // 正在处理一条报错时，吞掉播放器连环补发的旧报错
+    // 流世代隔离（防陈旧报错串扰）：每次 setDataSource 新流 streamGen 递增；
+    // preparedGen/preparedAtMs/preparedPosMs 记最近一次成功 prepare 的世代与健康证据
+    private int streamGen = 0;
+    private int preparedGen = -1;
+    private long preparedAtMs = 0;
+    private int preparedPosMs = 0;
+    private int staleSwallowedGen = -1;      // 已吞过旧世代报错的世代（每代最多吞一次）
     private boolean restartPaused = false;   // 音质原地重载后保持暂停（原本是暂停状态时）
     private final java.util.Set<String> flacBad = new java.util.HashSet<>(); // 本次运行内已知 FLAC 损坏的歌（bvid）
     private long prepareStartAt = 0;
@@ -163,6 +170,11 @@ public class PlayerService extends Service {
                 m.start();
                 setPlaying(true);
             }
+            // 世代健康取证：记下本世代 prepare 成功时刻与（续播 seek 后的）进度基线，
+            // 供 OnError 判别紧随其后的 -38 是不是上一世代的延迟报错
+            preparedGen = streamGen;
+            preparedAtMs = System.currentTimeMillis();
+            try { preparedPosMs = m.getCurrentPosition(); } catch (Exception ignored) { preparedPosMs = 0; }
             updateNotification();
         });
         mp.setOnCompletionListener(m -> onComplete());
@@ -191,6 +203,15 @@ public class PlayerService extends Service {
                 Diag.log(this, "（连环报错已忽略 what=" + what + " extra=" + extra + "）");
                 return true;
             }
+            // 陈旧报错串扰隔离：上一世代的流被 reset 后，框架可能迟发一条 -38，
+            // 恰好落在新世代已成功 prepare、进度正在推进之后——那不是新流的错误。
+            // 判据见 isStaleError：仅 -38、仅 prepare 成功后 3 秒内、每世代最多吞一次，
+            // 其余报错一律走下面的恢复链，拿不准绝不吞。
+            if (isStaleError(m, what)) {
+                Diag.log(this, "（旧世代报错已忽略 what=" + what + " extra=" + extra
+                        + "，当前世代已就绪且进度在推进）");
+                return true;
+            }
             handlingError = true;
             if (curTee != null) { noTee = true; killTee(); }
             if (curFromCache && curCacheKey != null) {
@@ -205,22 +226,26 @@ public class PlayerService extends Service {
                 if ("flac".equals(curStreamKind)) flacBad.add(refetchTrack.bvid);
                 downgradeTried = true;
                 activeTier = BiliApi.TIER_192K;
-                Diag.log(this, "⚠ 高音质流（" + curStreamKind + "）播放失败，降到 192K 重试");
+                Diag.log(this, "⛑ 恢复链：高音质流（" + curStreamKind + "）降到 192K 重试");
                 fetchAndPlay(refetchTrack, playToken);
                 return true;
             }
             // 主地址失败 -> 用备用 CDN 地址重试
             if (backupUrl != null && !backupTried) {
                 backupTried = true;
+                Diag.log(this, "⛑ 恢复链：走备用地址");
                 if (tryStream(backupUrl)) return true;
+                Diag.log(this, "⛑ 恢复链：备用地址拉起失败，继续下一环");
             }
             // 备用也不行 -> 重新取一次地址（换节点/刷新签名）再试
             if (!refetchTried && refetchTrack != null) {
                 refetchTried = true;
+                Diag.log(this, "⛑ 恢复链：重新取址（换节点/刷新签名）");
                 api.invalidateMixin();
                 fetchAndPlay(refetchTrack, playToken);
                 return true;
             }
+            Diag.log(this, "⛑ 恢复链走完仍失败");
             preparing = false;
             onPlayError("播放失败（错误码 " + what + "/" + extra + "），已自动跳下一首");
             return true;
@@ -242,6 +267,29 @@ public class PlayerService extends Service {
     public int getIndex() { return index; }
     public Track current() { return index >= 0 && index < queue.size() ? queue.get(index) : null; }
     public boolean isPlaying() { return playing; }
+    /** 陈旧报错判据（MediaPlayer 不给错误标注世代，只能用健康证据等效隔离）：
+     *  仅当四条同时成立才认定为上一世代的延迟报错——
+     *  ①错误是 -38（框架状态类迟发报错的典型签名；IO 类 what=1 等真实数据错误不在此列）；
+     *  ②当前世代已经成功 prepare（preparedGen==streamGen 且 prepared）；
+     *  ③距 prepare 成功 ≤3 秒（迟发报错紧贴新流就绪到达，拖得越久越像新流自己的问题）；
+     *  ④健康证据：播放器正在播放，或进度已越过 prepare 基线 150ms 以上。
+     *  另加每世代最多吞一次的闸门：同世代第二条报错无论如何都走恢复链。 */
+    private boolean isStaleError(MediaPlayer m, int what) {
+        if (what != -38) return false;
+        if (!prepared || preparedGen != streamGen) return false;
+        if (staleSwallowedGen == streamGen) return false;
+        if (System.currentTimeMillis() - preparedAtMs > 3000) return false;
+        boolean playingNow = false;
+        int pos = -1;
+        try {
+            playingNow = m.isPlaying();
+            pos = m.getCurrentPosition();
+        } catch (Exception ignored) {}
+        if (!playingNow && pos < preparedPosMs + 150) return false;
+        staleSwallowedGen = streamGen;
+        return true;
+    }
+
     public boolean isPrepared() { return prepared; }
     public int getMode() { return getSharedPreferences("player", MODE_PRIVATE).getInt("mode", MODE_SEQ); }
     public void cycleMode() {
@@ -621,6 +669,7 @@ public class PlayerService extends Service {
             mp.reset();
             mp.setDataSource(f.getAbsolutePath());
             mp.prepareAsync();
+            streamGen++;
             handlingError = false;
             prepareStartAt = System.currentTimeMillis();
             armStall();
@@ -635,6 +684,7 @@ public class PlayerService extends Service {
             mp.reset();
             mp.setDataSource(ds);
             mp.prepareAsync();
+            streamGen++;
             handlingError = false;
             prepareStartAt = System.currentTimeMillis();
             armStall();
@@ -726,6 +776,7 @@ public class PlayerService extends Service {
             mp.reset();
             mp.setDataSource(getApplicationContext(), android.net.Uri.parse(url), streamHeaders());
             mp.prepareAsync();
+            streamGen++;
             handlingError = false;
             prepareStartAt = System.currentTimeMillis();
             armStall();
@@ -1579,7 +1630,7 @@ public class PlayerService extends Service {
                 : new Notification.Builder(this);
         b.setContentTitle(title)
                 .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setSmallIcon(R.drawable.ic_stat_apollo)
                 .setContentIntent(content)
                 .setDeleteIntent(act("repost", 4))
                 .setOngoing(true)

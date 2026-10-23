@@ -494,7 +494,7 @@ public class TeeDataSource extends MediaDataSource {
         return total;
     }
 
-    /** 起播预缓冲垫：读开头区域时先等连续前缀攒到 cushion 目标（总等待上限 10 秒，只等一次） */
+    /** 起播预缓冲垫：读开头区域时先等连续前缀攒到 cushion 目标（总等待上限 5 秒，只等一次） */
     private void awaitCushion(long position) {
         if (cushionDone) return;
         long target = total > 0 ? Math.min(CUSHION, total) : CUSHION;
@@ -517,43 +517,91 @@ public class TeeDataSource extends MediaDataSource {
         }
     }
 
-    @Override
-    public int readAt(long position, byte[] buffer, int offset, int size) {
-        if (size == 0) return 0;
-        if (total >= 0 && position >= total) return -1;
-        awaitCushion(position);
-        // 等顺序下载追上（最多约 6 秒）
-        boolean atFrontier = position >= downloaded;
-        long waitStart = System.currentTimeMillis();
-        long deadline = waitStart + 6000;
+    /** 等前缀推过 position（锁内等待，下载线程 notify 唤醒），最多 maxMs */
+    private void waitForData(long position, long maxMs) {
+        long deadline = System.currentTimeMillis() + maxMs;
         synchronized (lock) {
             while (position >= downloaded && !completed && !failed && !aborted
                     && System.currentTimeMillis() < deadline) {
                 try { lock.wait(150); } catch (InterruptedException e) { break; }
             }
         }
-        long waited = System.currentTimeMillis() - waitStart;
-        if (atFrontier && waited >= 500) {
-            long now = System.currentTimeMillis();
-            boolean logIt;
+    }
+
+    /** 前沿等待取证：本次 readAt 已在前沿耗 ≥500ms 且仍未拿到数据时记一条（2 秒节流，沿用旧口径） */
+    private void logFrontierIfNeeded(long position, long startAt) {
+        long waited = System.currentTimeMillis() - startAt;
+        if (waited < 500 || position < downloaded) return;
+        long now = System.currentTimeMillis();
+        boolean logIt;
+        synchronized (lock) {
+            logIt = now - lastFrontierLogAt >= 2000;
+            if (logIt) lastFrontierLogAt = now;
+        }
+        if (logIt) {
+            Diag.log(ctx, String.format(Locale.CHINA,
+                    "🐌 前沿等待 %.1fs @ 位置 %.2f/已下 %.2f/总量 %.2f MB",
+                    waited / 1000.0, position / 1048576.0, downloaded / 1048576.0,
+                    total > 0 ? total / 1048576.0 : 0.0));
+        }
+    }
+
+    /** readAt 被迫放弃（返回 -1）时留一条状态快照，方便复盘是网络、状态还是超时 */
+    private void logReadGiveUp(long position, int rangeTries, String why) {
+        Diag.log(ctx, String.format(Locale.CHINA,
+                "🐌 readAt 放弃（%s）pos=%d 已下=%d 总量=%d failed=%s completed=%s，Range 重试 %d 次",
+                why, position, downloaded, total, failed, completed, rangeTries));
+    }
+
+    @Override
+    public int readAt(long position, byte[] buffer, int offset, int size) {
+        if (size == 0) return 0;
+        if (total >= 0 && position >= total) return -1;
+        awaitCushion(position);
+        final long startAt = System.currentTimeMillis();
+        // 第一阶段：等顺序/并行下载把前缀推过 position（最多约 6 秒，沿用旧语义）
+        waitForData(position, 6000);
+        logFrontierIfNeeded(position, startAt);
+        // 第二阶段：补拉重试循环。下载还活着且没到文件尾时，一次补拉失败绝不直接 -1
+        // ——那会被框架判成 MEDIA_ERROR_IO 误杀整首歌（v1.42.2 实测教训）。
+        // 补拉带退避（0.4/0.9/1.6/2.5s…）重试并继续等下载推进；只有下载已失败/已结束、
+        // 被 abort、或总等待超过 45 秒上限，才允许返回 -1，且放弃必留快照。
+        int rangeTries = 0;
+        while (true) {
+            if (position < downloaded) {
+                try {
+                    int n = readFromPart(position, buffer, offset, size);
+                    if (n > 0) return n;
+                } catch (Exception ignored) {}
+            }
+            if (aborted) return -1; // 切歌/回退直连的主动拆除，不算放弃、不留痕
+            if (failed || completed) {
+                logReadGiveUp(position, rangeTries, failed ? "下载失败" : "下载已结束");
+                return -1;
+            }
+            if (total >= 0 && position >= total) return -1;
+            rangeTries++;
+            int got = rangeFetch(position, buffer, offset, size);
+            if (got > 0) return got;
+            if (System.currentTimeMillis() - startAt > 45000) {
+                logReadGiveUp(position, rangeTries, "等待超时");
+                return -1;
+            }
+            long backoff = rangeTries == 1 ? 400 : rangeTries == 2 ? 900
+                    : rangeTries == 3 ? 1600 : 2500;
             synchronized (lock) {
-                logIt = now - lastFrontierLogAt >= 2000;
-                if (logIt) lastFrontierLogAt = now;
+                long until = System.currentTimeMillis() + backoff;
+                while (position >= downloaded && !completed && !failed && !aborted
+                        && System.currentTimeMillis() < until) {
+                    try { lock.wait(150); } catch (InterruptedException e) { return -1; }
+                }
             }
-            if (logIt) {
-                Diag.log(ctx, String.format(Locale.CHINA,
-                        "🐌 前沿等待 %.1fs @ 位置 %.2f/已下 %.2f/总量 %.2f MB",
-                        waited / 1000.0, position / 1048576.0, downloaded / 1048576.0,
-                        total > 0 ? total / 1048576.0 : 0.0));
-            }
+            logFrontierIfNeeded(position, startAt);
         }
-        if (position < downloaded) {
-            try {
-                return readFromPart(position, buffer, offset, size);
-            } catch (Exception ignored) {}
-        }
-        if (aborted) return -1;
-        // 远跳/等不到：一次性 Range 直读这一口，读到的字节写回 .part
+    }
+
+    /** 一次性 Range 补拉：成功返回字节数（>0），失败返回 -1；读到的字节写回 .part 对应偏移 */
+    private int rangeFetch(long position, byte[] buffer, int offset, int size) {
         long rs = System.currentTimeMillis();
         HttpURLConnection c = null;
         try {
@@ -561,6 +609,11 @@ public class TeeDataSource extends MediaDataSource {
             int code = c.getResponseCode();
             if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) return -1;
             try (InputStream in = c.getInputStream()) {
+                if (code == HttpURLConnection.HTTP_OK && position > 0) {
+                    // 服务器没认 Range、从 0 回流：先丢弃 position 之前的字节，
+                    // 否则拿流的头冒充 position 处的数据，字节错位（审计发现，原实现有此隐患）
+                    if (!skipFully(in, position)) return -1;
+                }
                 int want = size;
                 if (total >= 0) want = (int) Math.min(want, Math.max(0, total - position));
                 if (want <= 0) return -1;
