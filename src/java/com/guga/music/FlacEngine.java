@@ -8,12 +8,15 @@ import android.media.AudioTrack;
 import com.guga.music.flac.DataFormatException;
 import com.guga.music.flac.FlacDecoder;
 import com.guga.music.flac.FlacLowLevelInput;
+import com.guga.music.flac.Mp4FlacDemux;
 import com.guga.music.flac.SeekableFileFlacInput;
 import com.guga.music.flac.StreamInfo;
 import com.guga.music.flac.TeeFlacInput;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 
 /** FLAC 软件解码引擎（v1.43.0 新增）：纯 Java 解码（vendored Nayuki FLAC library，
  *  LGPL，见 flac/ 目录）→ PCM 直喂 AudioTrack，绕开系统 MediaPlayer/厂商解码器——
@@ -169,15 +172,94 @@ public class FlacEngine {
 
     // ---------------- 输入 ----------------
 
-    private FlacLowLevelInput openInput(final TeeDataSource tee, File file) throws IOException {
-        if (file != null) return new SeekableFileFlacInput(file);
-        return new TeeFlacInput(new TeeFlacInput.Source() {
+    private TeeFlacInput.Source teeSource(final TeeDataSource tee) {
+        return new TeeFlacInput.Source() {
             @Override public long length() { return tee.getSize(); }
             @Override public int readAt(long pos, byte[] buf, int off, int len) {
                 return tee.readAt(pos, buf, off, len);
             }
             @Override public void close() { /* tee 生命周期归 PlayerService 管 */ }
-        });
+        };
+    }
+
+    private TeeFlacInput.Source fileSource(File file) throws IOException {
+        final RandomAccessFile raf = new RandomAccessFile(file, "r");
+        return new TeeFlacInput.Source() {
+            @Override public long length() {
+                try { return raf.length(); } catch (IOException e) { return -1; }
+            }
+            @Override public int readAt(long pos, byte[] buf, int off, int len) throws IOException {
+                synchronized (raf) {
+                    raf.seek(pos);
+                    return raf.read(buf, off, len);
+                }
+            }
+            @Override public void close() {
+                try { raf.close(); } catch (IOException ignored) {}
+            }
+        };
+    }
+
+    /** 读流的前 16 字节做容器嗅探（本地文件直读、在线经 tee 的 readAt） */
+    private byte[] sniffHead(TeeDataSource tee, File file) throws IOException {
+        byte[] head = new byte[16];
+        int n = 0;
+        if (file != null) {
+            FileInputStream in = new FileInputStream(file);
+            try {
+                while (n < head.length) {
+                    int r = in.read(head, n, head.length - n);
+                    if (r < 0) break;
+                    n += r;
+                }
+            } finally { in.close(); }
+        } else {
+            while (n < head.length) {
+                int r = tee.readAt(n, head, n, head.length - n);
+                if (r <= 0) break;
+                n += r;
+            }
+        }
+        if (n < head.length) {
+            byte[] t = new byte[n];
+            System.arraycopy(head, 0, t, 0, n);
+            return t;
+        }
+        return head;
+    }
+
+    /** 容器分流（v1.43.1）：裸 FLAC 走 v1.43.0 原路径零改动；FLAC-in-MP4 先经
+     *  Mp4FlacDemux 剥壳成虚拟裸流再喂解码器；其余未知容器直接失败（带首 16 字节
+     *  hex+ascii 进 Diag，下次一眼认型），由服务走降档兜底。 */
+    private FlacLowLevelInput openInput(final TeeDataSource tee, File file) throws IOException {
+        byte[] head = sniffHead(tee, file);
+        if (head.length >= 4 && head[0] == 'f' && head[1] == 'L' && head[2] == 'a' && head[3] == 'C') {
+            Diag.log(ctx, "🎧 容器识别：裸 FLAC");
+            if (file != null) return new SeekableFileFlacInput(file);
+            return new TeeFlacInput(teeSource(tee));
+        }
+        if (Mp4FlacDemux.looksLikeMp4(head)) {
+            TeeFlacInput.Source src = file != null ? fileSource(file) : teeSource(tee);
+            long t0 = System.currentTimeMillis();
+            Mp4FlacDemux demux = Mp4FlacDemux.parse(src);
+            Diag.log(ctx, "🎧 容器剥壳：MP4 内 FLAC（fLaC 样本项，"
+                    + (demux.fragmented ? "分片" : "整文件") + "，" + demux.sampleCount
+                    + " 个采样，解析 " + (System.currentTimeMillis() - t0) + "ms）");
+            return demux.openInput();
+        }
+        String desc = hexAscii(head);
+        Diag.log(ctx, "🎧 未知容器（首 16 字节 " + desc + "）");
+        throw new DataFormatException("未知容器（首16字节 " + desc + "）");
+    }
+
+    private static String hexAscii(byte[] b) {
+        StringBuilder hex = new StringBuilder(), asc = new StringBuilder();
+        for (byte x : b) {
+            hex.append(String.format("%02x ", x & 0xFF));
+            int v = x & 0xFF;
+            asc.append(v >= 0x20 && v < 0x7F ? (char) v : '.');
+        }
+        return hex.toString().trim() + " | " + asc;
     }
 
     private void reopenDecoder() throws IOException {
