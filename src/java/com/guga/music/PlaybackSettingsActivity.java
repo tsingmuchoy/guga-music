@@ -128,9 +128,10 @@ public class PlaybackSettingsActivity extends Activity {
         }
     }
 
-    // 音频缓存上限：16–1024 MB、步进 8 MB 的滑杆自定义（v1.43.3 起，替代旧的 16/32/48/96 四档轮换点击）
+    // 音频缓存上限：16–256 MB、步进 8 MB 的滑杆自定义（v1.43.3 起替代旧的 16/32/48/96 四档轮换；
+    // 上限原为 1024 MB，v1.43.5 按用户意见收紧到 256——轻量化口径，大了看着难受，拖动也更准）
     private static final int CAP_MIN_MB = 16;
-    private static final int CAP_MAX_MB = 1024;
+    private static final int CAP_MAX_MB = 256;
     private static final int CAP_STEP_MB = 8;
     private static final int CAP_DEFAULT_MB = 48;
 
