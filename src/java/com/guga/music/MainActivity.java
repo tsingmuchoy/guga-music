@@ -803,9 +803,9 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             runOnUiThread(() -> {
                 if (gen != statsGen || statsHeaderView == null) return;
                 // sum/distinct/top 已在后台算好
-                ((TextView) statsHeaderView.findViewById(R.id.tvStatPlays)).setText(String.valueOf(sum.plays));
-                ((TextView) statsHeaderView.findViewById(R.id.tvStatTime)).setText(fmtListen(sum.seconds));
-                ((TextView) statsHeaderView.findViewById(R.id.tvStatTracks)).setText(String.valueOf(distinct));
+                ((PixelNumberView) statsHeaderView.findViewById(R.id.tvStatPlays)).setText(String.valueOf(sum.plays));
+                ((PixelNumberView) statsHeaderView.findViewById(R.id.tvStatTime)).setText(fmtListen(sum.seconds));
+                ((PixelNumberView) statsHeaderView.findViewById(R.id.tvStatTracks)).setText(String.valueOf(distinct));
                 statRows.clear();
                 statRows.addAll(top);
                 long max = 1;

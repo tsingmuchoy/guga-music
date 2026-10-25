@@ -37,7 +37,7 @@
             android:gravity="center"
             android:orientation="vertical">
 
-            <TextView
+            <com.guga.music.PixelNumberView
                 android:id="@+id/tvStatPlays"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -62,7 +62,7 @@
             android:gravity="center"
             android:orientation="vertical">
 
-            <TextView
+            <com.guga.music.PixelNumberView
                 android:id="@+id/tvStatTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -87,7 +87,7 @@
             android:gravity="center"
             android:orientation="vertical">
 
-            <TextView
+            <com.guga.music.PixelNumberView
                 android:id="@+id/tvStatTracks"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
