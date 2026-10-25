@@ -900,10 +900,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     static String fmtListen(long sec) {
-        if (sec < 60) return sec + " 秒";
+        if (sec < 60) return sec + "S";
         long m = sec / 60;
-        if (m < 60) return m + " 分钟";
-        return (m / 60) + " 小时 " + (m % 60) + " 分";
+        if (m < 60) return m + "M";
+        return (m / 60) + "H" + (m % 60) + "M";
     }
 
     /** 搜索排序条：B 站官方五种排序，用户自选并记住；切换后自动按当前词重搜 */
