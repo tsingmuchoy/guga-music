@@ -821,13 +821,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                     row.setOrientation(LinearLayout.HORIZONTAL);
                     row.setGravity(android.view.Gravity.CENTER_VERTICAL);
                     row.setPadding(0, (int) (8 * den), 0, (int) (8 * den));
-                    TextView rank = new TextView(this);
+                    PixelNumberView rank = new PixelNumberView(this, null);
                     rank.setLayoutParams(new LinearLayout.LayoutParams((int) (26 * den), LinearLayout.LayoutParams.WRAP_CONTENT));
-                    rank.setGravity(android.view.Gravity.CENTER);
-                    rank.setText(String.valueOf(i + 1));
                     rank.setTextSize(14);
                     rank.setTextColor(ThemeUtil.color(this, i < 3 ? R.attr.gAccent : R.attr.gTextFaint));
-                    if (i < 3) rank.setTypeface(null, android.graphics.Typeface.BOLD);
+                    rank.setText(String.valueOf(i + 1));
                     row.addView(rank);
                     LinearLayout mid = new LinearLayout(this);
                     LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
@@ -862,15 +860,25 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                     bar.addView(gap);
                     mid.addView(bar);
                     row.addView(mid);
-                    TextView meta = new TextView(this);
-                    LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-                    tlp.leftMargin = (int) (10 * den);
-                    meta.setLayoutParams(tlp);
-                    meta.setGravity(android.view.Gravity.RIGHT);
-                    meta.setText(r.plays + " 次" + (r.seconds >= 60 ? "\n" + fmtListen(r.seconds) : ""));
-                    meta.setTextColor(ThemeUtil.color(this, R.attr.gTextSec));
-                    meta.setTextSize(11.5f);
-                    row.addView(meta);
+                    LinearLayout metaBox = new LinearLayout(this);
+                    metaBox.setOrientation(LinearLayout.VERTICAL);
+                    metaBox.setGravity(android.view.Gravity.END);
+                    LinearLayout.LayoutParams mbp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    mbp.leftMargin = (int) (10 * den);
+                    metaBox.setLayoutParams(mbp);
+                    PixelNumberView metaLine1 = new PixelNumberView(this, null);
+                    metaLine1.setTextSize(11.5f);
+                    metaLine1.setTextColor(ThemeUtil.color(this, R.attr.gTextSec));
+                    metaLine1.setText(r.plays + " 次");
+                    metaBox.addView(metaLine1);
+                    if (r.seconds >= 60) {
+                        PixelNumberView metaLine2 = new PixelNumberView(this, null);
+                        metaLine2.setTextSize(11.5f);
+                        metaLine2.setTextColor(ThemeUtil.color(this, R.attr.gTextSec));
+                        metaLine2.setText(fmtListen(r.seconds));
+                        metaBox.addView(metaLine2);
+                    }
+                    row.addView(metaBox);
                     row.setOnClickListener(v -> {
                         Haptics.press(this);
                         List<Track> ts = new ArrayList<>();

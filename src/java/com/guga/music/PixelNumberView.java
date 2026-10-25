@@ -6,8 +6,8 @@ import android.graphics.Paint;
 import android.util.AttributeSet;
 import android.view.View;
 
-/** 点阵数字视图：数字按 5x7 圆点矩阵绘制（LED/像素字风格），非数字字符（小时/分/秒、空格）
- *  仍按普通文字绘制。圆点为 Canvas 矢量绘制、随尺寸任意缩放不糊，包内不引任何字体文件，
+/** 点阵数字视图：数字按 5x7 方点矩阵绘制（LED/像素字风格），非数字字符（小时/分/秒、空格）
+ *  仍按普通文字绘制。方点为 Canvas 矢量绘制、随尺寸任意缩放不糊，包内不引任何字体文件，
  *  符合 App「美术全部矢量、禁位图」口径。统计页顶部三个大数字用它替换普通 TextView。 */
 public class PixelNumberView extends View {
 
@@ -29,6 +29,7 @@ public class PixelNumberView extends View {
     private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float textSizePx = 48;
+    private float xOffset = 0; // 定宽（EXACTLY）时内容水平居中的偏移
 
     public PixelNumberView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -88,19 +89,31 @@ public class PixelNumberView extends View {
                 && text.charAt(text.length() - 1) <= '9') w -= c; // 末位数字不留尾字距
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         int h = (int) Math.ceil(Math.max(7 * c, fm.descent - fm.ascent));
-        setMeasuredDimension((int) Math.ceil(w),
-                resolveSize(h, heightMeasureSpec));
+        int widthMode = MeasureSpec.getMode(widthMeasureSpec);
+        int widthSize = MeasureSpec.getSize(widthMeasureSpec);
+        int measuredW;
+        if (widthMode == MeasureSpec.EXACTLY) {
+            measuredW = widthSize;
+            xOffset = Math.max(0, (widthSize - w) / 2f);
+        } else if (widthMode == MeasureSpec.AT_MOST) {
+            measuredW = (int) Math.min(Math.ceil(w), widthSize);
+            xOffset = 0;
+        } else {
+            measuredW = (int) Math.ceil(w);
+            xOffset = 0;
+        }
+        setMeasuredDimension(measuredW, resolveSize(h, heightMeasureSpec));
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         float c = cell();
-        float r = c * 0.42f;
+        float half = c * 0.42f; // 正方点边长 = 0.84 * cell，与之前圆点直径同视觉分量
         float digitTop = (getHeight() - 7 * c) / 2f;
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float baseline = getHeight() / 2f - (fm.ascent + fm.descent) / 2f;
-        float x = 0;
+        float x = xOffset;
         for (int i = 0; i < text.length(); i++) {
             char ch = text.charAt(i);
             if (ch >= '0' && ch <= '9') {
@@ -108,8 +121,9 @@ public class PixelNumberView extends View {
                 for (int row = 0; row < 7; row++) {
                     for (int col = 0; col < 5; col++) {
                         if (g[row].charAt(col) == '1') {
-                            canvas.drawCircle(x + col * c + c / 2f,
-                                    digitTop + row * c + c / 2f, r, dotPaint);
+                            float cx = x + col * c + c / 2f;
+                            float cy = digitTop + row * c + c / 2f;
+                            canvas.drawRect(cx - half, cy - half, cx + half, cy + half, dotPaint);
                         }
                     }
                 }
