@@ -236,34 +236,6 @@ public class BiliApi {
         }, cb);
     }
 
-    /** 主页推荐：B 站音乐区普通最新投稿流（分区最新视频，rid=3），不是排行榜；下拉即拉最新一页，新投稿自然冒出来 */
-    public void regionLatest(Cb<List<Track>> cb) {
-        run(() -> {
-            JSONObject j = getJson("https://api.bilibili.com/x/web-interface/dynamic/region?rid=3&ps=30&pn=1");
-            if (j.getInt("code") != 0) throw new Exception("推荐失败：" + j.optString("message"));
-            List<Track> out = new ArrayList<>();
-            JSONObject d = j.optJSONObject("data");
-            JSONArray arr = d == null ? null : d.optJSONArray("archives");
-            if (arr != null) {
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject o = arr.getJSONObject(i);
-                    Track t = new Track();
-                    t.bvid = o.optString("bvid");
-                    t.title = o.optString("title");
-                    String pic = o.optString("pic");
-                    t.cover = pic.startsWith("//") ? "https:" + pic : pic;
-                    JSONObject owner = o.optJSONObject("owner");
-                    t.author = owner == null ? "" : owner.optString("name");
-                    int dur = o.optInt("duration", -1);
-                    t.durationSec = dur >= 0 ? dur : parseDur(o.optString("duration"));
-                    if (!t.bvid.isEmpty()) out.add(t);
-                }
-            }
-            if (out.isEmpty()) throw new Exception("推荐为空");
-            return out;
-        }, cb);
-    }
-
     private List<Track> searchWbi(String keyword, int page, String order) throws Exception {
         Map<String, String> p = new HashMap<>();
         p.put("search_type", "video");

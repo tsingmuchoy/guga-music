@@ -49,8 +49,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private int searchPage = 1;
     private boolean searchLoading;
     private boolean searchMore = true;
-    private boolean recommendStarted = false; // 主页推荐只在进 App 时拉一次
-    private boolean hasSearched = false; // 搜过之后推荐回调不再回填，避免盖掉搜索结果
     private View searchFooter;
     private List<Track> favTracksAll = new ArrayList<>();
     private int favPage = 1;
@@ -180,7 +178,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                         if (idx < 0) break;
                         float y = ev.getY(idx);
                         if (!pullEngaged) {
-                            // 接管条件：只在搜索/推荐页（tab 0），手指从按下点向下滑过系统触摸阈值、已到顶、非飞滚。
+                            // 接管条件：只在搜索页（tab 0），手指从按下点向下滑过系统触摸阈值、已到顶、非飞滚。
                             // 收藏夹、历史页不要下拉（用户定），那两页拉了也没头。
                             if (tab == 0 && y - downY > touchSlopPx
                                     && lvScrollState != android.widget.AbsListView.OnScrollListener.SCROLL_STATE_FLING
@@ -460,13 +458,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 lvMain.setAdapter(trackAdapter);
                 trackAdapter.notifyDataSetChanged();
                 if (displayTracks.isEmpty()) {
-                    // 进主页先推音乐：第一次进搜索页且还没搜过，拉音乐区最新投稿填满空页
-                    if (!recommendStarted) {
-                        recommendStarted = true;
-                        loadRecommendations();
-                    } else {
-                        hint("搜一首歌，开始听吧 🎧");
-                    }
+                    // 不推送了（用户 2026-10-27 定）：搜索页没搜过就是空页，只留提示，不联网拉推荐
+                    hint("搜一首歌，开始听吧 🎧");
                 }
                 break;
             case 1:
@@ -530,7 +523,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         }
         if (!pullQuiet) hint("搜索中…");
         searchKw = kw;
-        hasSearched = true;
         searchPage = 1;
         searchMore = true;
         searchLoading = true;
@@ -1367,14 +1359,12 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         animatePullReveal(0, null);
     }
 
-    /** 按当前页派发刷新：推荐重拉、搜索重查第 1 页、收藏重载、历史重算 */
+    /** 按当前页派发刷新：搜索重查第 1 页；空搜索页与收藏/历史页直接收回（不推送、不重拉推荐） */
     private void dispatchPullRefresh() {
         switch (tab) {
             case 0:
                 if (searchKw.isEmpty()) {
-                    recommendStarted = false;
-                    hasSearched = false;
-                    loadRecommendations();
+                    finishPullRefresh();
                 } else if (!searchLoading) {
                     doSearch(searchKw);
                 } else {
@@ -1387,36 +1377,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 finishPullRefresh();
                 break;
         }
-    }
-
-    /** 主页推荐：B 站音乐区普通最新投稿流（不是排行榜），进 App 时填满搜索页，点行就能直接播 */
-    private void loadRecommendations() {
-        if (!pullQuiet) hint("正在为你找音乐区最新投稿… 🎵");
-        api.regionLatest(new BiliApi.Cb<List<Track>>() {
-            @Override public void onOk(List<Track> v) {
-                boolean wasPull = pullRefreshing;
-                finishPullRefresh();
-                // 切走了就别回填（displayTracks 与历史页共用），下次回搜索页再拉；
-                // 拉取途中用户已搜过也别盖掉搜索结果
-                if (tab != 0) { recommendStarted = false; return; }
-                if (hasSearched) return;
-                boolean identical = wasPull && sameBvids(displayTracks, v);
-                displayTracks.clear();
-                displayTracks.addAll(v);
-                lvMain.setAdapter(trackAdapter);
-                trackAdapter.notifyDataSetChanged();
-                if (identical) Toast.makeText(MainActivity.this, "已是最新投稿", Toast.LENGTH_SHORT).show();
-                hint(v.isEmpty() ? "搜一首歌，开始听吧 🎧" : null);
-            }
-            @Override public void onErr(String msg) {
-                boolean wasPull = pullRefreshing;
-                finishPullRefresh();
-                if (tab != 0) { recommendStarted = false; return; }
-                Diag.log(MainActivity.this, "🎵 音乐区推荐加载失败：" + msg);
-                if (wasPull) Toast.makeText(MainActivity.this, "刷新失败：" + msg, Toast.LENGTH_SHORT).show();
-                else hint("搜一首歌，开始听吧 🎧");
-            }
-        });
     }
 
     private void showHistory() {
