@@ -137,4 +137,24 @@
         <item name="gBarHi">#FF1E1E26</item>
         <item name="gBarLo">#FF17171E</item>
     </style>
+    <style name="ThemeGlass" parent="AppTheme">
+        <item name="android:windowBackground">#0A0E16</item>
+        <item name="android:statusBarColor">#0A0E16</item>
+        <item name="android:navigationBarColor">#0A0E16</item>
+        <item name="android:colorAccent">#7DD3FC</item>
+        <item name="gBg">#0A0E16</item>
+        <item name="gElevated">#111A2C</item>
+        <item name="gSurface">#182238</item>
+        <item name="gAccent">#7DD3FC</item>
+        <item name="gOnAccent">#0A1E33</item>
+        <item name="gGlow1">#8067E8F9</item>
+        <item name="gGlow2">#80A78BFA</item>
+        <item name="gGlassHi">#4DFFFFFF</item>
+        <item name="gGlassLo">#26FFFFFF</item>
+        <item name="gHiLine">#B3FFFFFF</item>
+        <item name="gRim">#80FFFFFF</item>
+        <item name="gBarHi">#B3202E46</item>
+        <item name="gBarLo">#B3162138</item>
+        <item name="gBottomShade">#66000000</item>
+    </style>
 </resources>
