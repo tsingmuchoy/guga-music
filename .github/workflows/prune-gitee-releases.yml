@@ -1,0 +1,50 @@
+name: Prune Gitee releases
+
+# 手动清理 Gitee 发行版：只接受 workflow_dispatch，输入逗号分隔的 tag 列表。
+# 用途：按“只留实质内容版本”的规矩删掉无用 Release（见 2026-10-27 清理 v1.43.6/v1.44.0）。
+# 删的是发行版条目 + Gitee 远端 tag；GitHub 那边用 gh release delete 另行处理。
+# 注意：Gitee 读查询一律不带 token（2026-10-27 教训：带 token 的 tags 查询会返回空）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Tags to prune, comma separated (e.g. v1.43.6,v1.44.0)'
+        required: true
+
+env:
+  GITEE_USER: tsingmuchoy
+  GITEE_REPO: guga-music
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete Gitee releases and remote tags
+        env:
+          TK: ${{ secrets.GITEE_TOKEN }}
+          TAGS: ${{ github.event.inputs.tags }}
+        run: |
+          echo "$TAGS" | tr ',' '\n' | while read -r TAG; do
+            TAG=$(echo "$TAG" | xargs)
+            [ -z "$TAG" ] && continue
+            echo "=== $TAG ==="
+            ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}" | python3 -c "import json,sys
+try:
+  d=json.load(sys.stdin)
+  print((d or {}).get('id','') if isinstance(d,dict) else '')
+except Exception:
+  print('')" 2>/dev/null || echo "")
+            if [ -n "$ID" ]; then
+              code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${ID}?access_token=${TK}" || echo 000)
+              echo "delete release id=$ID http=$code"
+            else
+              echo "no gitee release found for $TAG"
+            fi
+            git remote add gitee "https://tsingmuchoy:${TK}@gitee.com/${GITEE_USER}/${GITEE_REPO}.git" 2>/dev/null || true
+            git push gitee ":refs/tags/${TAG}" 2>&1 | tail -1 || echo "tag delete skipped/failed for $TAG"
+          done
+          echo "prune done"
