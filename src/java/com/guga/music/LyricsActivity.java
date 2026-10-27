@@ -81,6 +81,8 @@ public class LyricsActivity extends Activity {
         btnManual = findViewById(R.id.btnManualLyrics);
         btnOffset = findViewById(R.id.btnOffsetLyrics);
         lv = findViewById(R.id.lvLyrics);
+        // 用户定：歌词滚动不显示右侧滚动条——切行跟随与手动滑动都不出白边（布局 scrollbars=none + 代码双保险）
+        lv.setVerticalScrollBarEnabled(false);
         lv.setAdapter(adapter);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         lv.setOnScrollListener(new AbsListView.OnScrollListener() {

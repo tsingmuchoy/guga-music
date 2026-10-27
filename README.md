@@ -68,6 +68,10 @@ export ANDROID_SDK=/path/to/android-sdk
 
 ## 📝 更新日志
 
+### v1.49.6（2026-10-27）
+
+- 🎵 **歌词页去右侧白边（用户定）**：歌词 ListView 滚动条整段关掉（布局 scrollbars=none + 代码 setVerticalScrollBarEnabled(false) 双保险）——切行跟随与手动滑动都不再出右边那条白边；播放页小窗歌词是自绘 View、本身就没有系统滚动条，不用动
+
 ### v1.49.5（2026-10-27）
 
 - 🚫 **推荐下线（用户定）**：搜索页不再推送任何内容——进 App 就是空页“搜一首歌，开始听吧”，不联网拉推荐、不再报错；空搜索页下拉直接收回；搜过之后的下拉重查不变。推荐相关代码（loadRecommendations / regionLatest）整段删除
