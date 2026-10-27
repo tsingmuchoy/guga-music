@@ -54,6 +54,16 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private View searchFooter;
     private TextView btnPagePrev, btnPageNext, tvPageInfo;
     private int searchTotalPages = 0; // 接口给总条数时算出，0 表示未知（下一页按本页是否满 20 条判断）
+    // 下拉刷新（纯框架手写，主流逻辑：到顶下拉→箭头跟手旋转→松手过阈值触发→转圈→丝滑收回）
+    private View pullHeader;
+    private android.widget.ImageView ivPullArrow;
+    private TextView tvPullText;
+    private float pullHeightPx;
+    private float pullReveal = 0;
+    private boolean pullEngaged = false;
+    private boolean pullRefreshing = false;
+    private boolean pullQuiet = false; // 刷新中不刷“加载中…”居中提示（头上已有转圈）
+    private android.animation.ObjectAnimator pullSpin;
     private android.widget.LinearLayout llSortChips;
     private static final String[][] SORTS = {
             {"综合", ""}, {"最多播放", "click"}, {"最新发布", "pubdate"}, {"最多弹幕", "dm"}, {"最多收藏", "stow"}};
@@ -136,6 +146,65 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             }
         });
         rootMain = findViewById(R.id.rootMain);
+        // 下拉刷新：只观察不消费，列表原有滚动/点击不受影响
+        pullHeader = findViewById(R.id.pullHeader);
+        ivPullArrow = findViewById(R.id.ivPullArrow);
+        tvPullText = findViewById(R.id.tvPullText);
+        pullHeightPx = 64f * getResources().getDisplayMetrics().density;
+        lvMain.setOnTouchListener(new View.OnTouchListener() {
+            private float downY;
+            private int downPointer = -1;
+            private float pullStartY;
+            @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                switch (ev.getActionMasked()) {
+                    case android.view.MotionEvent.ACTION_DOWN:
+                        downY = ev.getY();
+                        downPointer = ev.getPointerId(0);
+                        break;
+                    case android.view.MotionEvent.ACTION_MOVE: {
+                        if (pullRefreshing) break;
+                        int idx = downPointer < 0 ? -1 : ev.findPointerIndex(downPointer);
+                        if (idx < 0) break;
+                        float y = ev.getY(idx);
+                        if (!pullEngaged) {
+                            // 只有已到顶、下拉时才接管（飞滚中不劫持；手指拖着到顶后直接下拉也能接上）
+                            if (y - downY > 0
+                                    && lvScrollState != android.widget.AbsListView.OnScrollListener.SCROLL_STATE_FLING
+                                    && isListAtTop()) {
+                                pullEngaged = true;
+                                pullStartY = y;
+                                pullHeader.setVisibility(View.VISIBLE);
+                                lvMain.setOverScrollMode(View.OVER_SCROLL_NEVER);
+                            }
+                        }
+                        if (pullEngaged) {
+                            float pull = (y - pullStartY) * 0.5f; // 阻尼 0.5：拉着有韧劲
+                            if (pull <= 0) {
+                                setPullReveal(0);
+                                pullEngaged = false;
+                                pullHeader.setVisibility(View.GONE);
+                                lvMain.setOverScrollMode(View.OVER_SCROLL_ALWAYS);
+                            } else {
+                                setPullReveal(Math.min(pull, pullHeightPx * 1.5f));
+                            }
+                        }
+                        break;
+                    }
+                    case android.view.MotionEvent.ACTION_UP:
+                    case android.view.MotionEvent.ACTION_CANCEL: {
+                        if (pullEngaged) {
+                            pullEngaged = false;
+                            lvMain.setOverScrollMode(View.OVER_SCROLL_ALWAYS);
+                            if (pullReveal >= pullHeightPx) startPullRefresh();
+                            else animatePullReveal(0, null);
+                        }
+                        downPointer = -1;
+                        break;
+                    }
+                }
+                return false;
+            }
+        });
         // 真液态玻璃：仅启用透镜的主题 + API 33+ 才实例化透镜引擎，其他主题零成本
         lensBars = GlassTheme.isLensActive(this);
         barMini = findViewById(R.id.llMini);
@@ -439,7 +508,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             Toast.makeText(this, "先输入关键词啦 🐧", Toast.LENGTH_SHORT).show();
             return;
         }
-        hint("搜索中…");
+        if (!pullQuiet) hint("搜索中…");
         searchKw = kw;
         hasSearched = true;
         searchPage = 1;
@@ -448,6 +517,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         api.search(kw, 1, searchOrder, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
                 searchLoading = false;
+                finishPullRefresh();
                 if (tab != 0) return;
                 displayTracks.clear();
                 displayTracks.addAll(v);
@@ -461,8 +531,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             }
             @Override public void onErr(String msg) {
                 searchLoading = false;
+                boolean wasPull = pullRefreshing;
+                finishPullRefresh();
                 if (tab != 0) return;
-                hint("搜索失败：" + msg);
+                if (wasPull) Toast.makeText(MainActivity.this, "刷新失败：" + msg, Toast.LENGTH_SHORT).show();
+                else hint("搜索失败：" + msg);
             }
         });
     }
@@ -1087,7 +1160,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             hint("登录后就能看你的收藏夹啦\n点「我的」去登录 👇");
             return;
         }
-        hint("加载收藏夹…");
+        if (!pullQuiet) hint("加载收藏夹…");
         // 切页当帧立刻换上收藏夹适配器（先用上次缓存的 folders，没有就空列表），
         // 别等网络回来才换——否则这帧 ListView 里还是上个页的内容，
         // 看着就是“先显示上个页面、等网络回来才刷新”
@@ -1095,6 +1168,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         folderAdapter.notifyDataSetChanged();
         api.favFolders(new BiliApi.Cb<List<BiliApi.FavFolder>>() {
             @Override public void onOk(List<BiliApi.FavFolder> v) {
+                finishPullRefresh();
                 if (tab != 1) return;
                 folders.clear();
                 folders.addAll(v);
@@ -1102,8 +1176,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 hint(v.isEmpty() ? "你还没有收藏夹" : null);
             }
             @Override public void onErr(String msg) {
+                boolean wasPull = pullRefreshing;
+                finishPullRefresh();
                 if (tab != 1) return;
-                hint("收藏夹加载失败：" + msg);
+                if (wasPull) Toast.makeText(MainActivity.this, "刷新失败：" + msg, Toast.LENGTH_SHORT).show();
+                else hint("收藏夹加载失败：" + msg);
             }
         });
     }
@@ -1157,11 +1234,99 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     // ---------------- 历史 / 我的 ----------------
+    // ---------------- 下拉刷新 ----------------
+
+    private boolean isListAtTop() {
+        if (lvMain.getChildCount() == 0) return true;
+        return lvMain.getFirstVisiblePosition() == 0 && lvMain.getChildAt(0).getTop() >= 0;
+    }
+
+    /** 设置揭示高度：头从顶边露出 r，列表跟着下移 r，箭头随揭示度旋转 */
+    private void setPullReveal(float r) {
+        pullReveal = r;
+        pullHeader.setTranslationY(r - pullHeightPx);
+        lvMain.setTranslationY(r);
+        if (!pullRefreshing) {
+            ivPullArrow.setRotation(Math.min(r / pullHeightPx, 1f) * 180f);
+            tvPullText.setText(r >= pullHeightPx ? "松开刷新" : "下拉刷新");
+        }
+    }
+
+    /** 丝滑收/放到目标高度（减速插值，280ms）；到 0 时彻底藏起并复位 */
+    private void animatePullReveal(float target, final Runnable onEnd) {
+        android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(pullReveal, target);
+        va.setDuration(280);
+        va.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        va.addUpdateListener(a -> setPullReveal((Float) a.getAnimatedValue()));
+        va.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (target == 0) {
+                    pullHeader.setVisibility(View.GONE);
+                    lvMain.setTranslationY(0);
+                    ivPullArrow.setRotation(0);
+                    tvPullText.setText("下拉刷新");
+                }
+                if (onEnd != null) onEnd.run();
+            }
+        });
+        va.start();
+    }
+
+    private void startPullRefresh() {
+        pullRefreshing = true;
+        pullQuiet = true;
+        tvPullText.setText("正在刷新…");
+        pullSpin = android.animation.ObjectAnimator.ofFloat(ivPullArrow, "rotation", 0f, 360f);
+        pullSpin.setDuration(900);
+        pullSpin.setRepeatCount(android.animation.ObjectAnimator.INFINITE);
+        pullSpin.setInterpolator(new android.view.animation.LinearInterpolator());
+        pullSpin.start();
+        animatePullReveal(pullHeightPx, null); // 先稳稳停在完全展开
+        dispatchPullRefresh();
+    }
+
+    /** 刷新完成：停转、丝滑收回；没在刷新时是空操作，各回调里可无条件调 */
+    private void finishPullRefresh() {
+        if (!pullRefreshing) return;
+        pullRefreshing = false;
+        pullQuiet = false;
+        if (pullSpin != null) { pullSpin.cancel(); pullSpin = null; }
+        animatePullReveal(0, null);
+    }
+
+    /** 按当前页派发刷新：推荐重拉、搜索重查第 1 页、收藏重载、历史重算 */
+    private void dispatchPullRefresh() {
+        switch (tab) {
+            case 0:
+                if (searchKw.isEmpty()) {
+                    recommendStarted = false;
+                    loadRecommendations();
+                } else if (!searchLoading) {
+                    doSearch(searchKw);
+                } else {
+                    finishPullRefresh();
+                }
+                break;
+            case 1:
+                if (favLocalMode) { showLocalLists(); finishPullRefresh(); }
+                else loadFolders();
+                break;
+            case 2:
+                showHistory();
+                finishPullRefresh();
+                break;
+            default:
+                finishPullRefresh();
+                break;
+        }
+    }
+
     /** 主页推荐：进 App 时把 B 站音乐区排行填进搜索页，点行就能直接播 */
     private void loadRecommendations() {
-        hint("正在为你找今日音乐推荐… 🎵");
+        if (!pullQuiet) hint("正在为你找今日音乐推荐… 🎵");
         api.musicRanking(new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
+                finishPullRefresh();
                 // 切走了就别回填（displayTracks 与历史页共用），下次回搜索页再拉；
                 // 拉取途中用户已搜过也别盖掉搜索结果
                 if (tab != 0) { recommendStarted = false; return; }
@@ -1173,9 +1338,12 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 hint(v.isEmpty() ? "搜一首歌，开始听吧 🎧" : null);
             }
             @Override public void onErr(String msg) {
+                boolean wasPull = pullRefreshing;
+                finishPullRefresh();
                 if (tab != 0) { recommendStarted = false; return; }
                 Diag.log(MainActivity.this, "🎵 音乐推荐加载失败：" + msg);
-                hint("搜一首歌，开始听吧 🎧");
+                if (wasPull) Toast.makeText(MainActivity.this, "刷新失败：" + msg, Toast.LENGTH_SHORT).show();
+                else hint("搜一首歌，开始听吧 🎧");
             }
         });
     }

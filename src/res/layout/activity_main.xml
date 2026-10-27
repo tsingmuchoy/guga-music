@@ -217,6 +217,31 @@
                 android:paddingRight="12dp"
                 android:paddingBottom="150dp" />
 
+            <!-- 下拉刷新头：平时 GONE，下拉时从列表顶部滑出（内容居中，随揭示度从顶边露出） -->
+            <LinearLayout
+                android:id="@+id/pullHeader"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:layout_gravity="top"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:visibility="gone">
+                <ImageView
+                    android:id="@+id/ivPullArrow"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_refresh"
+                    android:tint="?attr/gAccent" />
+                <TextView
+                    android:id="@+id/tvPullText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="8dp"
+                    android:text="下拉刷新"
+                    android:textColor="?attr/gTextSec"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
             <ScrollView
                 android:id="@+id/svMine"
                 android:layout_width="match_parent"
