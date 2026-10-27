@@ -321,7 +321,7 @@
         android:layout_gravity="bottom"
         android:orientation="vertical">
 
-        <FrameLayout
+        <com.guga.music.GlassBarLayout
             android:id="@+id/llMini"
             android:layout_width="match_parent"
             android:layout_height="64dp"
@@ -385,9 +385,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="@drawable/bg_glass_rim" />
-        </FrameLayout>
+        </com.guga.music.GlassBarLayout>
 
-        <FrameLayout
+        <com.guga.music.GlassBarLayout
             android:id="@+id/llTabs"
             android:layout_width="match_parent"
             android:layout_height="62dp"
@@ -501,6 +501,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="@drawable/bg_glass_rim" />
-        </FrameLayout>
+        </com.guga.music.GlassBarLayout>
     </LinearLayout>
 </FrameLayout>

@@ -65,6 +65,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private View llSearchBar, btnFavBack, svMine;
     private ListView lvMain;
     private View rootMain;
+    private GlassBarLayout barMini, barTabs;
+    private boolean lensBars;
     private TextView tvHint, tvUname, tvMid, btnLogin;
     private ImageView ivFace, ivMiniCover;
     private TextView tvMiniTitle;
@@ -114,9 +116,20 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 }
                 ratchetIdx = first;
                 if (tab == 0 && searchMore && !searchLoading && total > 0 && first + visible >= total - 3) loadMoreSearch();
+                // 真液态玻璃：列表滚动时底衬在变，底栏需重录
+                if (lensBars) invalidateGlassBars();
             }
         });
         rootMain = findViewById(R.id.rootMain);
+        // 真液态玻璃：仅 glass 主题 + API 33+ 才实例化透镜引擎，其他主题零成本
+        lensBars = ThemeUtil.currentId(this).equals("glass")
+                && Build.VERSION.SDK_INT >= 33;
+        if (lensBars) {
+            barMini = findViewById(R.id.llMini);
+            barTabs = findViewById(R.id.llTabs);
+            barMini.setLensEnabled(true, rootMain);
+            barTabs.setLensEnabled(true, rootMain);
+        }
         tvHint = findViewById(R.id.tvHint);
         tvUname = findViewById(R.id.tvUname);
         tvMid = findViewById(R.id.tvMid);
@@ -355,6 +368,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         }
         if (i == 2) attachStatsHeader(); else detachStatsHeader();
         updateSearchFooter();
+        // 真液态玻璃：切页后底衬内容变了，底栏需重录
+        if (lensBars) invalidateGlassBars();
+    }
+
+    /** 真液态玻璃底栏重录（滚动/切页导致底衬变化时调用） */
+    private void invalidateGlassBars() {
+        if (barMini != null) barMini.invalidate();
+        if (barTabs != null) barTabs.invalidate();
     }
 
     private void hint(String msg) {
