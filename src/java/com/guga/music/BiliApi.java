@@ -233,6 +233,37 @@ public class BiliApi {
         }, cb);
     }
 
+    /** 主页推荐：B 站音乐区排行（rid=3），全是音乐相关，不用登录；all 不行就退到日榜 */
+    public void musicRanking(Cb<List<Track>> cb) {
+        run(() -> {
+            JSONObject j = getJson("https://api.bilibili.com/x/web-interface/ranking/v2?rid=3&type=all");
+            JSONObject d = j.optJSONObject("data");
+            if (j.getInt("code") != 0 || d == null || d.optJSONArray("list") == null
+                    || d.optJSONArray("list").length() == 0) {
+                j = getJson("https://api.bilibili.com/x/web-interface/ranking/v2?rid=3&type=day");
+            }
+            if (j.getInt("code") != 0) throw new Exception("推荐失败：" + j.optString("message"));
+            List<Track> out = new ArrayList<>();
+            JSONArray arr = j.getJSONObject("data").optJSONArray("list");
+            if (arr != null) {
+                for (int i = 0; i < arr.length() && out.size() < 30; i++) {
+                    JSONObject o = arr.getJSONObject(i);
+                    Track t = new Track();
+                    t.bvid = o.optString("bvid");
+                    t.title = o.optString("title");
+                    String pic = o.optString("pic");
+                    t.cover = pic.startsWith("//") ? "https:" + pic : pic;
+                    JSONObject owner = o.optJSONObject("owner");
+                    t.author = owner == null ? "" : owner.optString("name");
+                    int dur = o.optInt("duration", -1);
+                    t.durationSec = dur >= 0 ? dur : parseDur(o.optString("duration"));
+                    if (!t.bvid.isEmpty()) out.add(t);
+                }
+            }
+            return out;
+        }, cb);
+    }
+
     private List<Track> searchWbi(String keyword, int page, String order) throws Exception {
         Map<String, String> p = new HashMap<>();
         p.put("search_type", "video");

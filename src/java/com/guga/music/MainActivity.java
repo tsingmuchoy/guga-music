@@ -49,6 +49,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private int searchPage = 1;
     private boolean searchLoading;
     private boolean searchMore = true;
+    private boolean recommendStarted = false; // 主页推荐只在进 App 时拉一次
+    private boolean hasSearched = false; // 搜过之后推荐回调不再回填，避免盖掉搜索结果
     private TextView searchFooter;
     private android.widget.LinearLayout llSortChips;
     private static final String[][] SORTS = {
@@ -354,7 +356,15 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             case 0:
                 lvMain.setAdapter(trackAdapter);
                 trackAdapter.notifyDataSetChanged();
-                if (displayTracks.isEmpty()) hint("搜一首歌，开始听吧 🎧");
+                if (displayTracks.isEmpty()) {
+                    // 进主页先推音乐：第一次进搜索页且还没搜过，拉音乐区排行填满空页
+                    if (!recommendStarted) {
+                        recommendStarted = true;
+                        loadRecommendations();
+                    } else {
+                        hint("搜一首歌，开始听吧 🎧");
+                    }
+                }
                 break;
             case 1:
                 favShowingTracks = false;
@@ -418,6 +428,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         }
         hint("搜索中…");
         searchKw = kw;
+        hasSearched = true;
         searchPage = 1;
         searchMore = true;
         searchLoading = true;
@@ -1093,6 +1104,29 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     // ---------------- 历史 / 我的 ----------------
+    /** 主页推荐：进 App 时把 B 站音乐区排行填进搜索页，点行就能直接播 */
+    private void loadRecommendations() {
+        hint("正在为你找今日音乐推荐… 🎵");
+        api.musicRanking(new BiliApi.Cb<List<Track>>() {
+            @Override public void onOk(List<Track> v) {
+                // 切走了就别回填（displayTracks 与历史页共用），下次回搜索页再拉；
+                // 拉取途中用户已搜过也别盖掉搜索结果
+                if (tab != 0) { recommendStarted = false; return; }
+                if (hasSearched) return;
+                displayTracks.clear();
+                displayTracks.addAll(v);
+                lvMain.setAdapter(trackAdapter);
+                trackAdapter.notifyDataSetChanged();
+                hint(v.isEmpty() ? "搜一首歌，开始听吧 🎧" : null);
+            }
+            @Override public void onErr(String msg) {
+                if (tab != 0) { recommendStarted = false; return; }
+                Diag.log(MainActivity.this, "🎵 音乐推荐加载失败：" + msg);
+                hint("搜一首歌，开始听吧 🎧");
+            }
+        });
+    }
+
     private void showHistory() {
         displayTracks.clear();
         displayTracks.addAll(history.list());
