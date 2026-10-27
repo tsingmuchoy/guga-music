@@ -360,8 +360,14 @@ public class LiquidGlassLens {
         float loY = marginPx + 1f;
         float hiX = marginPx + width - 1f;
         float hiY = marginPx + height - 1f;
+        // 先更新采样区再构建效果：着色器 uniform 从这些字段取值，
+        // 顺序反了会让首帧采样区恒为 (0,0)-(0,0)，整块透镜只采一个像素
         boolean boundsChanged = loX != sampleLoX || loY != sampleLoY
                 || hiX != sampleHiX || hiY != sampleHiY;
+        sampleLoX = loX;
+        sampleLoY = loY;
+        sampleHiX = hiX;
+        sampleHiY = hiY;
 
         if (boundsChanged || width != lastWidth || height != lastHeight || marginPx != lastMargin) {
             try {
@@ -370,10 +376,6 @@ public class LiquidGlassLens {
                 shaderBroken = true;
                 return false;
             }
-            sampleLoX = loX;
-            sampleLoY = loY;
-            sampleHiX = hiX;
-            sampleHiY = hiY;
             lastWidth = width;
             lastHeight = height;
             lastMargin = marginPx;

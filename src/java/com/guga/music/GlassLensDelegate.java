@@ -100,7 +100,12 @@ public class GlassLensDelegate {
     public boolean draw(Canvas canvas, View host) {
         if (!on || lens == null || !canvas.isHardwareAccelerated()) return false;
         float d = host.getResources().getDisplayMetrics().density;
-        if (lens.draw(canvas, host, backdropSource, (int) (16f * d + 0.5f))) return true;
+        try {
+            if (lens.draw(canvas, host, backdropSource, (int) (16f * d + 0.5f))) return true;
+        } catch (RuntimeException e) {
+            // 录制重入等运行时异常绝不能炸掉整个 Activity：回退到主题级样式
+            //（旧问题里“点进去又退回主页面”就是绘制异常一路崩到进程被杀）
+        }
         revert(host);
         return false;
     }

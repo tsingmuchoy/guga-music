@@ -121,7 +121,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             }
         });
         rootMain = findViewById(R.id.rootMain);
-        // 真液态玻璃：仅 glass 主题 + API 33+ 才实例化透镜引擎，其他主题零成本
+        // 真液态玻璃：仅启用透镜的主题 + API 33+ 才实例化透镜引擎，其他主题零成本
         lensBars = GlassTheme.isLensActive(this);
         barMini = findViewById(R.id.llMini);
         barTabs = findViewById(R.id.llTabs);

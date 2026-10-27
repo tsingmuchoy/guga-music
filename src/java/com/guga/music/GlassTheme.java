@@ -11,15 +11,16 @@ import android.view.ViewGroup;
  * 遍历视图树，把所有 GlassLensHost 视图的透镜一次性打开，
  * 底衬来源统一为布局根视图。
  *
- * 门控与 v1.45.0 的底栏一致：仅 glass 主题 + API 33+ 才实例化，
- * 其他主题 / 低版本直接跳过，引擎零成本；切主题时 Activity 重建，
- * 旧引擎随 onDetachedFromWindow 释放。
+ * 门控与 v1.45.0 的底栏一致，只是范围从单个 glass 主题扩到全部模拟玻璃主题：
+ * 全部主题共用同一套玻璃属性（只换色板），因此除扁平实色设计的 Material You 外，
+ * 其余 8 套在 API 33+ 下都启用真透镜；Material You 保持扁平、透镜零成本。
+ * 切主题时 Activity 重建，旧引擎随 onDetachedFromWindow 释放。
  */
 public class GlassTheme {
 
-    /** 透镜是否应启用（主题 + 系统版本双门控） */
+    /** 透镜是否应启用（主题 + 系统版本双门控；扁平 Material You 除外） */
     public static boolean isLensActive(Context ctx) {
-        return ThemeUtil.currentId(ctx).equals("glass")
+        return !ThemeUtil.currentId(ctx).equals("material")
                 && Build.VERSION.SDK_INT >= 33;
     }
 

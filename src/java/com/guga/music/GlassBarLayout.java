@@ -7,7 +7,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 
 /**
- * 真液态玻璃底栏容器（API 33+ 且 glass 主题时启用透镜）。
+ * 真液态玻璃底栏容器（API 33+ 且启用透镜的主题时打开透镜）。
  *
  * 启用时：背景的静态半透明 drawable 被清空，改由 dispatchDraw 先画
  * LiquidGlassLens 的实时折射，再画子内容；着色器自带边缘高光，
