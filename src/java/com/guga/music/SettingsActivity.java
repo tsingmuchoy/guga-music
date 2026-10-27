@@ -41,8 +41,14 @@ public class SettingsActivity extends Activity {
 
         findViewById(R.id.btnClearHistory).setOnClickListener(v -> {
             Haptics.tick(this);
-            new HistoryDb(this).clear();
-            Toast.makeText(this, "播放历史已清空", Toast.LENGTH_SHORT).show();
+            UiDialog.confirm(this, "清空播放历史？",
+                    "历史页下方的播放记录都会删掉，不可恢复。播放统计不受影响。",
+                    "清空", () -> UiDialog.confirm(this, "最后确认一次",
+                            "确定要清空全部播放历史吗？删掉就找不回来了。",
+                            "确认清空", () -> {
+                                new HistoryDb(this).clear();
+                                Toast.makeText(this, "播放历史已清空", Toast.LENGTH_SHORT).show();
+                            }));
         });
         findViewById(R.id.btnAbout).setOnClickListener(v -> {
             Haptics.tick(this);

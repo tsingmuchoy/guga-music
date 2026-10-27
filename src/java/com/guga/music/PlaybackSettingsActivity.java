@@ -83,16 +83,26 @@ public class PlaybackSettingsActivity extends Activity {
         });
         findViewById(R.id.rowCacheInfo).setOnClickListener(v -> {
             Haptics.tick(this);
-            StreamCache.clearAll(this);
-            Toast.makeText(this, "音频缓存已清空", Toast.LENGTH_SHORT).show();
-            refreshDataRows();
+            UiDialog.confirm(this, "清空音频缓存？",
+                    "已下载的音频缓存都会删掉，之后再听要重新下载（会多用流量）。",
+                    "清空", () -> UiDialog.confirm(this, "最后确认一次",
+                            "确定要清空全部音频缓存吗？", "确认清空", () -> {
+                                StreamCache.clearAll(this);
+                                Toast.makeText(this, "音频缓存已清空", Toast.LENGTH_SHORT).show();
+                                refreshDataRows();
+                            }));
         });
         findViewById(R.id.rowTraffic).setOnClickListener(v -> {
             Haptics.tick(this);
-            PlayerService svc = PlayerService.get();
-            if (svc != null) svc.resetTrafficMonth();
-            Toast.makeText(this, "流量统计已清零", Toast.LENGTH_SHORT).show();
-            refreshDataRows();
+            UiDialog.confirm(this, "流量统计清零？",
+                    "本月流量估算会归零，只影响显示的统计数字，不影响播放。",
+                    "清零", () -> UiDialog.confirm(this, "最后确认一次",
+                            "确定要把流量统计清零吗？", "确认清零", () -> {
+                                PlayerService svc = PlayerService.get();
+                                if (svc != null) svc.resetTrafficMonth();
+                                Toast.makeText(this, "流量统计已清零", Toast.LENGTH_SHORT).show();
+                                refreshDataRows();
+                            }));
         });
     }
 
