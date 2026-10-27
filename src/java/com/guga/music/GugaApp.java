@@ -18,6 +18,24 @@ public class GugaApp extends Application {
 
     @Override public void onCreate() {
         super.onCreate();
+        // 崩溃留痕：任何未捕获异常先把类型+信息+前 15 帧写进诊断日志，
+        // 再交给原来的处理器（该崩还是崩、弹窗照出），下次进设置·诊断就能看到案发现场，
+        // 不用再靠用户口头描述“不稳定”
+        final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        final android.content.Context appCtx = getApplicationContext();
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override public void uncaughtException(Thread t, Throwable e) {
+                try {
+                    Diag.log(appCtx, "CRASH " + e.getClass().getSimpleName()
+                            + ": " + String.valueOf(e.getMessage()));
+                    StackTraceElement[] st = e.getStackTrace();
+                    for (int i = 0; i < Math.min(15, st.length); i++) {
+                        Diag.log(appCtx, "  at " + st[i].toString());
+                    }
+                } catch (Exception ignored) {}
+                if (prev != null) prev.uncaughtException(t, e);
+            }
+        });
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override public void onActivityStarted(Activity a) {
                 startedCount++;

@@ -48,7 +48,11 @@ public class UiDialog {
 
     private static AlertDialog show(Activity a, View root) {
         AlertDialog d = new AlertDialog.Builder(a).setView(root).create();
-        d.show();
+        // 异步回调里弹窗时 Activity 可能已销毁：BadTokenException 会直接崩进程，
+        // 这里吞掉（调用方对未显示的 dialog 调 dismiss 是安全的），绝不为个弹窗炸掉 App
+        try {
+            d.show();
+        } catch (Exception ignored) {}
         if (d.getWindow() != null)
             d.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         // 透镜底衬取宿主 Activity 的布局根（弹窗是独立窗口，底衬不能是自己）

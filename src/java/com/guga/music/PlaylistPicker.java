@@ -51,7 +51,7 @@ public class PlaylistPicker {
             });
         }));
         root.findViewById(R.id.btnPickerCancel).setOnClickListener(v -> dlg.dismiss());
-        dlg.show();
+        try { dlg.show(); } catch (Exception ignored) {}
         GlassTheme.bindWithBackdrop(root, GlassTheme.activityBackdrop(act));
     }
 
@@ -111,7 +111,7 @@ public class PlaylistPicker {
             dlg.dismiss();
             cb.onName(name);
         });
-        dlg.show();
+        try { dlg.show(); } catch (Exception ignored) {}
         GlassTheme.bindWithBackdrop(root, GlassTheme.activityBackdrop(act));
         View okBtn = root.findViewById(R.id.btnInputOk);
         if (okBtn instanceof GlassTextView && ((GlassTextView) okBtn).isLensOn()) {

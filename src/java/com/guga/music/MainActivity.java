@@ -775,7 +775,16 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             cb.onPick(dp.getYear(), dp.getMonth(), dp.getDayOfMonth());
             dlg.dismiss();
         });
-        dlg.show();
+        // 系统 DatePicker 日历头在部分系统版本上忽略 headerBackground：
+        // 把 DatePicker 第一个子容器（即日历头）的背景也清掉，头文字直接落在深色卡上
+        try {
+            if (dp.getChildCount() > 0 && dp.getChildAt(0) instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup) dp.getChildAt(0)).setBackground(null);
+            }
+        } catch (Exception ignored) {}
+        try {
+            dlg.show();
+        } catch (Exception ignored) {}
         if (dlg.getWindow() != null) {
             dlg.getWindow().setBackgroundDrawable(
                     new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
