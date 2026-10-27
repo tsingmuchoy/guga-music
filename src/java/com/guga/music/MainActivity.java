@@ -63,7 +63,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private View pullHeader;
     private android.widget.ImageView ivPullArrow;
     private TextView tvPullText;
-    private float pullHeightPx;
+    private float pullHeightPx, touchSlopPx;
     private float pullReveal = 0;
     private boolean pullEngaged = false;
     private boolean pullRefreshing = false;
@@ -155,12 +155,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         ivPullArrow = findViewById(R.id.ivPullArrow);
         tvPullText = findViewById(R.id.tvPullText);
         pullHeightPx = 64f * getResources().getDisplayMetrics().density;
+        touchSlopPx = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
         swipeBackPx = 100f * getResources().getDisplayMetrics().density;
         swipeBackSlopPx = 60f * getResources().getDisplayMetrics().density;
         lvMain.setOnTouchListener(new View.OnTouchListener() {
             private float downY, downX;
             private int downPointer = -1;
-            private float pullStartY;
+            private float pullBaseline;
+            private boolean atTopAtDown;
             private boolean swipeBackClaimed = false;
             @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
                 switch (ev.getActionMasked()) {
@@ -168,6 +170,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                         downY = ev.getY();
                         downX = ev.getX();
                         downPointer = ev.getPointerId(0);
+                        atTopAtDown = isListAtTop();
                         swipeBackClaimed = false;
                         break;
                     case android.view.MotionEvent.ACTION_MOVE: {
@@ -177,18 +180,21 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                         if (idx < 0) break;
                         float y = ev.getY(idx);
                         if (!pullEngaged) {
-                            // 只有已到顶、下拉时才接管（飞滚中不劫持；手指拖着到顶后直接下拉也能接上）
-                            if (y - downY > 0
+                            // 接管条件：只在搜索/推荐页（tab 0），手指从按下点向下滑过系统触摸阈值、已到顶、非飞滚。
+                            // 收藏夹、历史页不要下拉（用户定），那两页拉了也没头。
+                            if (tab == 0 && y - downY > touchSlopPx
                                     && lvScrollState != android.widget.AbsListView.OnScrollListener.SCROLL_STATE_FLING
                                     && isListAtTop()) {
                                 pullEngaged = true;
-                                pullStartY = y;
+                                // 基线：按下时已在顶——从按下点起算（快拉也不丢距离）；
+                                // 中途滚到顶才接管——从接管点起算（不突然蹦出一大截）
+                                pullBaseline = atTopAtDown ? downY + touchSlopPx : y;
                                 pullHeader.setVisibility(View.VISIBLE);
                                 lvMain.setOverScrollMode(View.OVER_SCROLL_NEVER);
                             }
                         }
                         if (pullEngaged) {
-                            float pull = (y - pullStartY) * 0.5f; // 阻尼 0.5：拉着有韧劲
+                            float pull = (y - pullBaseline) * 0.5f; // 阻尼 0.5：拉着有韧劲
                             if (pull <= 0) {
                                 setPullReveal(0);
                                 pullEngaged = false;
@@ -1361,15 +1367,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                     finishPullRefresh();
                 }
                 break;
-            case 1:
-                if (favShowingTracks && favOpenFolder != null) openFolder(favOpenFolder);
-                else if (favLocalMode) { showLocalLists(); finishPullRefresh(); }
-                else loadFolders();
-                break;
+            case 1: // 收藏夹不要下拉（用户定）
             case 2:
-                showHistory();
-                finishPullRefresh();
-                break;
             default:
                 finishPullRefresh();
                 break;
