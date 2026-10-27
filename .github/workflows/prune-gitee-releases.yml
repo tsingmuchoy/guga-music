@@ -32,12 +32,7 @@ jobs:
             TAG=$(echo "$TAG" | xargs)
             [ -z "$TAG" ] && continue
             echo "=== $TAG ==="
-            ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}" | python3 -c "import json,sys
-try:
-  d=json.load(sys.stdin)
-  print((d or {}).get('id','') if isinstance(d,dict) else '')
-except Exception:
-  print('')" 2>/dev/null || echo "")
+            ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
             if [ -n "$ID" ]; then
               code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${ID}?access_token=${TK}" || echo 000)
               echo "delete release id=$ID http=$code"
