@@ -6,6 +6,10 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to mirror (e.g. v1.45.0)'
+        required: true
 
 env:
   GITEE_USER: tsingmuchoy
@@ -33,7 +37,7 @@ jobs:
           [ "$ok" = "1" ] || exit 1
 
   mirror-release:
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       TK: ${{ secrets.GITEE_TOKEN }}
@@ -41,12 +45,15 @@ jobs:
     steps:
       - name: Create Gitee release and upload assets
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
           NAME: ${{ github.event.release.name }}
           BODY: ${{ github.event.release.body }}
         run: |
           # Gitee 接口在负载高时会返回 null/空响应：创建与查询都带重试，
           # 解析做空值兜底，拿不到发行版 id 就明确失败（旧版直接 .get 崩在 null 上）
+          # 2026-10-27 教训：带 token 的 tags 查询连续三次返回空（匿名查询反而正常），
+          # 因此 201 时直接用创建响应的 id，读查询一律不带 token（公开仓库读不需要鉴权）
+          NAME="${NAME:-$TAG}"
           for i in 1 2 3; do
             code=$(curl -s -o /tmp/rel.json -w '%{http_code}' -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases" \
               --data-urlencode "access_token=${TK}" \
@@ -59,8 +66,12 @@ jobs:
             sleep 15
           done
           ID=""
+          if [ "$code" = "201" ]; then
+            ID=$(python3 -c "import json; d=json.load(open('/tmp/rel.json')); print(d.get('id','') if isinstance(d,dict) else '')" 2>/dev/null || echo "")
+          fi
+          if [ -z "$ID" ]; then
           for i in 1 2 3 4 5 6; do
-            ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${TK}" | python3 -c "import json,sys
+            ID=$(curl -s "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/tags/${TAG}" | python3 -c "import json,sys
           try:
             d=json.load(sys.stdin)
             print((d or {}).get('id','') if isinstance(d,dict) else '')
@@ -70,6 +81,7 @@ jobs:
             echo "release not visible yet (attempt $i), wait 15s"
             sleep 15
           done
+          fi
           echo "gitee release id: $ID"
           [ -n "$ID" ] || { echo "FAILED: no gitee release id"; exit 1; }
           mkdir -p /tmp/assets
