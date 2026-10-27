@@ -642,9 +642,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private void confirmClearStats() {
         UiDialog.confirm(this, "清空播放统计？",
                 "日/周/月/年所有听歌记录都会删掉，不可恢复。建议先导出一份备份。", "清空", () -> {
-                    statsDb.clearAll();
-                    refreshStatsHeader();
-                    android.widget.Toast.makeText(this, "播放统计已清空", android.widget.Toast.LENGTH_SHORT).show();
+                    // 二级确认：第一层点过去还不够，误触到这里还能刹车
+                    UiDialog.confirm(this, "最后确认一次",
+                            "清空后播放次数、累计时长、曲目数和最常播放榜立刻归零，无法找回。确定要清空吗？",
+                            "确认清空", () -> {
+                                statsDb.clearAll();
+                                refreshStatsHeader();
+                                android.widget.Toast.makeText(this, "播放统计已清空", android.widget.Toast.LENGTH_SHORT).show();
+                            });
                 });
     }
 
