@@ -57,11 +57,15 @@ public class LyricsActivity extends Activity {
                     curIdx = idx;
                     adapter.notifyDataSetChanged();
                     if (System.currentTimeMillis() - lastUserScrollAt > 2500 && idx >= 0) {
-                        lv.setSelectionFromTop(idx, Math.max(0, lv.getHeight() / 3));
+                        // 丝滑跟随：近处 800ms glide 到 1/3 高，远处（刚手动翻很远）直跳、不拖一长串残影
+                        int first = lv.getFirstVisiblePosition();
+                        int top = Math.max(0, lv.getHeight() / 3);
+                        if (Math.abs(idx - first) <= 8) lv.smoothScrollToPositionFromTop(idx, top, 800);
+                        else lv.setSelectionFromTop(idx, top);
                     }
                 }
             }
-            handler.postDelayed(this, 500);
+            handler.postDelayed(this, 300);
         }
     };
 
@@ -82,7 +86,7 @@ public class LyricsActivity extends Activity {
         lv.setOnScrollListener(new AbsListView.OnScrollListener() {
             @Override public void onScrollStateChanged(AbsListView v, int state) {
                 if (state != SCROLL_STATE_IDLE) lastUserScrollAt = System.currentTimeMillis();
-                // 棘轮触感只认手指驱动：触摸滚动置真、静止复位；自动跟随是 setSelectionFromTop 直跳、不经触摸态
+                // 棘轮触感只认手指驱动：触摸滚动置真、静止复位；自动跟随是平滑 glide、不经触摸态
                 if (state == SCROLL_STATE_TOUCH_SCROLL) lyrUserDriven = true;
                 else if (state == SCROLL_STATE_IDLE) lyrUserDriven = false;
             }

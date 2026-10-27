@@ -52,6 +52,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private boolean recommendStarted = false; // 主页推荐只在进 App 时拉一次
     private boolean hasSearched = false; // 搜过之后推荐回调不再回填，避免盖掉搜索结果
     private View searchFooter;
+    private List<Track> favTracksAll = new ArrayList<>();
+    private int favPage = 1;
+    private int favTotalPages = 0;
+    private BiliApi.FavFolder favOpenFolder;
+    private float swipeBackPx, swipeBackSlopPx;
     private TextView btnPagePrev, btnPageNext, tvPageInfo;
     private int searchTotalPages = 0; // 接口给总条数时算出，0 表示未知（下一页按本页是否满 20 条判断）
     // 下拉刷新（纯框架手写，主流逻辑：到顶下拉→箭头跟手旋转→松手过阈值触发→转圈→丝滑收回）
@@ -76,7 +81,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private final List<LocalDb.Playlist> localLists = new ArrayList<>();
     private LocalDb localDb;
 
-    private View llSearchBar, btnFavBack, svMine;
+    private View llSearchBar, svMine;
     private ListView lvMain;
     private View rootMain;
     private GlassBarLayout barMini, barTabs;
@@ -107,7 +112,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         }
 
         llSearchBar = findViewById(R.id.llSearchBar);
-        btnFavBack = findViewById(R.id.btnFavBack);
         svMine = findViewById(R.id.svMine);
         lvMain = findViewById(R.id.lvMain);
         // 搜索页底部分页条：像 B 站那样上一页 / 第 X / 共 Y 页 / 下一页
@@ -117,13 +121,13 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         float fden = getResources().getDisplayMetrics().density;
         pageBar.setPadding(0, (int) (12 * fden), 0, (int) (16 * fden));
         btnPagePrev = pageBtn("◀ 上一页");
-        btnPagePrev.setOnClickListener(v -> { Haptics.tick(this); gotoSearchPage(searchPage - 1); });
+        btnPagePrev.setOnClickListener(v -> { Haptics.tick(this); if (tab == 1 && favShowingTracks) gotoFavPage(favPage - 1); else gotoSearchPage(searchPage - 1); });
         tvPageInfo = new TextView(this);
         tvPageInfo.setTextSize(12);
         tvPageInfo.setTextColor(ThemeUtil.color(this, R.attr.gTextFaint));
         tvPageInfo.setPadding((int) (16 * fden), 0, (int) (16 * fden), 0);
         btnPageNext = pageBtn("下一页 ▶");
-        btnPageNext.setOnClickListener(v -> { Haptics.tick(this); gotoSearchPage(searchPage + 1); });
+        btnPageNext.setOnClickListener(v -> { Haptics.tick(this); if (tab == 1 && favShowingTracks) gotoFavPage(favPage + 1); else gotoSearchPage(searchPage + 1); });
         pageBar.addView(btnPagePrev);
         pageBar.addView(tvPageInfo);
         pageBar.addView(btnPageNext);
@@ -151,17 +155,23 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         ivPullArrow = findViewById(R.id.ivPullArrow);
         tvPullText = findViewById(R.id.tvPullText);
         pullHeightPx = 64f * getResources().getDisplayMetrics().density;
+        swipeBackPx = 100f * getResources().getDisplayMetrics().density;
+        swipeBackSlopPx = 60f * getResources().getDisplayMetrics().density;
         lvMain.setOnTouchListener(new View.OnTouchListener() {
-            private float downY;
+            private float downY, downX;
             private int downPointer = -1;
             private float pullStartY;
+            private boolean swipeBackClaimed = false;
             @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
                 switch (ev.getActionMasked()) {
                     case android.view.MotionEvent.ACTION_DOWN:
                         downY = ev.getY();
+                        downX = ev.getX();
                         downPointer = ev.getPointerId(0);
+                        swipeBackClaimed = false;
                         break;
                     case android.view.MotionEvent.ACTION_MOVE: {
+                        if (swipeBackClaimed) return true; // 已认领右滑返回：后续事件不再进列表，防松手误点新页条目
                         if (pullRefreshing) break;
                         int idx = downPointer < 0 ? -1 : ev.findPointerIndex(downPointer);
                         if (idx < 0) break;
@@ -188,10 +198,24 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                                 setPullReveal(Math.min(pull, pullHeightPx * 1.5f));
                             }
                         }
+                        // 收藏夹内容页右滑返回（与下拉互斥：竖向幅度大就不算右滑）
+                        if (!pullEngaged && tab == 1 && favShowingTracks) {
+                            float dx = ev.getX(idx) - downX;
+                            float ddy = y - downY;
+                            if (dx > swipeBackPx && Math.abs(ddy) < swipeBackSlopPx) {
+                                swipeBackClaimed = true;
+                                backFromFolder();
+                            }
+                        }
                         break;
                     }
                     case android.view.MotionEvent.ACTION_UP:
                     case android.view.MotionEvent.ACTION_CANCEL: {
+                        if (swipeBackClaimed) {
+                            swipeBackClaimed = false;
+                            downPointer = -1;
+                            return true;
+                        }
                         if (pullEngaged) {
                             pullEngaged = false;
                             lvMain.setOverScrollMode(View.OVER_SCROLL_ALWAYS);
@@ -202,7 +226,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                         break;
                     }
                 }
-                return false;
+                return swipeBackClaimed;
             }
         });
         // 真液态玻璃：仅启用透镜的主题 + API 33+ 才实例化透镜引擎，其他主题零成本
@@ -291,11 +315,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             }
             return false;
         });
-        btnFavBack.setOnClickListener(v -> {
-            favShowingTracks = false;
-            showFolders();
-        });
-
         findViewById(R.id.llMini).setOnClickListener(v -> {
             Haptics.tick(this);
             if (PlayerService.get() != null && PlayerService.get().current() != null) {
@@ -336,7 +355,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             favLocalMode = false;
             styleFavChips();
             favShowingTracks = false;
-            btnFavBack.setVisibility(View.GONE);
             loadFolders();
         });
         chipFavLocal.setOnClickListener(v -> {
@@ -372,9 +390,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     public void onBackPressed() {
         // 返回键先在 App 内逐级退：收藏内容 -> 收藏夹列表；其他页 -> 搜索页；已在搜索页才退出
         if (tab == 1 && favShowingTracks) {
-            favShowingTracks = false;
-            btnFavBack.setVisibility(View.GONE);
-            showFolders();
+            backFromFolder();
             return;
         }
         if (tab != 0) {
@@ -431,7 +447,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         if (llSortChips != null) llSortChips.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
         svMine.setVisibility(i == 3 ? View.VISIBLE : View.GONE);
         lvMain.setVisibility(i == 3 ? View.GONE : View.VISIBLE);
-        btnFavBack.setVisibility(i == 1 && favShowingTracks ? View.VISIBLE : View.GONE);
         llFavSwitch.setVisibility(i == 1 && !favShowingTracks ? View.VISIBLE : View.GONE);
         tvHint.setVisibility(View.GONE);
         switch (i) {
@@ -450,7 +465,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 break;
             case 1:
                 favShowingTracks = false;
-                btnFavBack.setVisibility(View.GONE);
                 llFavSwitch.setVisibility(View.VISIBLE);
                 styleFavChips();
                 if (favLocalMode) showLocalLists();
@@ -595,6 +609,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
     private void updateSearchFooter() {
         if (searchFooter == null) return;
+        if (tab == 1 && favShowingTracks) { updateFavFooter(); return; }
         if (tab != 0 || displayTracks.isEmpty() || searchKw.isEmpty()) {
             searchFooter.setVisibility(View.GONE);
             return;
@@ -1188,7 +1203,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private void showFolders() {
         lvMain.setAdapter(folderAdapter);
         folderAdapter.notifyDataSetChanged();
-        btnFavBack.setVisibility(View.GONE);
         if (tab == 1) llFavSwitch.setVisibility(View.VISIBLE);
     }
 
@@ -1208,29 +1222,69 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         localLists.addAll(localDb.playlists());
         lvMain.setAdapter(localAdapter);
         localAdapter.notifyDataSetChanged();
-        btnFavBack.setVisibility(View.GONE);
         hint(localLists.isEmpty() ? "还没有本地歌单 🎵\n点右上角「＋ 新建」建一个，或「⇩ 导入」把其他软件的歌单搬进来\n或长按任意歌曲加入歌单" : null);
     }
 
+    /** 收藏夹内容页退回列表：右滑与系统返回键共用同一条路 */
+    private void backFromFolder() {
+        favShowingTracks = false;
+        showFolders();
+    }
+
     private void openFolder(BiliApi.FavFolder f) {
-        hint("加载「" + f.title + "」…");
+        favOpenFolder = f;
+        if (!pullQuiet) hint("加载「" + f.title + "」…");
         api.favTracks(f.id, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
+                finishPullRefresh();
                 if (tab != 1) return;
                 favShowingTracks = true;
                 llFavSwitch.setVisibility(View.GONE);
-                displayTracks.clear();
-                displayTracks.addAll(v);
+                favTracksAll.clear();
+                favTracksAll.addAll(v);
+                favPage = 1;
+                favTotalPages = (v.size() + 19) / 20;
                 lvMain.setAdapter(trackAdapter);
-                trackAdapter.notifyDataSetChanged();
-                btnFavBack.setVisibility(View.VISIBLE);
+                showFavPage();
                 hint(v.isEmpty() ? "这个收藏夹是空的" : null);
             }
             @Override public void onErr(String msg) {
+                boolean wasPull = pullRefreshing;
+                finishPullRefresh();
                 if (tab != 1) return;
-                hint("加载失败：" + msg);
+                if (wasPull) Toast.makeText(MainActivity.this, "刷新失败：" + msg, Toast.LENGTH_SHORT).show();
+                else hint("加载失败：" + msg);
             }
         });
+    }
+
+    /** 收藏夹内容页分页：每页 20 条（夹子几百首也不怕翻） */
+    private void showFavPage() {
+        int from = (favPage - 1) * 20;
+        int to = Math.min(from + 20, favTracksAll.size());
+        displayTracks.clear();
+        displayTracks.addAll(favTracksAll.subList(from, to));
+        trackAdapter.notifyDataSetChanged();
+        updateFavFooter();
+    }
+
+    private void gotoFavPage(int page) {
+        if (!favShowingTracks || page < 1 || page > favTotalPages || page == favPage) return;
+        favPage = page;
+        showFavPage();
+        lvMain.setSelection(0);
+    }
+
+    private void updateFavFooter() {
+        if (searchFooter == null) return;
+        if (favTracksAll.isEmpty() || favTotalPages <= 1) {
+            searchFooter.setVisibility(View.GONE);
+            return;
+        }
+        searchFooter.setVisibility(View.VISIBLE);
+        tvPageInfo.setText("第 " + favPage + " / 共 " + favTotalPages + " 页");
+        setPageBtn(btnPagePrev, favPage > 1);
+        setPageBtn(btnPageNext, favPage < favTotalPages);
     }
 
     // ---------------- 历史 / 我的 ----------------
@@ -1308,7 +1362,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 }
                 break;
             case 1:
-                if (favLocalMode) { showLocalLists(); finishPullRefresh(); }
+                if (favShowingTracks && favOpenFolder != null) openFolder(favOpenFolder);
+                else if (favLocalMode) { showLocalLists(); finishPullRefresh(); }
                 else loadFolders();
                 break;
             case 2:

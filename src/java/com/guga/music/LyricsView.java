@@ -15,6 +15,9 @@ public class LyricsView extends View {
     private List<Lyrics.Line> lines = new ArrayList<>();
     private String placeholder = "♪ ♪ ♪";
     private int cur = -1;
+    // 换行平滑：当前行中心用浮动值 animCenter 做 500ms 减速滑动，不再整行直跳
+    private float animCenter = -1;
+    private android.animation.ValueAnimator scrollAnim;
     private final Paint pCur = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pNear = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pFar = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -66,6 +69,8 @@ public class LyricsView extends View {
     public void setLines(List<Lyrics.Line> l, String src) {
         lines = l == null ? new ArrayList<>() : l;
         cur = -1;
+        animCenter = -1;
+        if (scrollAnim != null) { scrollAnim.cancel(); scrollAnim = null; }
         invalidate();
     }
 
@@ -73,6 +78,8 @@ public class LyricsView extends View {
         placeholder = s;
         lines = new ArrayList<>();
         cur = -1;
+        animCenter = -1;
+        if (scrollAnim != null) { scrollAnim.cancel(); scrollAnim = null; }
         invalidate();
     }
 
@@ -82,8 +89,22 @@ public class LyricsView extends View {
         if (lines.isEmpty()) return;
         int idx = Lyrics.indexAt(lines, posMs);
         if (idx != cur) {
+            float start = animCenter >= 0 ? animCenter : (cur < 0 ? idx : cur);
             cur = idx;
-            invalidate();
+            if (scrollAnim != null) { scrollAnim.cancel(); scrollAnim = null; }
+            if (start == idx) {
+                animCenter = idx;
+                invalidate();
+                return;
+            }
+            scrollAnim = android.animation.ValueAnimator.ofFloat(start, idx);
+            scrollAnim.setDuration(500);
+            scrollAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            scrollAnim.addUpdateListener(a -> { animCenter = (Float) a.getAnimatedValue(); invalidate(); });
+            scrollAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) { animCenter = cur; }
+            });
+            scrollAnim.start();
         }
     }
 
@@ -99,6 +120,8 @@ public class LyricsView extends View {
         int center = cur < 0 ? 0 : cur;
         float rowH = h / 5f;
         float cx = w / 2, cy = h / 2;
+        // 滑动中的整组竖向偏移：当前行组从旧中心滑向新中心
+        float shift = (center - (animCenter >= 0 ? animCenter : center)) * rowH;
         float dp = getResources().getDisplayMetrics().density;
         Lyrics.Line curLine = center >= 0 && center < lines.size() ? lines.get(center) : null;
         boolean showRoma = curLine != null && curLine.roma != null && !curLine.roma.isEmpty() && Lyrics.isShowRoma(getContext());
@@ -117,6 +140,7 @@ public class LyricsView extends View {
         } else {
             mainBase = cy - (fmC.ascent + fmC.descent) / 2;
         }
+        mainBase += shift;
         for (int off = -2; off <= 2; off++) {
             int i = center + off;
             if (i < 0 || i >= lines.size()) continue;
@@ -139,7 +163,7 @@ public class LyricsView extends View {
             }
             Paint p = Math.abs(off) == 1 ? pNear : pFar;
             Paint.FontMetrics fm = p.getFontMetrics();
-            float y = cy + off * rowH - (fm.ascent + fm.descent) / 2;
+            float y = cy + off * rowH - (fm.ascent + fm.descent) / 2 + shift;
             String text = lines.get(i).text;
             float maxW = w - 24;
             if (p.measureText(text) > maxW) {

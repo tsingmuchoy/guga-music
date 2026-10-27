@@ -58,18 +58,6 @@
             android:layout_marginRight="16dp"
             android:orientation="horizontal" />
 
-        <!-- 收藏返回栏 -->
-        <TextView
-            android:id="@+id/btnFavBack"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="16dp"
-            android:layout_marginBottom="4dp"
-            android:text="‹ 返回收藏夹列表"
-            android:textColor="?attr/gAccent"
-            android:textSize="14sp"
-            android:visibility="gone" />
-
         <LinearLayout
             android:id="@+id/llFavSwitch"
             android:layout_width="match_parent"
