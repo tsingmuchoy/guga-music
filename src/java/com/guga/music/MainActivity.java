@@ -51,6 +51,12 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private boolean searchMore = true;
     private boolean recommendStarted = false; // 主页推荐只在进 App 时拉一次
     private boolean hasSearched = false; // 搜过之后推荐回调不再回填，避免盖掉搜索结果
+    // 推荐换一换：整榜缓存 + 每批 30 条轮换，换完一轮切榜单维度（总榜→日榜→周榜→月榜→总榜）
+    private List<Track> recommendAll = new ArrayList<>();
+    private int recommendBatch = 0;
+    private int recommendTypeIdx = 0;
+    private static final String[] RECOMMEND_TYPES = {"all", "day", "week", "month"};
+    private static final String[] RECOMMEND_TYPE_NAMES = {"总榜", "日榜", "周榜", "月榜"};
     private View searchFooter;
     private List<Track> favTracksAll = new ArrayList<>();
     private int favPage = 1;
@@ -537,8 +543,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         api.search(kw, 1, searchOrder, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
                 searchLoading = false;
+                boolean wasPull = pullRefreshing;
                 finishPullRefresh();
                 if (tab != 0) return;
+                boolean identical = wasPull && sameBvids(displayTracks, v);
                 displayTracks.clear();
                 displayTracks.addAll(v);
                 lvMain.setAdapter(trackAdapter);
@@ -546,7 +554,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 searchMore = v.size() >= 20;
                 refreshSearchTotal();
                 updateSearchFooter();
-                lvMain.setSelection(0);
+                if (identical) Toast.makeText(MainActivity.this, "搜索结果已是最新", Toast.LENGTH_SHORT).show();
+                else lvMain.setSelection(0);
                 hint(v.isEmpty() ? "没搜到结果，换个词试试" : null);
             }
             @Override public void onErr(String msg) {
@@ -611,6 +620,16 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private void refreshSearchTotal() {
         int total = api.lastSearchTotal;
         searchTotalPages = total > 0 ? (total + 19) / 20 : 0;
+    }
+
+    /** 两批搜索结果是否同一批 bvid 同顺序（下拉刷新判“已是最新”用） */
+    private boolean sameBvids(List<Track> a, List<Track> b) {
+        if (a == null || b == null || a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            String x = a.get(i).bvid, y = b.get(i).bvid;
+            if (x == null ? y != null : !x.equals(y)) return false;
+        }
+        return true;
     }
 
     private void updateSearchFooter() {
@@ -1359,8 +1378,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         switch (tab) {
             case 0:
                 if (searchKw.isEmpty()) {
-                    recommendStarted = false;
-                    loadRecommendations();
+                    refreshRecommendations();
                 } else if (!searchLoading) {
                     doSearch(searchKw);
                 } else {
@@ -1377,29 +1395,71 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
     /** 主页推荐：进 App 时把 B 站音乐区排行填进搜索页，点行就能直接播 */
     private void loadRecommendations() {
+        fetchRanking(recommendTypeIdx, false);
+    }
+
+    /** 拉指定维度的榜单；成功则整榜缓存、回到第 1 批；换榜下拉成功时 Toast 告诉用户换到哪个榜 */
+    private void fetchRanking(final int typeIdx, final boolean toastOnSuccess) {
         if (!pullQuiet) hint("正在为你找今日音乐推荐… 🎵");
-        api.musicRanking(new BiliApi.Cb<List<Track>>() {
+        api.musicRanking(RECOMMEND_TYPES[typeIdx], new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
                 finishPullRefresh();
                 // 切走了就别回填（displayTracks 与历史页共用），下次回搜索页再拉；
                 // 拉取途中用户已搜过也别盖掉搜索结果
                 if (tab != 0) { recommendStarted = false; return; }
                 if (hasSearched) return;
-                displayTracks.clear();
-                displayTracks.addAll(v);
-                lvMain.setAdapter(trackAdapter);
-                trackAdapter.notifyDataSetChanged();
+                recommendTypeIdx = typeIdx;
+                recommendAll.clear();
+                recommendAll.addAll(v);
+                recommendBatch = 0;
+                showRecommendBatch();
+                if (toastOnSuccess) Toast.makeText(MainActivity.this, "已换成" + RECOMMEND_TYPE_NAMES[typeIdx], Toast.LENGTH_SHORT).show();
                 hint(v.isEmpty() ? "搜一首歌，开始听吧 🎧" : null);
             }
             @Override public void onErr(String msg) {
                 boolean wasPull = pullRefreshing;
                 finishPullRefresh();
                 if (tab != 0) { recommendStarted = false; return; }
+                // 首屏总榜失败退日榜（保留旧行为）；下拉换榜失败不退，老内容不动
+                if (!wasPull && typeIdx == 0) { fetchRanking(1, false); return; }
                 Diag.log(MainActivity.this, "🎵 音乐推荐加载失败：" + msg);
                 if (wasPull) Toast.makeText(MainActivity.this, "刷新失败：" + msg, Toast.LENGTH_SHORT).show();
                 else hint("搜一首歌，开始听吧 🎧");
             }
         });
+    }
+
+    /** 推荐当前批（每批 30 条）上屏 */
+    private void showRecommendBatch() {
+        int from = recommendBatch * 30;
+        int to = Math.min(from + 30, recommendAll.size());
+        displayTracks.clear();
+        if (to > from) displayTracks.addAll(recommendAll.subList(from, to));
+        lvMain.setAdapter(trackAdapter);
+        trackAdapter.notifyDataSetChanged();
+    }
+
+    /** 推荐页下拉 = 换一换：有下一批直接切（秒换、无需联网），一轮换完或只有一批就换榜单维度重拉 */
+    private void refreshRecommendations() {
+        recommendStarted = false;
+        hasSearched = false;
+        if (recommendAll.isEmpty()) {
+            loadRecommendations();
+            return;
+        }
+        int batches = (recommendAll.size() + 29) / 30;
+        if (batches > 1) {
+            int next = (recommendBatch + 1) % batches;
+            if (next == 0) {
+                fetchRanking((recommendTypeIdx + 1) % RECOMMEND_TYPES.length, true);
+            } else {
+                recommendBatch = next;
+                showRecommendBatch();
+                finishPullRefresh();
+            }
+        } else {
+            fetchRanking((recommendTypeIdx + 1) % RECOMMEND_TYPES.length, true);
+        }
     }
 
     private void showHistory() {

@@ -236,20 +236,16 @@ public class BiliApi {
         }, cb);
     }
 
-    /** 主页推荐：B 站音乐区排行（rid=3），全是音乐相关，不用登录；all 不行就退到日榜 */
-    public void musicRanking(Cb<List<Track>> cb) {
+    /** 主页推荐：B 站音乐区排行（rid=3），全是音乐相关，不用登录；返回整榜（不截 30 条），调用方分批“换一换”展示 */
+    public void musicRanking(String type, Cb<List<Track>> cb) {
         run(() -> {
-            JSONObject j = getJson("https://api.bilibili.com/x/web-interface/ranking/v2?rid=3&type=all");
-            JSONObject d = j.optJSONObject("data");
-            if (j.getInt("code") != 0 || d == null || d.optJSONArray("list") == null
-                    || d.optJSONArray("list").length() == 0) {
-                j = getJson("https://api.bilibili.com/x/web-interface/ranking/v2?rid=3&type=day");
-            }
+            JSONObject j = getJson("https://api.bilibili.com/x/web-interface/ranking/v2?rid=3&type=" + type);
             if (j.getInt("code") != 0) throw new Exception("推荐失败：" + j.optString("message"));
             List<Track> out = new ArrayList<>();
-            JSONArray arr = j.getJSONObject("data").optJSONArray("list");
+            JSONObject d = j.optJSONObject("data");
+            JSONArray arr = d == null ? null : d.optJSONArray("list");
             if (arr != null) {
-                for (int i = 0; i < arr.length() && out.size() < 30; i++) {
+                for (int i = 0; i < arr.length(); i++) {
                     JSONObject o = arr.getJSONObject(i);
                     Track t = new Track();
                     t.bvid = o.optString("bvid");
@@ -263,6 +259,7 @@ public class BiliApi {
                     if (!t.bvid.isEmpty()) out.add(t);
                 }
             }
+            if (out.isEmpty()) throw new Exception("推荐为空");
             return out;
         }, cb);
     }
