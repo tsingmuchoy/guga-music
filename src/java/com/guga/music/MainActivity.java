@@ -51,7 +51,9 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private boolean searchMore = true;
     private boolean recommendStarted = false; // 主页推荐只在进 App 时拉一次
     private boolean hasSearched = false; // 搜过之后推荐回调不再回填，避免盖掉搜索结果
-    private TextView searchFooter;
+    private View searchFooter;
+    private TextView btnPagePrev, btnPageNext, tvPageInfo;
+    private int searchTotalPages = 0; // 接口给总条数时算出，0 表示未知（下一页按本页是否满 20 条判断）
     private android.widget.LinearLayout llSortChips;
     private static final String[][] SORTS = {
             {"综合", ""}, {"最多播放", "click"}, {"最新发布", "pubdate"}, {"最多弹幕", "dm"}, {"最多收藏", "stow"}};
@@ -98,12 +100,24 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         btnFavBack = findViewById(R.id.btnFavBack);
         svMine = findViewById(R.id.svMine);
         lvMain = findViewById(R.id.lvMain);
-        searchFooter = new TextView(this);
-        searchFooter.setGravity(android.view.Gravity.CENTER);
+        // 搜索页底部分页条：像 B 站那样上一页 / 第 X / 共 Y 页 / 下一页
+        android.widget.LinearLayout pageBar = new android.widget.LinearLayout(this);
+        pageBar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        pageBar.setGravity(android.view.Gravity.CENTER);
         float fden = getResources().getDisplayMetrics().density;
-        searchFooter.setPadding(0, (int) (12 * fden), 0, (int) (12 * fden));
-        searchFooter.setTextSize(12);
-        searchFooter.setTextColor(ThemeUtil.color(this, R.attr.gTextFaint));
+        pageBar.setPadding(0, (int) (12 * fden), 0, (int) (16 * fden));
+        btnPagePrev = pageBtn("◀ 上一页");
+        btnPagePrev.setOnClickListener(v -> { Haptics.tick(this); gotoSearchPage(searchPage - 1); });
+        tvPageInfo = new TextView(this);
+        tvPageInfo.setTextSize(12);
+        tvPageInfo.setTextColor(ThemeUtil.color(this, R.attr.gTextFaint));
+        tvPageInfo.setPadding((int) (16 * fden), 0, (int) (16 * fden), 0);
+        btnPageNext = pageBtn("下一页 ▶");
+        btnPageNext.setOnClickListener(v -> { Haptics.tick(this); gotoSearchPage(searchPage + 1); });
+        pageBar.addView(btnPagePrev);
+        pageBar.addView(tvPageInfo);
+        pageBar.addView(btnPageNext);
+        searchFooter = pageBar;
         searchFooter.setVisibility(View.GONE);
         lvMain.addFooterView(searchFooter);
         buildSortChips();
@@ -117,7 +131,6 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                     if (now - ratchetAt >= 45) { ratchetAt = now; Haptics.tick(MainActivity.this); }
                 }
                 ratchetIdx = first;
-                if (tab == 0 && searchMore && !searchLoading && total > 0 && first + visible >= total - 3) loadMoreSearch();
                 // 真液态玻璃：列表滚动时底衬在变，底栏需重录
                 if (lensBars) invalidateGlassBars();
             }
@@ -440,8 +453,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 displayTracks.addAll(v);
                 lvMain.setAdapter(trackAdapter);
                 trackAdapter.notifyDataSetChanged();
-                searchMore = v.size() >= 50;
+                searchMore = v.size() >= 20;
+                refreshSearchTotal();
                 updateSearchFooter();
+                lvMain.setSelection(0);
                 hint(v.isEmpty() ? "没搜到结果，换个词试试" : null);
             }
             @Override public void onErr(String msg) {
@@ -452,29 +467,57 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         });
     }
 
-    /** 搜索翻页：滑到接近底部时自动续接下一页（每页 50 条，去重追加） */
-    private void loadMoreSearch() {
-        if (searchKw.isEmpty() || searchLoading || !searchMore) return;
+    /** 搜索翻页：像 B 站那样上一页/下一页整页切换（每页 20 条），不再下滑追加 */
+    private void gotoSearchPage(int page) {
+        if (searchKw.isEmpty() || searchLoading || page < 1) return;
+        if (searchTotalPages > 0 && page > searchTotalPages) return;
         searchLoading = true;
         updateSearchFooter();
-        final int next = searchPage + 1;
-        api.search(searchKw, next, searchOrder, new BiliApi.Cb<List<Track>>() {
+        final int target = page;
+        api.search(searchKw, target, searchOrder, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
                 searchLoading = false;
                 if (tab != 0) { updateSearchFooter(); return; }
-                searchPage = next;
-                java.util.Set<String> seen = new java.util.HashSet<>();
-                for (Track t : displayTracks) seen.add(t.bvid);
-                for (Track t : v) if (seen.add(t.bvid)) displayTracks.add(t);
+                searchPage = target;
+                displayTracks.clear();
+                displayTracks.addAll(v);
                 trackAdapter.notifyDataSetChanged();
-                searchMore = v.size() >= 50;
+                searchMore = v.size() >= 20;
+                refreshSearchTotal();
                 updateSearchFooter();
+                lvMain.setSelection(0);
+                if (v.isEmpty()) hint("这页没结果");
             }
             @Override public void onErr(String msg) {
                 searchLoading = false;
+                if (tab == 0) hint("翻页失败：" + msg);
                 updateSearchFooter();
             }
         });
+    }
+
+    /** 分页条按钮：主题强调色，禁用时变淡 */
+    private TextView pageBtn(String t) {
+        TextView b = new TextView(this);
+        b.setText(t);
+        b.setTextSize(13);
+        b.setTypeface(null, android.graphics.Typeface.BOLD);
+        float d = getResources().getDisplayMetrics().density;
+        b.setPadding((int) (14 * d), (int) (8 * d), (int) (14 * d), (int) (8 * d));
+        b.setTextColor(ThemeUtil.color(this, R.attr.gAccent));
+        return b;
+    }
+
+    private void setPageBtn(TextView b, boolean enabled) {
+        if (b == null) return;
+        b.setEnabled(enabled);
+        b.setTextColor(ThemeUtil.color(this, enabled ? R.attr.gAccent : R.attr.gTextFaint));
+    }
+
+    /** 按接口总条数算总页数；接口没给时总页数未知（0） */
+    private void refreshSearchTotal() {
+        int total = api.lastSearchTotal;
+        searchTotalPages = total > 0 ? (total + 19) / 20 : 0;
     }
 
     private void updateSearchFooter() {
@@ -484,9 +527,19 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             return;
         }
         searchFooter.setVisibility(View.VISIBLE);
-        if (searchLoading) searchFooter.setText("加载中…");
-        else if (searchMore) searchFooter.setText("第 " + searchPage + " 页 · 已加载 " + displayTracks.size() + " 条 · 继续下滑加载更多");
-        else searchFooter.setText("— 全部加载完 · 共 " + displayTracks.size() + " 条 —");
+        if (searchLoading) {
+            tvPageInfo.setText("加载中…");
+            setPageBtn(btnPagePrev, false);
+            setPageBtn(btnPageNext, false);
+            return;
+        }
+        boolean hasPrev = searchPage > 1;
+        boolean hasNext = searchTotalPages > 0 ? searchPage < searchTotalPages : searchMore;
+        tvPageInfo.setText(searchTotalPages > 0
+                ? "第 " + searchPage + " / 共 " + searchTotalPages + " 页"
+                : "第 " + searchPage + " 页");
+        setPageBtn(btnPagePrev, hasPrev);
+        setPageBtn(btnPageNext, hasNext);
     }
 
     // ---------------- 播放统计（历史页上半独立滚动区，与下方历史列表分栏） ----------------

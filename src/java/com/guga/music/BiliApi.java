@@ -48,6 +48,9 @@ public class BiliApi {
     private final SharedPreferences sp;
     private final Context appCtx;
 
+    /** 最近一次搜索接口返回的总条数（data.numResults），-1 表示接口没给 */
+    public int lastSearchTotal = -1;
+
     public BiliApi(Context ctx) {
         appCtx = ctx.getApplicationContext();
         sp = ctx.getSharedPreferences("bili", Context.MODE_PRIVATE);
@@ -269,7 +272,7 @@ public class BiliApi {
         p.put("search_type", "video");
         p.put("keyword", keyword);
         p.put("page", String.valueOf(page));
-        p.put("page_size", "50");
+        p.put("page_size", "20");
         if (order != null && !order.isEmpty()) p.put("order", order);
         String url = "https://api.bilibili.com/x/web-interface/wbi/search/type?" + Wbi.signQuery(p, mixin());
         JSONObject j = getJson(url);
@@ -282,7 +285,7 @@ public class BiliApi {
 
     private List<Track> searchLegacy(String keyword, int page, String order) throws Exception {
         String url = "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword="
-                + enc(keyword) + "&page=" + page + "&page_size=50"
+                + enc(keyword) + "&page=" + page + "&page_size=20"
                 + (order == null || order.isEmpty() ? "" : "&order=" + order);
         JSONObject j = getJson(url);
         if (j.getInt("code") != 0) throw new Exception("搜索失败：" + j.optString("message"));
@@ -291,6 +294,8 @@ public class BiliApi {
 
     private List<Track> parseSearch(JSONObject j) throws Exception {
         List<Track> out = new ArrayList<>();
+        JSONObject d = j.optJSONObject("data");
+        lastSearchTotal = d == null ? -1 : d.optInt("numResults", -1);
         JSONArray arr = j.getJSONObject("data").optJSONArray("result");
         if (arr != null) {
             for (int i = 0; i < arr.length(); i++) {
