@@ -373,8 +373,13 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         }
         if (i == 2) attachStatsHeader(); else detachStatsHeader();
         updateSearchFooter();
-        // 真液态玻璃：切页后底衬内容变了，底栏需重录
-        if (lensBars) invalidateGlassBars();
+        // 真液态玻璃：切页帧先让新内容上屏，底栏透镜下一帧再重录。
+        // 同帧重录要连做数次整页捕获（底栏+搜索区），正是切页顿一下的元凶之一；
+        // 底栏只占底部小条，晚一帧的旧折射看不出来。搜索区玻璃随显隐自动重绘，不用另行刷。
+        if (lensBars) {
+            if (barMini != null) barMini.post(barMini::invalidate);
+            if (barTabs != null) barTabs.post(barTabs::invalidate);
+        }
     }
 
     /** 真液态玻璃重录：底栏 + 搜索区（列表滚动/切页后底衬变了时调用） */
@@ -1014,6 +1019,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             return;
         }
         hint("加载收藏夹…");
+        // 切页当帧立刻换上收藏夹适配器（先用上次缓存的 folders，没有就空列表），
+        // 别等网络回来才换——否则这帧 ListView 里还是上个页的内容，
+        // 看着就是“先显示上个页面、等网络回来才刷新”
+        lvMain.setAdapter(folderAdapter);
+        folderAdapter.notifyDataSetChanged();
         api.favFolders(new BiliApi.Cb<List<BiliApi.FavFolder>>() {
             @Override public void onOk(List<BiliApi.FavFolder> v) {
                 if (tab != 1) return;
