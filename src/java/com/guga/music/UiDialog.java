@@ -30,7 +30,7 @@ public class UiDialog {
     }
 
     private static LinearLayout card(Activity a) {
-        LinearLayout ll = new LinearLayout(a);
+        GlassLinearLayout ll = new GlassLinearLayout(a);
         ll.setOrientation(LinearLayout.VERTICAL);
         ll.setBackgroundResource(R.drawable.bg_dialog);
         ll.setPadding(dp(a, 22), dp(a, 20), dp(a, 22), dp(a, 16));
@@ -51,6 +51,8 @@ public class UiDialog {
         d.show();
         if (d.getWindow() != null)
             d.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        // 透镜底衬取宿主 Activity 的布局根（弹窗是独立窗口，底衬不能是自己）
+        GlassTheme.bindWithBackdrop(root, GlassTheme.activityBackdrop(a));
         return d;
     }
 

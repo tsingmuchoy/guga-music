@@ -17,6 +17,7 @@ public class SettingsActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
         Haptics.ratchetPage(this);
+        GlassTheme.bindActivity(this);
 
         eTheme = findViewById(R.id.btnEntryTheme);
         ePlayback = findViewById(R.id.btnEntryPlayback);

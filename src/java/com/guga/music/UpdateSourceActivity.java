@@ -61,7 +61,7 @@ public class UpdateSourceActivity extends Activity {
         int pad = (int) (16 * density);
         for (String[] o : opts) {
             final String key = o[0];
-            LinearLayout row = new LinearLayout(this);
+            GlassLinearLayout row = new GlassLinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(pad, pad, pad, pad);
@@ -95,5 +95,6 @@ public class UpdateSourceActivity extends Activity {
             });
             box.addView(row);
         }
+        GlassTheme.bindActivity(this);
     }
 }

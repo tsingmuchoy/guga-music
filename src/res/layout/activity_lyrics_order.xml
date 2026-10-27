@@ -34,7 +34,7 @@
             android:layout_marginTop="4dp"
             android:orientation="vertical" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnLyricOrderReset"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

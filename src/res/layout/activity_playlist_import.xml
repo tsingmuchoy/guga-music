@@ -57,7 +57,7 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <EditText
+    <com.guga.music.GlassEditText
         android:id="@+id/etLink"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -85,7 +85,7 @@
             android:orientation="horizontal" />
     </HorizontalScrollView>
 
-    <TextView
+    <com.guga.music.GlassTextView
         android:id="@+id/btnStart"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -140,7 +140,7 @@
             android:textSize="13sp" />
     </LinearLayout>
 
-    <LinearLayout
+    <com.guga.music.GlassLinearLayout
         android:id="@+id/llFail"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -167,7 +167,7 @@
             android:textColor="?attr/gTextSec"
             android:textSize="12sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnRetryFail"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -180,7 +180,7 @@
             android:textColor="?attr/gAccent"
             android:textSize="13sp"
             android:textStyle="bold" />
-    </LinearLayout>
+    </com.guga.music.GlassLinearLayout>
 
     <LinearLayout
         android:id="@+id/llResult"
@@ -198,7 +198,7 @@
             android:textColor="?attr/gTextSec"
             android:textSize="12sp" />
 
-        <EditText
+        <com.guga.music.GlassEditText
             android:id="@+id/etName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -276,7 +276,7 @@
                 android:textSize="11.5sp" />
         </ScrollView>
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

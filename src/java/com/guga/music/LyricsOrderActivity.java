@@ -16,6 +16,7 @@ public class LyricsOrderActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_lyrics_order);
         Haptics.ratchetPage(this);
+        GlassTheme.bindActivity(this);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         buildLyricOrderRows();
         findViewById(R.id.btnLyricOrderReset).setOnClickListener(v -> {
@@ -35,7 +36,7 @@ public class LyricsOrderActivity extends Activity {
         for (int i = 0; i < order.size(); i++) {
             final int idx = i;
             final String key = order.get(i);
-            LinearLayout row = new LinearLayout(this);
+            GlassLinearLayout row = new GlassLinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(pad, pad, pad, pad);
@@ -80,5 +81,6 @@ public class LyricsOrderActivity extends Activity {
 
             box.addView(row);
         }
+        GlassTheme.bindActivity(this);
     }
 }

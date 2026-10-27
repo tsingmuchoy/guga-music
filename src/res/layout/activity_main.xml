@@ -18,7 +18,7 @@
             android:layout_margin="12dp"
             android:orientation="horizontal">
 
-            <EditText
+            <com.guga.music.GlassEditText
                 android:id="@+id/etSearch"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
@@ -34,7 +34,7 @@
                 android:textColorHint="?attr/gTextFaint"
                 android:textSize="15sp" />
 
-            <TextView
+            <com.guga.music.GlassTextView
                 android:id="@+id/btnSearch"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
@@ -81,7 +81,7 @@
             android:orientation="horizontal"
             android:visibility="gone">
 
-            <TextView
+            <com.guga.music.GlassTextView
                 android:id="@+id/chipFavBili"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -95,7 +95,7 @@
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
-            <TextView
+            <com.guga.music.GlassTextView
                 android:id="@+id/chipFavLocal"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -231,7 +231,7 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <LinearLayout
+                    <com.guga.music.GlassLinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:background="@drawable/bg_card"
@@ -270,7 +270,7 @@
                                 android:textSize="12sp" />
                         </LinearLayout>
 
-                        <TextView
+                        <com.guga.music.GlassTextView
                             android:id="@+id/btnLogin"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
@@ -283,9 +283,9 @@
                             android:textColor="?attr/gOnAccent"
                             android:textSize="14sp"
                             android:textStyle="bold" />
-                    </LinearLayout>
+                    </com.guga.music.GlassLinearLayout>
 
-                    <TextView
+                    <com.guga.music.GlassTextView
                         android:id="@+id/btnSettings"
                         android:layout_width="match_parent"
                     android:drawableStart="@drawable/ic_gear"

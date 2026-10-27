@@ -56,6 +56,7 @@ public class LyricsSearchActivity extends Activity {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_lyrics_search);
+        GlassTheme.bindActivity(this);
         Intent it = getIntent();
         bvid = it.getStringExtra("bvid");
         videoTitle = it.getStringExtra("title");
@@ -207,6 +208,7 @@ public class LyricsSearchActivity extends Activity {
                     dlg0.show();
                     if (dlg0.getWindow() != null) dlg0.getWindow().setBackgroundDrawable(
                             new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+                    GlassTheme.bindWithBackdrop(root0, GlassTheme.activityBackdrop(this));
                     return;
                 }
                 // 预览：不用系统灰弹窗——自家深色圆角卡，完整歌词放可拖动的滚动区里看全
@@ -246,6 +248,7 @@ public class LyricsSearchActivity extends Activity {
                     dlg.getWindow().setBackgroundDrawable(
                             new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
                 }
+                GlassTheme.bindWithBackdrop(root, GlassTheme.activityBackdrop(this));
             });
         }).start();
     }

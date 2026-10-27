@@ -20,6 +20,7 @@ public class ThemeSettingsActivity extends Activity {
         Haptics.ratchetPage(this);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         buildThemeRows();
+        GlassTheme.bindActivity(this);
     }
 
     private void buildThemeRows() {
@@ -27,7 +28,7 @@ public class ThemeSettingsActivity extends Activity {
         String cur = ThemeUtil.currentId(this);
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
         for (ThemeUtil.Def d : ThemeUtil.DEFS) {
-            LinearLayout row = new LinearLayout(this);
+            GlassLinearLayout row = new GlassLinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(pad, pad, pad, pad);

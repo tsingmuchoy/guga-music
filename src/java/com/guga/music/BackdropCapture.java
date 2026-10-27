@@ -97,7 +97,7 @@ public class BackdropCapture {
         ViewGroup g = (ViewGroup) host;
         for (int i = 0; i < g.getChildCount(); i++) {
             View child = g.getChildAt(i);
-            if (child == except || !(child instanceof GlassBarLayout)) continue;
+            if (child == except || !(child instanceof GlassLensHost)) continue;
             if (child.getVisibility() == View.VISIBLE) {
                 child.setTransitionVisibility(View.INVISIBLE);
                 nestedHidden.add(child);

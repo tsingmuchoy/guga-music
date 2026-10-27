@@ -270,6 +270,12 @@ public class LiquidGlassLens {
 
     private RuntimeShader shader;
     private boolean shaderBroken;
+    private int tintArgb;
+
+    /** 选中态芯片等保留底色时用（straight-alpha ARGB，a=0 关闭） */
+    public void setTint(int argb) {
+        tintArgb = argb;
+    }
 
     private float sampleLoX;
     private float sampleLoY;
@@ -400,10 +406,12 @@ public class LiquidGlassLens {
         float cy = height / 2f;
         float hw = width / 2f;
         float hh = height / 2f;
+        // 圆角不超出半高：小芯片自动成药丸全圆角，大卡片保持设定圆角
+        float corner = Math.min(cornerPx, Math.min(width, height) / 2f);
         sh.setFloatUniform("margin", (float) marginPx);
         sh.setFloatUniform("viewSize", (float) width, (float) height);
         sh.setFloatUniform("shape1", cx, cy, hw, hh);
-        sh.setFloatUniform("radii1", cornerPx, cornerPx, cornerPx, cornerPx);
+        sh.setFloatUniform("radii1", corner, corner, corner, corner);
         // 无平边：透镜形状与主形状相同（悬浮 pill 四角均为圆角）
         sh.setFloatUniform("shape1L", cx, cy, hw, hh);
         sh.setFloatUniform("rimSoft", 0f);
@@ -421,8 +429,12 @@ public class LiquidGlassLens {
         sh.setFloatUniform("lightDir", lightX, lightY);
         sh.setFloatUniform("specStrength", spec);
         sh.setFloatUniform("rimBandMax", rimBandMaxPx);
-        // 本体染色关闭：纯折射 + 高光，不额外着色
-        sh.setFloatUniform("tintColor", 0f, 0f, 0f, 0f);
+        // 本体染色：默认关闭；选中态芯片传 accent 色保留选中态底色
+        sh.setFloatUniform("tintColor",
+                android.graphics.Color.red(tintArgb) / 255f,
+                android.graphics.Color.green(tintArgb) / 255f,
+                android.graphics.Color.blue(tintArgb) / 255f,
+                android.graphics.Color.alpha(tintArgb) / 255f);
         sh.setFloatUniform("adaptiveTint", 0f);
         sh.setFloatUniform("glassTint", 0f, 0f, 0f, 0f);
         sh.setFloatUniform("dimAmount", 0f);

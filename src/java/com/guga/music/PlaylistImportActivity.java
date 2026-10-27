@@ -56,6 +56,7 @@ private final List<PlaylistImport.Src> unmatched = new ArrayList<>();
 super.onCreate(saved);
 ThemeUtil.apply(this);
 setContentView(R.layout.activity_playlist_import);
+GlassTheme.bindActivity(this);
 api = new BiliApi(getApplicationContext());
 etLink = findViewById(R.id.etLink);
 etName = findViewById(R.id.etName);

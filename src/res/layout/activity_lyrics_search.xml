@@ -61,7 +61,7 @@
         android:textColor="?attr/gTextSec"
         android:textSize="12sp" />
 
-    <EditText
+    <com.guga.music.GlassEditText
         android:id="@+id/etSongName"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -82,7 +82,7 @@
         android:textColor="?attr/gTextSec"
         android:textSize="12sp" />
 
-    <EditText
+    <com.guga.music.GlassEditText
         android:id="@+id/etArtist"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -95,7 +95,7 @@
         android:textColorHint="?attr/gTextFaint"
         android:textSize="14sp" />
 
-    <TextView
+    <com.guga.music.GlassTextView
         android:id="@+id/btnDoSearch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

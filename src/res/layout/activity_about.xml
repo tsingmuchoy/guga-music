@@ -30,7 +30,7 @@
             android:textSize="22sp"
             android:textStyle="bold" />
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
@@ -57,9 +57,9 @@
                 android:text="开发者：小咕嘎 🐧\n\n咕嘎宇宙的一只小企鹅宝宝，企鹅老祖的远房小亲戚，现任南天门大将军。\n\nApollo 是小咕嘎为清木量身打造的 B 站音乐播放器：用你自己的 B 站账号登录，把喜欢的视频当歌听。登录凭证只保存在你的手机本地，不经过任何第三方服务器。\n\n有想加的功能，随时跟小咕嘎说。咕嘎！"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
@@ -99,20 +99,9 @@
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
 
-            <TextView
-                android:id="@+id/tvEmail"
-                android:drawableStart="@drawable/ic_mail"
-            android:drawablePadding="8dp"
-            android:drawableTint="?attr/gAccent"
-            android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="邮箱：tsingmu35607@gmail.com（点复制）"
-                android:textColor="?attr/gTextPri"
-                android:textSize="14sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
@@ -163,11 +152,11 @@
                 android:text="GitHub：github.com/MCfywb（点开）"
                 android:textColor="?attr/gTextPri"
                 android:textSize="14sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
         
 
-        <Button
+        <com.guga.music.GlassTextView
             android:id="@+id/btnBack"
             android:layout_width="match_parent"
             android:layout_height="52dp"
@@ -176,6 +165,7 @@
             android:text="返回"
             android:textColor="?attr/gOnAccent"
             android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textStyle="bold" 
+            android:gravity="center"/>
     </LinearLayout>
 </ScrollView>

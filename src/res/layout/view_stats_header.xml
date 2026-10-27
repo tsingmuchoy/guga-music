@@ -22,7 +22,7 @@
         android:textColor="?attr/gTextFaint"
         android:textSize="11sp" />
 
-    <LinearLayout
+    <com.guga.music.GlassLinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
@@ -104,7 +104,7 @@
                 android:textColor="?attr/gTextFaint"
                 android:textSize="11sp" />
         </LinearLayout>
-    </LinearLayout>
+    </com.guga.music.GlassLinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -112,7 +112,7 @@
         android:layout_marginTop="10dp"
         android:orientation="horizontal">
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnStatExport"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -126,7 +126,7 @@
             android:textColor="?attr/gTextSec"
             android:textSize="12sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnStatImport"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -141,7 +141,7 @@
             android:textColor="?attr/gTextSec"
             android:textSize="12sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnStatClear"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

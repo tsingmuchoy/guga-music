@@ -52,6 +52,7 @@ public class PlaylistPicker {
         }));
         root.findViewById(R.id.btnPickerCancel).setOnClickListener(v -> dlg.dismiss());
         dlg.show();
+        GlassTheme.bindWithBackdrop(root, GlassTheme.activityBackdrop(act));
     }
 
     private static View row(Activity act, String main, String sub, int icon, View.OnClickListener cb) {
@@ -111,5 +112,10 @@ public class PlaylistPicker {
             cb.onName(name);
         });
         dlg.show();
+        GlassTheme.bindWithBackdrop(root, GlassTheme.activityBackdrop(act));
+        View okBtn = root.findViewById(R.id.btnInputOk);
+        if (okBtn instanceof GlassTextView && ((GlassTextView) okBtn).isLensOn()) {
+            ((GlassTextView) okBtn).setLensTint(GlassTheme.selectedTint(act));
+        }
     }
 }

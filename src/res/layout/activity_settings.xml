@@ -18,7 +18,7 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnEntryTheme"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -28,7 +28,7 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnEntryPlayback"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -38,7 +38,7 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnEntryLyrics"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -48,7 +48,7 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnEntryUpdate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -58,7 +58,7 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnEntryDiag"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -68,7 +68,7 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnHaptics"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -88,7 +88,7 @@
             android:textSize="14sp"
             android:textStyle="bold" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnClearHistory"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -99,7 +99,7 @@
             android:textColor="?attr/gTextPri"
             android:textSize="15sp" />
 
-        <TextView
+        <com.guga.music.GlassTextView
             android:id="@+id/btnAbout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

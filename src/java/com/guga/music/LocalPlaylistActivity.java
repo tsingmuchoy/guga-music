@@ -45,6 +45,7 @@ public class LocalPlaylistActivity extends Activity {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_local_playlist);
+        GlassTheme.bindActivity(this);
         db = new LocalDb(this);
         pid = getIntent().getLongExtra("pid", -1);
         String name = getIntent().getStringExtra("name");

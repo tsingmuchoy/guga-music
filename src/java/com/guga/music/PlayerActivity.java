@@ -55,6 +55,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_player);
+        GlassTheme.bindActivity(this);
         ivCover = findViewById(R.id.ivCover);
         ImageView ivBackdrop = findViewById(R.id.ivBackdrop);
         if (android.os.Build.VERSION.SDK_INT >= 31) {
@@ -292,6 +293,8 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             lp.height = h;
             llQueueSheet.setLayoutParams(lp);
         }
+        // 队列面板高度在变（拖拽/动画）：透镜需重录底衬
+        llQueueSheet.invalidate();
     }
 
     private void animateSheetTo(int target) {
@@ -463,7 +466,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         int cur = s == null ? 2 : s.getEffectiveTier();
         for (int i = 0; i < 5; i++) {
             final int tier = i;
-            TextView chip = new TextView(this);
+            GlassTextView chip = new GlassTextView(this);
             android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
                     0, (int) (38 * getResources().getDisplayMetrics().density), 1);
             lp.setMargins(3, 0, 3, 0);
@@ -487,6 +490,9 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             llQualityChips.addView(chip);
         }
         styleQualityChips(cur);
+        // 音质芯片是后建的：绑定透镜后再刷一次样式，选中态走透镜染色
+        GlassTheme.bindActivity(this);
+        styleQualityChips(cur);
     }
 
     private void styleQualityChips(int cur) {
@@ -495,8 +501,12 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         for (int i = 0; i < 5; i++) {
             if (chipViews[i] == null) continue;
             boolean on = i == cur;
-            chipViews[i].setBackgroundResource(on ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
-            if (on) chipViews[i].setBackground(ThemeUtil.accentGradient(this, 19));
+            if (chipViews[i] instanceof GlassTextView && ((GlassTextView) chipViews[i]).isLensOn()) {
+                ((GlassTextView) chipViews[i]).setLensTint(on ? GlassTheme.selectedTint(this) : 0);
+            } else {
+                chipViews[i].setBackgroundResource(on ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+                if (on) chipViews[i].setBackground(ThemeUtil.accentGradient(this, 19));
+            }
             chipViews[i].setTextColor(ThemeUtil.color(this, on ? R.attr.gOnAccent : R.attr.gTextPri));
             chipViews[i].setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
             chipViews[i].setAlpha(avail != null && !avail[i] ? 0.35f : 1f); // 本首没有的档位压暗

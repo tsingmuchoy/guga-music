@@ -122,14 +122,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         });
         rootMain = findViewById(R.id.rootMain);
         // 真液态玻璃：仅 glass 主题 + API 33+ 才实例化透镜引擎，其他主题零成本
-        lensBars = ThemeUtil.currentId(this).equals("glass")
-                && Build.VERSION.SDK_INT >= 33;
-        if (lensBars) {
-            barMini = findViewById(R.id.llMini);
-            barTabs = findViewById(R.id.llTabs);
-            barMini.setLensEnabled(true, rootMain);
-            barTabs.setLensEnabled(true, rootMain);
-        }
+        lensBars = GlassTheme.isLensActive(this);
+        barMini = findViewById(R.id.llMini);
+        barTabs = findViewById(R.id.llTabs);
+        GlassTheme.bindRoot(rootMain);
         tvHint = findViewById(R.id.tvHint);
         tvUname = findViewById(R.id.tvUname);
         tvMid = findViewById(R.id.tvMid);
@@ -276,6 +272,15 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         });
 
         selectTab(0);
+        // 透镜绑定后重刷芯片样式：选中态改走透镜染色，不再盖实色背景
+        if (lensBars) {
+            styleSortChips();
+            styleFavChips();
+            View btnSearch = findViewById(R.id.btnSearch);
+            if (btnSearch instanceof GlassTextView && ((GlassTextView) btnSearch).isLensOn()) {
+                ((GlassTextView) btnSearch).setLensTint(GlassTheme.selectedTint(this));
+            }
+        }
         hint("搜一首歌，开始听吧 🎧");
     }
 
@@ -372,10 +377,23 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         if (lensBars) invalidateGlassBars();
     }
 
-    /** 真液态玻璃底栏重录（滚动/切页导致底衬变化时调用） */
+    /** 真液态玻璃重录：底栏 + 搜索区（列表滚动/切页后底衬变了时调用） */
     private void invalidateGlassBars() {
         if (barMini != null) barMini.invalidate();
         if (barTabs != null) barTabs.invalidate();
+        if (!lensBars) return;
+        GlassTheme.invalidateGlass(llSearchBar);
+        GlassTheme.invalidateGlass(llSortChips);
+        GlassTheme.invalidateGlass(llFavSwitch);
+    }
+
+    /** 芯片透镜染色：透镜开着时选中态不再盖实色背景，改走 85% accent 染色；返回是否走了透镜分支 */
+    private boolean styleChipLens(TextView chip, boolean on) {
+        if (chip instanceof GlassTextView && ((GlassTextView) chip).isLensOn()) {
+            ((GlassTextView) chip).setLensTint(on ? GlassTheme.selectedTint(this) : 0);
+            return true;
+        }
+        return false;
     }
 
     private void hint(String msg) {
@@ -581,7 +599,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         float den = getResources().getDisplayMetrics().density;
         for (int i = 0; i < STAT_PERIOD_NAMES.length; i++) {
             final int idx = i;
-            TextView chip = new TextView(this);
+            GlassTextView chip = new GlassTextView(this);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, (int) (34 * den), 1);
             lp.setMargins(3, 0, 3, 0);
             chip.setLayoutParams(lp);
@@ -602,6 +620,9 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             statChips[i] = chip;
             box.addView(chip);
         }
+        styleStatChips();
+        // 统计头是后建的：绑定透镜后再刷一次样式，选中态走透镜染色
+        GlassTheme.bindActivity(this);
         styleStatChips();
     }
 
@@ -759,6 +780,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             dlg.getWindow().setBackgroundDrawable(
                     new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
         }
+        GlassTheme.bindWithBackdrop(root, GlassTheme.activityBackdrop(this));
     }
 
     /** 自定义统计范围：连选两次日期（开始 → 结束），选完存档并切到「自定义」档 */
@@ -787,11 +809,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         for (int i = 0; i < STAT_PERIOD_NAMES.length; i++) {
             boolean on = i == statPeriod;
             if (on) {
-                statChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
+                if (!styleChipLens(statChips[i], true)) statChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
                 statChips[i].setTextColor(ThemeUtil.color(this, R.attr.gOnAccent));
                 statChips[i].setTypeface(null, android.graphics.Typeface.BOLD);
             } else {
-                statChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
+                if (!styleChipLens(statChips[i], false)) statChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
                 statChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
                 statChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
             }
@@ -934,7 +956,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         float den = getResources().getDisplayMetrics().density;
         for (int i = 0; i < SORTS.length; i++) {
             final String ord = SORTS[i][1];
-            TextView chip = new TextView(this);
+            GlassTextView chip = new GlassTextView(this);
             android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
                     0, (int) (34 * den), 1);
             lp.setMargins(3, 0, 3, 0);
@@ -962,11 +984,11 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         for (int i = 0; i < SORTS.length; i++) {
             boolean on = SORTS[i][1].equals(searchOrder);
             if (on) {
-                sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
+                if (!styleChipLens(sortChips[i], true)) sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
                 sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gOnAccent));
                 sortChips[i].setTypeface(null, android.graphics.Typeface.BOLD);
             } else {
-                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
+                if (!styleChipLens(sortChips[i], false)) sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
                 sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
                 sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
             }
@@ -1006,9 +1028,9 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleFavChips() {
-        chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
+        if (!styleChipLens(chipFavBili, !favLocalMode)) chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
         chipFavBili.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent));
-        chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+        if (!styleChipLens(chipFavLocal, favLocalMode)) chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
         chipFavLocal.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec));
         btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
         if (btnImportLocal != null) btnImportLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);

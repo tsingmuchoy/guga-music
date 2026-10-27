@@ -26,7 +26,7 @@
             android:layout_marginTop="8dp"
             android:orientation="vertical" />
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:id="@+id/rowAlbumCover"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -51,9 +51,9 @@
                 android:text="›"
                 android:textColor="?attr/gAccent"
                 android:textSize="22sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
-            <LinearLayout
+            <com.guga.music.GlassLinearLayout
                 android:id="@+id/rowLyricTrans"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -71,9 +71,9 @@
                     android:layout_weight="1"
                     android:textColor="?attr/gTextPri"
                     android:textSize="15sp" />
-            </LinearLayout>
+            </com.guga.music.GlassLinearLayout>
 
-            <LinearLayout
+            <com.guga.music.GlassLinearLayout
                 android:id="@+id/rowLyricRoma"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -91,9 +91,9 @@
                     android:layout_weight="1"
                     android:textColor="?attr/gTextPri"
                     android:textSize="15sp" />
-            </LinearLayout>
+            </com.guga.music.GlassLinearLayout>
 
-            <LinearLayout
+            <com.guga.music.GlassLinearLayout
                 android:id="@+id/rowLyricWords"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -111,9 +111,9 @@
                     android:layout_weight="1"
                     android:textColor="?attr/gTextPri"
                     android:textSize="15sp" />
-            </LinearLayout>
+            </com.guga.music.GlassLinearLayout>
 
-            <LinearLayout
+            <com.guga.music.GlassLinearLayout
                 android:id="@+id/rowLyricSimWords"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -131,9 +131,9 @@
                     android:layout_weight="1"
                     android:textColor="?attr/gTextPri"
                     android:textSize="15sp" />
-            </LinearLayout>
+            </com.guga.music.GlassLinearLayout>
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:id="@+id/rowSbLyricsEntry"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -158,9 +158,9 @@
                 android:text="›"
                 android:textColor="?attr/gAccent"
                 android:textSize="22sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:id="@+id/rowFloatIsland"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -185,7 +185,7 @@
                 android:text="›"
                 android:textColor="?attr/gAccent"
                 android:textSize="22sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
@@ -199,7 +199,7 @@
             android:textSize="14sp"
             android:textStyle="bold" />
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:id="@+id/rowMetered"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -224,9 +224,9 @@
                 android:text="›"
                 android:textColor="?attr/gAccent"
                 android:textSize="22sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:id="@+id/rowCacheCap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -251,9 +251,9 @@
                 android:text="›"
                 android:textColor="?attr/gAccent"
                 android:textSize="22sp" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:id="@+id/rowCacheInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -279,9 +279,9 @@
                 android:textColor="?attr/gAccent"
                 android:textSize="14sp"
                 android:textStyle="bold" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
 
-        <LinearLayout
+        <com.guga.music.GlassLinearLayout
             android:id="@+id/rowTraffic"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -307,6 +307,6 @@
                 android:textColor="?attr/gAccent"
                 android:textSize="14sp"
                 android:textStyle="bold" />
-        </LinearLayout>
+        </com.guga.music.GlassLinearLayout>
     </LinearLayout>
 </ScrollView>

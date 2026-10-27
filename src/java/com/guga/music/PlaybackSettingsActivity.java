@@ -29,6 +29,7 @@ public class PlaybackSettingsActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_playback_settings);
         Haptics.ratchetPage(this);
+        GlassTheme.bindActivity(this);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
 
         btnAlbumCover = findViewById(R.id.btnAlbumCover);
