@@ -68,6 +68,10 @@ export ANDROID_SDK=/path/to/android-sdk
 
 ## 📝 更新日志
 
+### v1.50.0（2026-11-02）
+
+- 📱 **vivo 原子随身听适配·验证版（待真机确认）**：新增 exported 媒体浏览器服务（action：com.vivo.musicwidgetmix.support.service），供原子随身听动态发现走 c0 通道；浏览树为 B站收藏夹 / 本地歌单 / 正在播放三级，点歌可整单起播，传输控制复用现有 MediaSession。本版只验证“小部件能否发现 Apollo”，vivo 自定义 metadata（循环模式 / 能力位 / 投屏状态）与收藏 / 循环 / 歌单事件暂不接，发现确认通过后再全量接；悬浮岛与状态栏歌词全部保留不动
+
 ### v1.49.6（2026-10-27）
 
 - 🎵 **歌词页去右侧白边（用户定）**：歌词 ListView 滚动条整段关掉（布局 scrollbars=none + 代码 setVerticalScrollBarEnabled(false) 双保险）——切行跟随与手动滑动都不再出右边那条白边；播放页小窗歌词是自绘 View、本身就没有系统滚动条，不用动
