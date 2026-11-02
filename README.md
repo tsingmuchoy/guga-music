@@ -66,7 +66,11 @@ export ANDROID_SDK=/path/to/android-sdk
 
 ## 📝 更新日志
 
-## 📝 更新日志
+### v1.51.0（2026-11-02，贡献：MC风月无边）
+
+- 📱 **vivo 原子随身听（Origin Player）适配**：新增导出媒体浏览器服务 `.VivoMusicBrowserService`，走小部件的「协作通道」而非通用兜底。支持传输控制（播停 / 上下曲 / 进度）、正在播放 / B站收藏 / 本地歌单三个列表的浏览与点播、循环模式切换；未做投屏与小部件收藏动作。协议来自对 `com.vivo.musicwidgetmix` 6.2.7.1 的静态逆向，完整契约见 [docs/vivo-protocol.md](docs/vivo-protocol.md)。军师已在他的 vivo 机型（V2339FA）上实测绑定成功；本机 vivo 实测仍待验证
+- 🔑 **准入白名单（真机使用前必做一次）**：小部件只把「常驻音乐 App 白名单」里的应用当音源，本应用默认不在其中。运行 `bash tools/vivo-whitelist.sh` 把本应用**追加**到名单末尾（非 root，adb shell 权限即可；`--status` 查看、`--restore` 还原）。⚠️ 必须追加：`music_app_white_list` 一旦被写入就会屏蔽小部件内置的 61 个音乐 App 名单，只写自己会让 QQ音乐 / 网易云 / 波点音乐等全部失效——脚本已内置那份名单用于完整重建
+- 🏝️ **自绘悬浮岛与状态栏歌词未动**：本次只加 vivo 协作通道，App 自带的悬浮岛（仿原子岛样式）与状态栏歌词一行未改
 
 ### v1.49.6（2026-10-27）
 

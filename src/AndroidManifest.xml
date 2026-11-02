@@ -62,6 +62,29 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- vivo 原子随身听（com.vivo.musicwidgetmix）协作通道入口。
+             小部件用 queryIntentServices(Intent("com.vivo.musicwidgetmix.support.service"), GET_META_DATA)
+             扫导出服务；扫到才会把本应用路由到协作控制器（而不是通用兜底控制器）。
+
+             两个 action 都要声明，且必须带 CATEGORY_DEFAULT：
+             1) CATEGORY_DEFAULT 不能省 —— PackageManager.queryIntentServices 内部会加
+                MATCH_DEFAULT_ONLY，filter 里没有 CATEGORY_DEFAULT 就匹配不上（这正是上一版
+                「只被发现」却连不上的原因之一）。AOSP IntentFilter.matchCategories 明确：
+                filter 带 CATEGORY_DEFAULT 时，无 category 的隐式 Intent 一样能匹配上。
+             2) 标准 MediaBrowserService action 也要带 —— 小部件 manifest 的 <queries> 里
+                声明的就是它（包可见性），带上后本应用对系统媒体浏览器体系也是可见的。
+             暴露面与标准媒体浏览器服务一致：可浏览歌单标题、可控制播放，
+             不暴露文件、账号凭证、设置等非媒体能力。 -->
+        <service
+            android:name=".VivoMusicBrowserService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.vivo.musicwidgetmix.support.service" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".ImportService"
             android:exported="false"

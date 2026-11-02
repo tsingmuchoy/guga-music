@@ -16,6 +16,7 @@ import android.media.MediaPlayer;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.PowerManager;
 
@@ -314,6 +315,14 @@ public class PlayerService extends Service {
     public void removeListener(Listener l) { listeners.remove(l); }
 
     public List<Track> getQueue() { return queue; }
+
+    /** 媒体会话 token：供 vivo 原子随身听协作通道（VivoMusicBrowserService）取用。
+     *  框架 MediaBrowser 是在 Binder 回调 onConnect(root, session, extras) 里拿到它的，
+     *  所以这里必须保证会话已建立；拿不到时协作通道连不上。 */
+    public MediaSession.Token getSessionToken() { return session == null ? null : session.getSessionToken(); }
+
+    /** BiliApi 实例：协作通道的收藏列表要用登录态。 */
+    public BiliApi getApi() { return api; }
     public int getIndex() { return index; }
     public Track current() { return index >= 0 && index < queue.size() ? queue.get(index) : null; }
     public boolean isPlaying() { return playing; }
@@ -1202,6 +1211,20 @@ public class PlayerService extends Service {
         } catch (Exception ignored) {}
     }
 
+    // ---- vivo 原子随身听（com.vivo.musicwidgetmix）协作通道协议 ----
+    // 常量取自小部件内部实现，改动前请先看 docs/vivo-protocol.md一节。
+    private static final String VIVO_ACTION_PLAY_MODE = "vivomusicmix.media.action.PLAY_MODE";
+    private static final String VIVO_EVENT_ERROR = "vivomusicmix.session.event.error";
+    private static final String VIVO_KEY_ACTION = "key_action";
+    private static final String VIVO_KEY_ERROR_CODE = "error_code";
+    private static final String VIVO_KEY_LOOP_MODE = "vivomusicmix.media.metadata.LOOP_MODE";
+    private static final String VIVO_KEY_SUPPORT_EVENT = "vivomusicmix.media.metadata.support_event";
+    private static final String VIVO_KEY_CAST_STATE = "vivomusicmix.media.metadata.cast_state";
+    /** 能力位：23 = 基础传输(1|2|4) + 支持 seek(16)。小部件本身也是按会话 actions
+     *  是否含 ACTION_SEEK_TO 推导出 23 / 7 的，所以这里跟它保持一致。 */
+    private static final long VIVO_SUPPORT_EVENT = 23L;
+    /** 小部件的循环模式枚举：1=顺序 2=单曲 3=随机；本项目内部是 0/1/2，故 +1 换算。 */
+
     // ---------------- 媒体会话（系统媒体面：锁屏 / 蓝牙 / 原子随身听等） ----------------
     private void initSession() {
         try {
@@ -1219,8 +1242,39 @@ public class PlayerService extends Service {
                 @Override public void onSkipToPrevious() { prev(); }
                 @Override public void onSeekTo(long pos) { seekTo((int) Math.max(0, pos)); }
                 @Override public void onStop() { if (playing) toggle(); }
+                // 原子随身听在它的浏览列表里点歌：mediaId 形如 guga:cur:12，
+                // extras 里 vivomusicmix_key_list 指明来自哪个列表。
+                @Override public void onPlayFromMediaId(String mediaId, Bundle extras) {
+                    try {
+                        VivoMusicBrowserService.playMediaId(PlayerService.this, mediaId,
+                                extras == null ? null : extras.getString("vivomusicmix_key_list"));
+                    } catch (Exception ignored) {}
+                }
+                // 本项目没有本地收藏能力：能力位里也没声明收藏，所以小部件不会发收藏动作；
+                // 万一发过来（老版本小部件），平台默认实现什么都不做，不会假装收藏成功。
+                // 注意：onSetRating 的参数类型在 API 36+ 从 RatingCompat 换成了 android.media.Rating，
+                // 这里刻意不覆写它，避免编译目标不同就签名不匹配。
+                // 循环模式：小部件用 sendCustomAction 下发目标模式
+                // （vivomusicmix.media.action.PLAY_MODE，bundle 里 LOOP_MODE = 1 顺序 2 单曲 3 随机），
+                // 平台 MediaSession.Callback 没有 onSessionEvent，自定义动作走 onCustomAction。
+                @Override public void onCustomAction(String action, Bundle args) {
+                    if (!VIVO_ACTION_PLAY_MODE.equals(action)) return;
+                    try {
+                        int mode = args == null ? 0 : args.getInt(VIVO_KEY_LOOP_MODE, 0);
+                        setMode(mode - 1);
+                        publishMetadata();
+                        publishState();
+                        Diag.log(PlayerService.this, "🔁 原子随身听：切换循环模式 → " + mode);
+                    } catch (Exception ignored) {}
+                }
             });
             session.setActive(true);
+            // 会话一建好就把状态发出去：没有 PlaybackState 的会话在系统「活跃会话」列表里
+            // 可能不可见，小部件就找不到本应用（表现为协作服务从不被绑定）。
+            publishState();
+            // 会话一建好就把 token 交给原子随身听的协作服务：客户端连接那一刻框架只发一次，
+            // 之后再改不会补发，晚一步小部件就拿不到控制器。
+            try { VivoMusicBrowserService.onSessionReady(session.getSessionToken()); } catch (Exception ignored) {}
             Diag.log(this, "🎛 媒体会话已建立（锁屏/蓝牙/系统媒体面）");
         } catch (Exception ignored) {}
     }
@@ -1236,7 +1290,11 @@ public class PlayerService extends Service {
                     .putString(MediaMetadata.METADATA_KEY_ARTIST, t.author)
                     .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, t.author)
                     .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, t.author)
-                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩");
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩")
+                    // 原子随身听的私有字段：平台 MediaMetadata 允许自定义 key（只对系统已知 key 做类型校验）
+                    .putLong(VIVO_KEY_LOOP_MODE, (long) vivoLoopMode())
+                    .putLong(VIVO_KEY_SUPPORT_EVENT, VIVO_SUPPORT_EVENT)
+                    .putLong(VIVO_KEY_CAST_STATE, 0L);
             if (t.durationSec > 0) mb.putLong(MediaMetadata.METADATA_KEY_DURATION, t.durationSec * 1000L);
             if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
                 mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, sessionArt);
@@ -1257,6 +1315,28 @@ public class PlayerService extends Service {
             session.setPlaybackState(new PlaybackState.Builder()
                     .setState(st, getPosition(), playing ? 1.0f : 0.0f)
                     .setActions(acts).build());
+        } catch (Exception ignored) {}
+    }
+
+    // ---------------- vivo 原子随身听：会话协议辅助 ----------------
+
+    /** 循环模式换算：小部件枚举 1=顺序 2=单曲 3=随机，本项目内部 0/1/2。 */
+    private int vivoLoopMode() { return getMode() + 1; }
+
+    /** 设置播放模式（0=顺序 1=单曲 2=随机）。 */
+    public void setMode(int m) {
+        m = ((m % 3) + 3) % 3;
+        getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
+    }
+
+    /** 按协议回执错误：key_action + error_code，小部件据此弹「未登录」等提示。 */
+    public void sendVivoError(String action, int errorCode) {
+        if (session == null) return;
+        try {
+            Bundle b = new Bundle();
+            b.putString(VIVO_KEY_ACTION, action);
+            b.putInt(VIVO_KEY_ERROR_CODE, errorCode);
+            session.sendSessionEvent(VIVO_EVENT_ERROR, b);
         } catch (Exception ignored) {}
     }
 

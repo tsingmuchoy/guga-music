@@ -2,3 +2,5 @@ build-manual/
 *.apk
 *.idsig
 .DS_Store
+keystore/
+tools/.vivo-whitelist.bak
