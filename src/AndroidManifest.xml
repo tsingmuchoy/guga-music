@@ -62,17 +62,6 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- vivo 原子随身听适配（v1.50.0）：供小部件动态发现的 c0 通道入口。
-             intent-filter 只写 action 不写 category：小部件侧 queryIntentServices
-             用的是无 category 的 Intent，filter 带 category 反而匹配不上。 -->
-        <service
-            android:name=".VivoMusicBrowserService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.vivo.musicwidgetmix.support.service" />
-            </intent-filter>
-        </service>
-
         <service
             android:name=".ImportService"
             android:exported="false"

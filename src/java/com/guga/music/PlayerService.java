@@ -16,7 +16,6 @@ import android.media.MediaPlayer;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.IBinder;
 import android.os.PowerManager;
 
@@ -313,10 +312,6 @@ public class PlayerService extends Service {
     // ---------------- 对外控制 ----------------
     public void addListener(Listener l) { listeners.add(l); }
     public void removeListener(Listener l) { listeners.remove(l); }
-
-    public MediaSession.Token getSessionToken() { return session == null ? null : session.getSessionToken(); }
-    public boolean isLoggedIn() { return api != null && api.isLoggedIn(); }
-    public BiliApi getApi() { return api; }
 
     public List<Track> getQueue() { return queue; }
     public int getIndex() { return index; }
@@ -1224,15 +1219,8 @@ public class PlayerService extends Service {
                 @Override public void onSkipToPrevious() { prev(); }
                 @Override public void onSeekTo(long pos) { seekTo((int) Math.max(0, pos)); }
                 @Override public void onStop() { if (playing) toggle(); }
-                // 浏览侧点歌：框架里 onPlayFromMediaId 在会话 callback 上，解析与
-                // 播歌缓存由 VivoMusicBrowserService 静态持有，这里只转交。
-                @Override public void onPlayFromMediaId(String mediaId, Bundle extras) {
-                    try { VivoMusicBrowserService.playMediaId(PlayerService.this, mediaId); }
-                    catch (Exception ignored) {}
-                }
             });
             session.setActive(true);
-            try { VivoMusicBrowserService.pushSessionToken(session.getSessionToken()); } catch (Exception ignored) {}
             Diag.log(this, "🎛 媒体会话已建立（锁屏/蓝牙/系统媒体面）");
         } catch (Exception ignored) {}
     }
