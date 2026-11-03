@@ -1221,9 +1221,15 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleFavChips() {
-        if (!styleChipLens(chipFavBili, !favLocalMode)) chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
+        // 背景无条件同步（v1.52.1）：玻璃下只改透镜染色不够——两芯片布局默认底色不同
+        //（B站=亮底 bg_chip_selected，本地=暗底 bg_chip_pill），玻璃路径从不换背景时，
+        // 本地选中态只是暗底+青色染色，看着像没高亮；选中态一律亮底、未选中一律暗底，
+        // 两边在任何主题下都和 B站选中态同一观感；扁平主题行为与之前一致。
+        styleChipLens(chipFavBili, !favLocalMode);
+        chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
         chipFavBili.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent));
-        if (!styleChipLens(chipFavLocal, favLocalMode)) chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+        styleChipLens(chipFavLocal, favLocalMode);
+        chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
         chipFavLocal.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec));
         btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
         if (btnImportLocal != null) btnImportLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
