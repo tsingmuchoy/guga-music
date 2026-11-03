@@ -415,6 +415,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             Track t = s.current();
             if (t != null) onTrackChanged(t);
             onStateChanged(s.isPlaying());
+            // 回到前台时补刷会话封面：服务起来后封面没跟上时，通知栏会一直贴着旧图
+            s.ensureSessionArt();
         }
         if (tab == 3) refreshMine();
         if (tab == 1) {

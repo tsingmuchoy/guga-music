@@ -274,8 +274,16 @@ public class LiquidGlassLens {
 
     /** 选中态芯片等保留底色时用（straight-alpha ARGB，a=0 关闭） */
     public void setTint(int argb) {
-        tintArgb = argb;
+        // v1.52.7：改动必须强制重建效果——v1.52.5 的每帧设 uniform 在真机上没生效
+        //（RenderNode 里的效果不跟实时 uniform 走），只有重建时设的 uniform 才落到画面；
+        // 而全中文芯片尺寸不变时本来不会重建，所以染色卡死。改动即标记，下次绘制重建。
+        if (tintArgb != argb) {
+            tintArgb = argb;
+            effectDirty = true;
+        }
     }
+
+    private boolean effectDirty;
 
     private float sampleLoX;
     private float sampleLoY;
@@ -369,9 +377,10 @@ public class LiquidGlassLens {
         sampleHiX = hiX;
         sampleHiY = hiY;
 
-        if (boundsChanged || width != lastWidth || height != lastHeight || marginPx != lastMargin) {
+        if (effectDirty || boundsChanged || width != lastWidth || height != lastHeight || marginPx != lastMargin) {
             try {
                 renderNode.setRenderEffect(buildEffect(sh, marginPx, width, height));
+                effectDirty = false;
             } catch (Exception e) {
                 shaderBroken = true;
                 return false;

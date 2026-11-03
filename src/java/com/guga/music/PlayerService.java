@@ -137,6 +137,7 @@ public class PlayerService extends Service {
     private android.graphics.Bitmap sessionArt;
     private String sessionArtBvid;
     private boolean sessionArtAlbum = false;
+    private String sessionArtFetching;
     private AudioFocusRequest focusReq;
     private boolean focusHeld = false;
 
@@ -1348,6 +1349,7 @@ public class PlayerService extends Service {
         sessionArtAlbum = false;
         if (t == null || t.bvid == null) return;
         final String bv = t.bvid;
+        sessionArtFetching = bv;
         if (t.cover != null && !t.cover.isEmpty()) {
             ImgLoader.loadBitmap(t.cover, b -> {
                 Track cur = current();
@@ -1362,17 +1364,34 @@ public class PlayerService extends Service {
         //（PlayerActivity.onTrackChanged 不设门），会话/通知复用同一张图不新增流量；只统一当首封面，
         // 列表小图与后台匹配的省流量策略不动。
         Lyrics.fetchCover(this, t, url -> {
-            if (url == null) return;
+            if (url == null) {
+                if (bv.equals(sessionArtFetching)) sessionArtFetching = null;
+                return;
+            }
             ImgLoader.loadBitmap(url, b -> {
                 Track cur = current();
-                if (b == null || cur == null || !bv.equals(cur.bvid)) return;
+                if (b == null || cur == null || !bv.equals(cur.bvid)) {
+                    if (bv.equals(sessionArtFetching)) sessionArtFetching = null;
+                    return;
+                }
                 sessionArt = scaleArt(b);
                 sessionArtBvid = bv;
                 sessionArtAlbum = true;
+                if (bv.equals(sessionArtFetching)) sessionArtFetching = null;
                 publishMetadata();
                 updateNotification();
             });
         });
+    }
+
+    /** 前台回到 App 时补刷会话封面：切歌后封面没跟上、或服务起来时封面还是空的，
+     * 通知栏会一直贴着旧图；封面已对上当前歌、或正在抓时不重复触发。 */
+    public void ensureSessionArt() {
+        Track t = current();
+        if (t == null || t.bvid == null) return;
+        if (sessionArt != null && t.bvid.equals(sessionArtBvid)) return;
+        if (t.bvid.equals(sessionArtFetching)) return;
+        refreshSessionArt(t);
     }
 
     private android.graphics.Bitmap scaleArt(android.graphics.Bitmap b) {
