@@ -993,11 +993,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleStatChips() {
+        // v1.52.8 与收藏/排序同法：选中态也不染色，药丸保持玻璃；玻璃下选中文字改用亮色 gAccent
+        //（之前一直用深色 gOnAccent，压在玻璃上才显得暗、看着像没高亮）；扁平主题亮底上仍用深色字。
         for (int i = 0; i < STAT_PERIOD_NAMES.length; i++) {
             boolean on = i == statPeriod;
+            boolean lensOn = statChips[i] instanceof GlassTextView && ((GlassTextView) statChips[i]).isLensOn();
             if (on) {
-                if (!styleChipLens(statChips[i], true)) statChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
-                statChips[i].setTextColor(ThemeUtil.color(this, R.attr.gOnAccent));
+                if (!styleChipLens(statChips[i], false)) statChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
+                statChips[i].setTextColor(ThemeUtil.color(this, lensOn ? R.attr.gAccent : R.attr.gOnAccent));
                 statChips[i].setTypeface(null, android.graphics.Typeface.BOLD);
             } else {
                 if (!styleChipLens(statChips[i], false)) statChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
@@ -1168,14 +1171,13 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleSortChips() {
-        // v1.52.4 透镜高亮（与收藏芯片同法，v1.52.3 的关透镜作废）：透镜常开，选中态靠透镜染色；
-        // 玻璃下选中文字改用亮色 gAccent（与底栏选中态同口径），之前深色 gOnAccent 压在玻璃上才发灰；
-        // 扁平主题亮底上仍用深色 gOnAccent。
+        // v1.52.8 与收藏芯片同法：选中态也不染色，药丸保持玻璃，高亮只靠亮色文字+粗细
+        //（与底栏选中态同口径）；扁平主题亮底上仍用深色字。
         for (int i = 0; i < SORTS.length; i++) {
             boolean on = SORTS[i][1].equals(searchOrder);
             boolean lensOn = sortChips[i] instanceof GlassTextView && ((GlassTextView) sortChips[i]).isLensOn();
             if (on) {
-                if (!styleChipLens(sortChips[i], true)) sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
+                if (!styleChipLens(sortChips[i], false)) sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
                 sortChips[i].setTextColor(ThemeUtil.color(this, lensOn ? R.attr.gAccent : R.attr.gOnAccent));
                 sortChips[i].setTypeface(null, android.graphics.Typeface.BOLD);
             } else {
@@ -1227,15 +1229,15 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleFavChips() {
-        // v1.52.4 透镜高亮（用户拒纯色高亮，v1.52.2 的关透镜作废）：透镜常开，选中态靠透镜染色；
-        // 玻璃下选中图标+文字改用亮色 gAccent（与底栏选中态同口径：图标和字亮、容器仍是玻璃），
-        // 之前深色 gOnAccent 压在玻璃上才显得暗；扁平主题亮底上仍用深色 gOnAccent，保证可读。
+        // v1.52.8 方向纠正（用户骂得对）：之前把本地那颗也改成了亮青药丸，正好搞反了——
+        // 用户要的是 B站那颗调成和本地原来那个一样：药丸保持玻璃不亮青，高亮只靠图标+文字变亮
+        //（与底栏选中态同口径）；所以选中态也不再染色，透镜常开、染色恒 0，扁平主题仍走亮底+深字。
         boolean biliLens = chipFavBili instanceof GlassTextView && ((GlassTextView) chipFavBili).isLensOn();
         boolean localLens = chipFavLocal instanceof GlassTextView && ((GlassTextView) chipFavLocal).isLensOn();
-        if (!styleChipLens(chipFavBili, !favLocalMode)) chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
+        if (!styleChipLens(chipFavBili, false)) chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
         int biliAttr = favLocalMode ? R.attr.gTextSec : (biliLens ? R.attr.gAccent : R.attr.gOnAccent);
         chipFavBili.setTextColor(ThemeUtil.color(this, biliAttr));
-        if (!styleChipLens(chipFavLocal, favLocalMode)) chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+        if (!styleChipLens(chipFavLocal, false)) chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
         int localAttr = favLocalMode ? (localLens ? R.attr.gAccent : R.attr.gOnAccent) : R.attr.gTextSec;
         chipFavLocal.setTextColor(ThemeUtil.color(this, localAttr));
         btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
