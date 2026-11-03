@@ -384,6 +384,15 @@ public class LiquidGlassLens {
         // 录制区域向四周外扩 margin：模糊在边缘处能采到真实内容而非透明黑
         renderNode.setPosition(-marginPx, -marginPx, width + marginPx, height + marginPx);
         recordBackdrop(backdropSource, glassView, offsetX, offsetY, marginPx, recW, recH);
+        // v1.52.5：染色 uniform 必须每帧刷新——之前只在 buildEffect（尺寸变化重建效果时）设一次，
+        // 而全中文芯片粗细切换不改变字宽（CJK 全宽字）、尺寸不变就不重建，染色永远停在首次值；
+        // “B站收藏夹”含拉丁字母 B、粗细会改变宽度才会重建——这正是 B站那颗会变、本地/排序/统计那几颗不会变的原因。
+        // RuntimeShader 的 uniform 在渲染时读取，每帧设一次即可跟上 setTint。
+        sh.setFloatUniform("tintColor",
+                android.graphics.Color.red(tintArgb) / 255f,
+                android.graphics.Color.green(tintArgb) / 255f,
+                android.graphics.Color.blue(tintArgb) / 255f,
+                android.graphics.Color.alpha(tintArgb) / 255f);
         // 形状覆盖率由着色器输出（形状外 alpha=0），无需 clipPath
         canvas.drawRenderNode(renderNode);
         return true;
