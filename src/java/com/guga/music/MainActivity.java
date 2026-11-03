@@ -1221,15 +1221,12 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleFavChips() {
-        // 背景无条件同步（v1.52.1）：玻璃下只改透镜染色不够——两芯片布局默认底色不同
-        //（B站=亮底 bg_chip_selected，本地=暗底 bg_chip_pill），玻璃路径从不换背景时，
-        // 本地选中态只是暗底+青色染色，看着像没高亮；选中态一律亮底、未选中一律暗底，
-        // 两边在任何主题下都和 B站选中态同一观感；扁平主题行为与之前一致。
-        styleChipLens(chipFavBili, !favLocalMode);
-        chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
+        // v1.52.2：选中态不走透镜——透镜输出不透明会盖住背景，且染色曾出现落不到某颗芯片
+        // 的情况（v1.52.1 的背景同步在玻璃主题下因此无效）；选中态直接关透镜走实色背景，
+        // 观感与扁平主题一致；未选中态仍走透镜（染色 0），保持玻璃折射观感。
+        styleFavChip(chipFavBili, !favLocalMode);
         chipFavBili.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent));
-        styleChipLens(chipFavLocal, favLocalMode);
-        chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+        styleFavChip(chipFavLocal, favLocalMode);
         chipFavLocal.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec));
         btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
         if (btnImportLocal != null) btnImportLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
@@ -1238,6 +1235,26 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         // 选中态粗细同步切换（与底部 tab 同口径）：玻璃下染色不明显时，粗细也是可见的高亮信号
         chipFavBili.setTypeface(null, favLocalMode ? android.graphics.Typeface.NORMAL : android.graphics.Typeface.BOLD);
         chipFavLocal.setTypeface(null, favLocalMode ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    }
+
+    /** 收藏页单颗芯片的选中态（v1.52.2）：选中=关透镜+实色亮底（不依赖透镜染色）；未选中=透镜开+染色 0，扁平主题只换背景。 */
+    private void styleFavChip(TextView chip, boolean selected) {
+        if (selected) {
+            if (chip instanceof GlassTextView && ((GlassTextView) chip).isLensOn()) {
+                ((GlassTextView) chip).setLensEnabled(false, null);
+            }
+            chip.setBackgroundResource(R.drawable.bg_chip_selected);
+        } else if (chip instanceof GlassTextView && ((GlassTextView) chip).isLensOn()) {
+            ((GlassTextView) chip).setLensTint(0);
+            chip.setBackgroundResource(R.drawable.bg_chip_pill);
+        } else if (chip instanceof GlassTextView && GlassTheme.isLensActive(this) && rootMain != null) {
+            // 透镜曾被选中态关闭：先把暗底设好再恢复透镜（绑定时会存起当前背景），未选中态仍是玻璃折射观感
+            chip.setBackgroundResource(R.drawable.bg_chip_pill);
+            ((GlassTextView) chip).setLensEnabled(true, rootMain);
+            ((GlassTextView) chip).setLensTint(0);
+        } else {
+            chip.setBackgroundResource(R.drawable.bg_chip_pill);
+        }
     }
 
     private void showLocalLists() {
