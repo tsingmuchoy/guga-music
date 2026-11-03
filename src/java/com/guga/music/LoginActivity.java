@@ -34,6 +34,7 @@ public class LoginActivity extends Activity {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_login);
+        EdgeToEdge.apply(this);
         api = new BiliApi(this);
         wv = findViewById(R.id.wvLogin);
         wv.getSettings().setJavaScriptEnabled(true);

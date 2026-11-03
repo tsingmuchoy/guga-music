@@ -55,6 +55,7 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_player);
+        EdgeToEdge.apply(this);
         GlassTheme.bindActivity(this);
         ivCover = findViewById(R.id.ivCover);
         ImageView ivBackdrop = findViewById(R.id.ivBackdrop);

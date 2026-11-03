@@ -16,6 +16,7 @@ public class SettingsActivity extends Activity {
         ThemeUtil.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+        EdgeToEdge.apply(this);
         Haptics.ratchetPage(this);
         GlassTheme.bindActivity(this);
 

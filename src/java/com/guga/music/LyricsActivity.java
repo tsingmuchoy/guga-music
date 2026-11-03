@@ -74,6 +74,7 @@ public class LyricsActivity extends Activity {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_lyrics);
+        EdgeToEdge.apply(this);
         tvSong = findViewById(R.id.tvSongTitle);
         tvSource = findViewById(R.id.tvSource);
         tvEmpty = findViewById(R.id.tvEmpty);

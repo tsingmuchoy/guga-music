@@ -97,6 +97,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_main);
+        EdgeToEdge.apply(this);
         Haptics.attachScrollRatchet(findViewById(R.id.svMine));
         Haptics.attachScrollRatchet(findViewById(R.id.svStats));
         UpdateChecker.autoCheck(this);

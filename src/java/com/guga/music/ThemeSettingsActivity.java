@@ -17,6 +17,7 @@ public class ThemeSettingsActivity extends Activity {
         ThemeUtil.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_theme_settings);
+        EdgeToEdge.apply(this);
         Haptics.ratchetPage(this);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         buildThemeRows();

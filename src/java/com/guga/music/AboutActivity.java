@@ -10,6 +10,7 @@ public class AboutActivity extends Activity {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_about);
+        EdgeToEdge.apply(this);
         Haptics.ratchetPage(this);
         GlassTheme.bindActivity(this);
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());

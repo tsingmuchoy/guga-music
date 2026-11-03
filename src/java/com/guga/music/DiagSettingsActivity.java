@@ -12,6 +12,7 @@ public class DiagSettingsActivity extends Activity {
         ThemeUtil.apply(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_diag_settings);
+        EdgeToEdge.apply(this);
         Haptics.ratchetPage(this);
         GlassTheme.bindActivity(this);
         Haptics.attachScrollRatchet(findViewById(R.id.svDiagLog));

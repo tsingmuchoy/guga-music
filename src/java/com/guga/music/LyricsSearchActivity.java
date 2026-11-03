@@ -56,6 +56,7 @@ public class LyricsSearchActivity extends Activity {
         super.onCreate(savedInstanceState);
         ThemeUtil.apply(this);
         setContentView(R.layout.activity_lyrics_search);
+        EdgeToEdge.apply(this);
         GlassTheme.bindActivity(this);
         Intent it = getIntent();
         bvid = it.getStringExtra("bvid");
