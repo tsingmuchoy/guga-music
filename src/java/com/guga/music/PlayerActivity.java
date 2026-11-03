@@ -142,6 +142,9 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
             if (s == null || s.current() == null || !t.bvid.equals(s.current().bvid)) return;
             if (r.has()) lyView.setLines(r.lines, r.source);
             else lyView.setPlaceholder("暂无歌词（点我看全屏）");
+            // 歌词回来了：标题/歌手跟歌词走同一首（手动锁定优先，其次自动匹配，否则视频标题）
+            tvTitle.setText(Lyrics.displayName(this, t));
+            tvAuthor.setText(Lyrics.displayArtist(this, t));
         });
     }
 

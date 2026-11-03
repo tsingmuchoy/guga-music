@@ -316,6 +316,8 @@ public class LyricsActivity extends Activity {
                 tvEmpty.setText(next ? "没有其他候选版本了 😢" : "网易云 / LRCLIB / 酷狗 / 视频字幕都找过了，暂时没找到这首歌的歌词 😢");
                 tvEmpty.setVisibility(View.VISIBLE);
             }
+            // 歌词结果回来了：标题跟歌词走同一首（与播放页同口径）
+            tvSong.setText(Lyrics.displayName(this, t));
         };
         if (next) Lyrics.refetchNext(this, t, api, cb);
         else Lyrics.fetchFor(this, t, api, cb);

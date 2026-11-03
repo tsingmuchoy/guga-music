@@ -49,6 +49,8 @@ public Word(long s, long d, String t) { startMs = s; durMs = d; text = t; }
 public static class Result {
 public final List<Line> lines;
 public final String source;
+/** 歌词所属歌曲的原歌名/歌手（缓存头或本次匹配回填；为空时显示层走线索/视频标题兜底） */
+public String song = ""; public String singer = "";
 public Result(List<Line> l, String s) { lines = l; source = s; }
 public boolean has() { return lines != null && !lines.isEmpty(); }
 }
@@ -188,6 +190,14 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 // 结果只存内存（进程级 Map），图片走 ImgLoader 原有内存缓存；不写任何磁盘文件。
 public interface CoverCb { void onCover(String url); }
 private static final java.util.Map<String, String> COVER_MEM = new java.util.HashMap<>();
+/** 自动匹配到的歌曲信息（按 bvid 记 [歌名, 歌手]，仅内存）：播放页显示用；手动锁定优先，字幕兜底/未命中时清除 */
+private static final java.util.Map<String, String[]> AUTO_SONG = new java.util.HashMap<>();
+/** 记录自动匹配的歌曲信息（歌名空时清除，显示层回落到视频标题） */
+private static void recordAutoSong(String bvid, String name, String artist) {
+if (bvid == null) return;
+if (name != null && !name.isEmpty()) AUTO_SONG.put(bvid, new String[]{name, artist == null ? "" : artist});
+else AUTO_SONG.remove(bvid);
+}
 
 public static boolean isCoverArt(Context ctx) {
 return ctx.getSharedPreferences("lyrics_cfg", Context.MODE_PRIVATE).getBoolean("cover_art", true);
@@ -416,13 +426,17 @@ File dir = new File(ctx.getFilesDir(), "lyrics_v5");
 if (!dir.exists()) dir.mkdirs();
 File cache = new File(dir, track.bvid + ".lrc");
 File none = new File(dir, track.bvid + ".none");
+Hints hints = hintsOf(track);
 // 手动锁定的歌词版本（歌词页手动搜索确认后按 BV 存进 lyrics.db）：优先于自动匹配
 LyricsDb.Bind bind = LyricsDb.get(ctx, track.bvid);
 try {
 if (cache.exists()) {
 Result cr = parseCache(readFile(cache));
 // 有锁定时只有「正是锁定版」的缓存才直接用；没锁定走原逻辑
-if (cr != null && (bind == null || cr.source.equals(bind.label))) return maybeWords(ctx, track, maybeEnrich(ctx, track, cr, cache, dir), cache, dir);
+if (cr != null && (bind == null || cr.source.equals(bind.label))) {
+recordAutoSong(track.bvid, (cr.song != null && !cr.song.isEmpty()) ? cr.song : hints.name, (cr.song != null && !cr.song.isEmpty()) ? cr.singer : hints.artist);
+return maybeWords(ctx, track, maybeEnrich(ctx, track, cr, cache, dir), cache, dir);
+}
 }
 if (bind != null) {
 try {
@@ -434,11 +448,11 @@ if (br != null) { Diag.log(ctx, "🎤 歌词命中：手动锁定（" + srcShort
 // 锁定源这次没取到：落到下面自动流程兜底，绑定保留、下次播放再试
 }
 if (none.exists() && System.currentTimeMillis() - none.lastModified() < 3L * 24 * 3600 * 1000) {
+AUTO_SONG.remove(track.bvid);
 return new Result(new ArrayList<>(), "");
 }
 } catch (Exception ignored) {}
 
-Hints hints = hintsOf(track);
 int alt = ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).getInt("alt_" + track.bvid, 0);
 
 // 按用户设置的顺序逐源尝试（设置页可调；B 站字幕始终最后兜底）
@@ -447,21 +461,24 @@ try {
 LrcPack pack = null;
 if (key.equals("qq")) pack = qqLyrics(track, hints, alt);
 else if (key.equals("netease")) pack = neteaseLyrics(track, hints, alt);
-else if (key.equals("kugou")) { String s1 = kugouLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
+else if (key.equals("kugou")) { pack = kugouLyrics(track, hints, alt); }
 else if (key.equals("kuwo")) { pack = kuwoLyrics(track, hints, alt); }
 else if (key.equals("amll")) { pack = amllLyrics(track, hints, alt); }
 else if (key.equals("lrclib")) { String s1 = lrclibLyrics(track, hints, alt); if (s1 != null) pack = new LrcPack(s1); }
 Result r = acceptPack(cache, pack, srcLabel(key));
-if (r != null) { Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + hints.name + "》"); return maybeWords(ctx, track, maybeEnrich(ctx, track, r, cache, dir), cache, dir); }
+if (r != null) {
+recordAutoSong(track.bvid, (pack.song != null && !pack.song.isEmpty()) ? pack.song : hints.name, (pack.song != null && !pack.song.isEmpty()) ? pack.singer : hints.artist);
+Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + hints.name + "》"); return maybeWords(ctx, track, maybeEnrich(ctx, track, r, cache, dir), cache, dir); }
 } catch (Exception ignored) {}
 }
 
 // B 站字幕兜底
 Result sr = trySubtitles(ctx, track, api, cache);
-if (sr != null) return maybeWords(ctx, track, maybeEnrich(ctx, track, sr, cache, dir), cache, dir);
+if (sr != null) { AUTO_SONG.remove(track.bvid); return maybeWords(ctx, track, maybeEnrich(ctx, track, sr, cache, dir), cache, dir); }
 
 try { writeFile(none, ""); trimLyricsDir(none); } catch (Exception ignored) {}
 Diag.log(ctx, "🎤 歌词未命中：《" + hints.name + "》");
+AUTO_SONG.remove(track.bvid);
 return new Result(new ArrayList<>(), "");
 }
 
@@ -631,6 +648,7 @@ if (dec.contains("[")) tr = dec;
 } catch (Exception ignored) {}
 }
 if (tr != null && tr.contains("[")) p.trans = tr;
+p.song = c.name; p.singer = c.artist;
 return p;
 }
 } else if (c.src.equals("netease")) {
@@ -746,6 +764,7 @@ ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).edit().remove("alt_
 public static void clearManual(Context ctx, String bvid) {
 LyricsDb.unbind(ctx, bvid);
 COVER_MEM.remove(bvid);
+AUTO_SONG.remove(bvid);
 try {
 File dir = new File(ctx.getFilesDir(), "lyrics_v5");
 new File(dir, bvid + ".lrc").delete();
@@ -756,18 +775,24 @@ new File(dir, bvid + ".none").delete();
 /** 这首歌的歌词是否被手动锁定 */
 public static boolean isBound(Context ctx, String bvid) { return LyricsDb.get(ctx, bvid) != null; }
 
-/** 播放/歌词页显示用的歌名：手动匹配过就用匹配到的原歌名，否则用视频标题 */
+/** 播放/歌词页显示用的歌名：手动匹配优先，其次自动匹配到的歌词所属歌曲，否则用视频标题 */
 public static String displayName(Context ctx, Track t) {
 if (t == null) return "";
 LyricsDb.Bind bd = LyricsDb.get(ctx, t.bvid);
-return bd != null && bd.name != null && !bd.name.isEmpty() ? bd.name : (t.title == null ? "" : t.title);
+if (bd != null && bd.name != null && !bd.name.isEmpty()) return bd.name;
+String[] a = AUTO_SONG.get(t.bvid);
+if (a != null && a[0] != null && !a[0].isEmpty()) return a[0];
+return t.title == null ? "" : t.title;
 }
 
-/** 显示用的歌手：手动匹配优先，否则视频 UP 主 */
+/** 显示用的歌手：手动匹配优先，其次自动匹配到的歌词所属歌手，否则视频 UP 主 */
 public static String displayArtist(Context ctx, Track t) {
 if (t == null) return "";
 LyricsDb.Bind bd = LyricsDb.get(ctx, t.bvid);
-return bd != null && bd.artist != null && !bd.artist.isEmpty() ? bd.artist : (t.author == null ? "" : t.author);
+if (bd != null && bd.artist != null && !bd.artist.isEmpty()) return bd.artist;
+String[] a = AUTO_SONG.get(t.bvid);
+if (a != null && a[1] != null && !a[1].isEmpty()) return a[1];
+return t.author == null ? "" : t.author;
 }
 
 private static Result trySubtitles(Context ctx, Track track, BiliApi api, File cache) {
@@ -805,6 +830,8 @@ return null;
 
 static class LrcPack {
 String lrc; String trans; String roma; String words;
+/** 胜出候选的原歌名/歌手（自动匹配时由各源回填；取不到时为空，走线索兜底） */
+String song = ""; String singer = "";
 LrcPack(String l) { lrc = l; }
 }
 
@@ -813,7 +840,9 @@ if (pack == null || pack.lrc == null) return null;
 List<Line> lines = parseLrc(pack.lrc);
 if (lines.size() < 5) return null;
 try {
-StringBuilder sb = new StringBuilder("#src:" + src + "\n" + pack.lrc);
+StringBuilder sb = new StringBuilder("#src:" + src + "\n");
+if (pack.song != null && !pack.song.isEmpty()) sb.append("#song:").append(pack.song).append("\n#singer:").append(pack.singer == null ? "" : pack.singer).append("\n");
+sb.append(pack.lrc);
 if (pack.trans != null && parseLrc(pack.trans).size() >= 3) sb.append("\n#trans:\n").append(pack.trans);
 if (pack.roma != null && parseLrc(pack.roma).size() >= 3) sb.append("\n#roma:\n").append(pack.roma);
 if (pack.words != null && !pack.words.isEmpty()) sb.append("\n#words:\n").append(pack.words);
@@ -909,6 +938,12 @@ else if (m.roma == null) m.roma = txt;
 private static Result parseCache(String content) {
 if (content == null) return null;
 String src = content.startsWith("#src:") ? content.substring(5, content.indexOf('\n')) : "缓存";
+// 缓存头里的原歌名/歌手（v1.52.0 起写入；老缓存没有，走线索兜底）
+String song = "", singer = "";
+int si = content.indexOf("\n#song:");
+if (si >= 0) { int e = content.indexOf('\n', si + 7); song = e >= 0 ? content.substring(si + 7, e) : content.substring(si + 7); }
+int gi = content.indexOf("\n#singer:");
+if (gi >= 0) { int e = content.indexOf('\n', gi + 9); singer = e >= 0 ? content.substring(gi + 9, e) : content.substring(gi + 9); }
 String main = content, trans = null, roma = null, words = null;
 int wi = main.indexOf("\n#words:\n");
 if (wi >= 0) { words = main.substring(wi + 8); main = main.substring(0, wi); }
@@ -918,7 +953,9 @@ int ti = main.indexOf("\n#trans:\n");
 if (ti >= 0) { trans = main.substring(ti + 8); main = main.substring(0, ti); }
 List<Line> lines = parseLrc(main);
 if (lines.isEmpty()) return null;
-return buildResult(lines, src, trans, roma, words);
+Result out = buildResult(lines, src, trans, roma, words);
+out.song = song; out.singer = singer;
+return out;
 }
 
 private static boolean isForeignText(String s) {
@@ -1470,7 +1507,7 @@ synchronized (lock) { box[0] = new ArrayList<>(); lock.notifyAll(); }
 
 // ---------------- 网易云 ----------------
 private static class Cand {
-long id; int group; long diff; String ak;
+long id; int group; long diff; String ak; String name = ""; String artist = "";
 Cand(long i, int g, long d) { id = i; group = g; diff = d; }
 }
 
@@ -1491,11 +1528,14 @@ int score = nameScore(sj.optString("name"), hints.nameCands);
 long dt = sj.optLong("dt");
 long diff = wantDur > 0 ? Math.abs(dt - wantDur) : Long.MAX_VALUE / 2;
 boolean artistHit = false;
+StringBuilder ab = new StringBuilder();
 JSONArray ars = sj.optJSONArray("ar");
-if (ars != null && track.title != null) {
+if (ars != null) {
 for (int a = 0; a < ars.length(); a++) {
 String an = ars.getJSONObject(a).optString("name");
-if (an.length() >= 2 && track.title.contains(an)) { artistHit = true; break; }
+if (ab.length() > 0) ab.append("、");
+ab.append(an);
+if (an.length() >= 2 && track.title != null && track.title.contains(an)) artistHit = true;
 }
 }
 int group;
@@ -1503,7 +1543,10 @@ if (score >= 80) group = 0;
 else if (score == 50 && artistHit) group = 1;
 else if (score == 0 && artistHit && diff <= 5000) group = 2;
 else continue;
-byId.put(id, new Cand(id, group, diff));
+Cand nc = new Cand(id, group, diff);
+nc.name = sj.optString("name");
+nc.artist = ab.toString();
+byId.put(id, nc);
 }
 }
 List<Cand> pool = new ArrayList<>(byId.values());
@@ -1525,6 +1568,7 @@ if (tly != null) {
 String tt = tly.optString("lyric");
 if (tt != null && tt.contains("[")) p.trans = tt;
 }
+p.song = c.name; p.singer = c.artist;
 attachNeteaseWords(p, c.id);
 return p;
 }
@@ -1596,7 +1640,7 @@ return sb.toString();
 }
 
 // ---------------- 酷狗 ----------------
-private static String kugouLyrics(Track track, Hints hints, int alt) throws Exception {
+private static LrcPack kugouLyrics(Track track, Hints hints, int alt) throws Exception {
 long wantDur = track.durationSec > 0 ? track.durationSec * 1000L : -1;
 Map<Long, Cand> byId = new HashMap<>();
 for (String q : hints.queries) {
@@ -1623,6 +1667,8 @@ else if (score == 0 && artistHit && diff <= 5000) group = 2;
 else continue;
 Cand c = new Cand(id, group, diff);
 c.ak = cj.optString("accesskey");
+c.name = cj.optString("song");
+c.artist = singer;
 byId.put(id, c);
 }
 }
@@ -1644,7 +1690,7 @@ text = new String(Base64.decode(content, Base64.DEFAULT), StandardCharsets.UTF_8
 } catch (Exception e) {
 text = content;
 }
-if (text.contains("[")) return text;
+if (text.contains("[")) { LrcPack p = new LrcPack(text); p.song = c.name; p.singer = c.artist; return p; }
 } catch (Exception ignored) {}
 }
 return null;
@@ -1712,7 +1758,10 @@ if (score >= 80) group = 0;
 else if (score == 50 && artistHit) group = 1;
 else if (score == 0 && artistHit && diff <= 5000) group = 2;
 else continue;
-byId.put(rid, new Cand(rid, group, diff));
+Cand kc = new Cand(rid, group, diff);
+kc.name = kuwoName(sj);
+kc.artist = singer;
+byId.put(rid, kc);
 }
 }
 List<Cand> pool = new ArrayList<>(byId.values());
@@ -1723,7 +1772,7 @@ for (int k = 0; k < pool.size(); k++) {
 Cand c = pool.get(Math.floorMod(alt + k, pool.size()));
 try {
 LrcPack p = kuwoFetchLrc(c.id);
-if (p != null) return p;
+if (p != null) { p.song = c.name; p.singer = c.artist; return p; }
 } catch (Exception ignored) {}
 }
 return null;
@@ -1869,7 +1918,7 @@ return "网易云";
 
 // ---------------- QQ 音乐 ----------------
 private static class QCand {
-String mid; int group; long diff;
+String mid; int group; long diff; String name = ""; String artist = "";
 QCand(String m, int g, long d) { mid = m; group = g; diff = d; }
 }
 
@@ -1891,11 +1940,14 @@ if (mid.isEmpty() || byMid.containsKey(mid)) continue;
 int score = nameScore(sj.optString("songname"), hints.nameCands);
 long diff = wantDur > 0 ? Math.abs(sj.optLong("interval") * 1000L - wantDur) : Long.MAX_VALUE / 2;
 boolean artistHit = false;
+StringBuilder ab = new StringBuilder();
 JSONArray sgs = sj.optJSONArray("singer");
 if (sgs != null) {
 for (int a = 0; a < sgs.length(); a++) {
 String an = sgs.getJSONObject(a).optString("name");
-if (an.length() >= 2 && ((track.title != null && track.title.contains(an)) || an.equals(hints.artist))) { artistHit = true; break; }
+if (ab.length() > 0) ab.append("、");
+ab.append(an);
+if (an.length() >= 2 && ((track.title != null && track.title.contains(an)) || an.equals(hints.artist))) artistHit = true;
 }
 }
 int group;
@@ -1903,7 +1955,10 @@ if (score >= 80) group = 0;
 else if (score == 50 && artistHit) group = 1;
 else if (score == 0 && artistHit && diff <= 5000) group = 2;
 else continue;
-byMid.put(mid, new QCand(mid, group, diff));
+QCand qc = new QCand(mid, group, diff);
+qc.name = sj.optString("songname");
+qc.artist = ab.toString();
+byMid.put(mid, qc);
 }
 if (!byMid.isEmpty()) break;
 }
@@ -1978,7 +2033,7 @@ for (int k = 0; k < pool.size(); k++) {
 QCand c = pool.get(Math.floorMod(alt + k, pool.size()));
 LrcPack mp = null;
 try { mp = qqPackMusicu(c.mid); } catch (Exception ignored) {}
-if (mp != null) return mp;
+if (mp != null) { mp.song = c.name; mp.singer = c.artist; return mp; }
 try {
 JSONObject r = new JSONObject(httpGet(
 "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + c.mid
@@ -2000,6 +2055,7 @@ if (dec.contains("[")) tr = dec;
 } catch (Exception ignored) {}
 }
 if (tr != null && tr.contains("[")) p.trans = tr;
+p.song = c.name; p.singer = c.artist;
 return p;
 }
 } catch (Exception ignored) {}
@@ -2015,7 +2071,7 @@ int n = Math.min(pool.size(), 3);
 for (int k = 0; k < n; k++) {
 QCand c = pool.get(Math.floorMod(alt + k, pool.size()));
 LrcPack p = amllFetch("qq-lyrics/" + c.mid + ".ttml");
-if (p != null) return p;
+if (p != null) { p.song = c.name; p.singer = c.artist; return p; }
 }
 } catch (Exception ignored) {}
 try {

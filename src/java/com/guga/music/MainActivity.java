@@ -417,7 +417,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
             onStateChanged(s.isPlaying());
         }
         if (tab == 3) refreshMine();
-        if (tab == 1 && favLocalMode) showLocalLists();
+        if (tab == 1) {
+            styleFavChips();
+            if (favLocalMode) showLocalLists();
+        }
     }
 
     @Override
@@ -1226,6 +1229,9 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         if (btnImportLocal != null) btnImportLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
         IconUtil.leading(chipFavBili, R.drawable.ic_tab_fav, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent, 6);
         IconUtil.leading(chipFavLocal, R.drawable.ic_note, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec, 6);
+        // 选中态粗细同步切换（与底部 tab 同口径）：玻璃下染色不明显时，粗细也是可见的高亮信号
+        chipFavBili.setTypeface(null, favLocalMode ? android.graphics.Typeface.NORMAL : android.graphics.Typeface.BOLD);
+        chipFavLocal.setTypeface(null, favLocalMode ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
     }
 
     private void showLocalLists() {
@@ -1240,6 +1246,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private void backFromFolder() {
         favShowingTracks = false;
         showFolders();
+        styleFavChips();
     }
 
     private void openFolder(BiliApi.FavFolder f) {
