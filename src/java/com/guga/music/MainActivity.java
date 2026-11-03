@@ -1166,14 +1166,30 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleSortChips() {
+        // v1.52.3：与收藏芯片同法——选中态不走透镜（透镜染色曾落不到芯片上，选中态文字还是深色，
+        // 染不出来就变成深字压暗底、看着发灰）；选中=关透镜+实色渐变背景，未选中=透镜开+染色 0。
         for (int i = 0; i < SORTS.length; i++) {
             boolean on = SORTS[i][1].equals(searchOrder);
             if (on) {
-                if (!styleChipLens(sortChips[i], true)) sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
+                if (sortChips[i] instanceof GlassTextView && ((GlassTextView) sortChips[i]).isLensOn()) {
+                    ((GlassTextView) sortChips[i]).setLensEnabled(false, null);
+                }
+                sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
                 sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gOnAccent));
                 sortChips[i].setTypeface(null, android.graphics.Typeface.BOLD);
+            } else if (sortChips[i] instanceof GlassTextView && ((GlassTextView) sortChips[i]).isLensOn()) {
+                ((GlassTextView) sortChips[i]).setLensTint(0);
+                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
+                sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+                sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
+            } else if (sortChips[i] instanceof GlassTextView && GlassTheme.isLensActive(this) && rootMain != null) {
+                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
+                ((GlassTextView) sortChips[i]).setLensEnabled(true, rootMain);
+                ((GlassTextView) sortChips[i]).setLensTint(0);
+                sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
+                sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
             } else {
-                if (!styleChipLens(sortChips[i], false)) sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
+                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
                 sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
                 sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
             }
