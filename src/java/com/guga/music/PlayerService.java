@@ -1358,9 +1358,10 @@ public class PlayerService extends Service {
                 updateNotification();
             });
         }
-        if (meteredSaveOn()) {
-            Diag.log(this, "📶 流量下跳过专辑封面匹配（省流量）");
-        } else Lyrics.fetchCover(this, t, url -> {
+        // v1.52.6：当首歌的专辑匹配不再受流量门限制——播放页本来就在流量下抓同一张专辑图
+        //（PlayerActivity.onTrackChanged 不设门），会话/通知复用同一张图不新增流量；只统一当首封面，
+        // 列表小图与后台匹配的省流量策略不动。
+        Lyrics.fetchCover(this, t, url -> {
             if (url == null) return;
             ImgLoader.loadBitmap(url, b -> {
                 Track cur = current();

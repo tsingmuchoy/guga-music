@@ -1445,6 +1445,14 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     public void onTrackChanged(Track t) {
         tvMiniTitle.setText(t.title);
         ImgLoader.load(ivMiniCover, t.cover);
+        // v1.52.6：迷你栏跟播放页同口径——先上视频封面，专辑图匹配到后替换（之前只上视频封面，永远对不上唱片页的专辑图）
+        Lyrics.fetchCover(this, t, url -> {
+            if (url == null) return;
+            PlayerService svc = PlayerService.get();
+            Track cur = svc == null ? null : svc.current();
+            if (cur == null || !t.bvid.equals(cur.bvid)) return;
+            ImgLoader.load(ivMiniCover, url);
+        });
     }
 
     @Override
