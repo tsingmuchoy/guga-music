@@ -1166,30 +1166,18 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleSortChips() {
-        // v1.52.3：与收藏芯片同法——选中态不走透镜（透镜染色曾落不到芯片上，选中态文字还是深色，
-        // 染不出来就变成深字压暗底、看着发灰）；选中=关透镜+实色渐变背景，未选中=透镜开+染色 0。
+        // v1.52.4 透镜高亮（与收藏芯片同法，v1.52.3 的关透镜作废）：透镜常开，选中态靠透镜染色；
+        // 玻璃下选中文字改用亮色 gAccent（与底栏选中态同口径），之前深色 gOnAccent 压在玻璃上才发灰；
+        // 扁平主题亮底上仍用深色 gOnAccent。
         for (int i = 0; i < SORTS.length; i++) {
             boolean on = SORTS[i][1].equals(searchOrder);
+            boolean lensOn = sortChips[i] instanceof GlassTextView && ((GlassTextView) sortChips[i]).isLensOn();
             if (on) {
-                if (sortChips[i] instanceof GlassTextView && ((GlassTextView) sortChips[i]).isLensOn()) {
-                    ((GlassTextView) sortChips[i]).setLensEnabled(false, null);
-                }
-                sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
-                sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gOnAccent));
+                if (!styleChipLens(sortChips[i], true)) sortChips[i].setBackground(ThemeUtil.accentGradient(this, 17));
+                sortChips[i].setTextColor(ThemeUtil.color(this, lensOn ? R.attr.gAccent : R.attr.gOnAccent));
                 sortChips[i].setTypeface(null, android.graphics.Typeface.BOLD);
-            } else if (sortChips[i] instanceof GlassTextView && ((GlassTextView) sortChips[i]).isLensOn()) {
-                ((GlassTextView) sortChips[i]).setLensTint(0);
-                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
-                sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
-                sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
-            } else if (sortChips[i] instanceof GlassTextView && GlassTheme.isLensActive(this) && rootMain != null) {
-                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
-                ((GlassTextView) sortChips[i]).setLensEnabled(true, rootMain);
-                ((GlassTextView) sortChips[i]).setLensTint(0);
-                sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
-                sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
             } else {
-                sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
+                if (!styleChipLens(sortChips[i], false)) sortChips[i].setBackgroundResource(R.drawable.bg_chip_pill);
                 sortChips[i].setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
                 sortChips[i].setTypeface(null, android.graphics.Typeface.NORMAL);
             }
@@ -1237,40 +1225,24 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     }
 
     private void styleFavChips() {
-        // v1.52.2：选中态不走透镜——透镜输出不透明会盖住背景，且染色曾出现落不到某颗芯片
-        // 的情况（v1.52.1 的背景同步在玻璃主题下因此无效）；选中态直接关透镜走实色背景，
-        // 观感与扁平主题一致；未选中态仍走透镜（染色 0），保持玻璃折射观感。
-        styleFavChip(chipFavBili, !favLocalMode);
-        chipFavBili.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent));
-        styleFavChip(chipFavLocal, favLocalMode);
-        chipFavLocal.setTextColor(ThemeUtil.color(this, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec));
+        // v1.52.4 透镜高亮（用户拒纯色高亮，v1.52.2 的关透镜作废）：透镜常开，选中态靠透镜染色；
+        // 玻璃下选中图标+文字改用亮色 gAccent（与底栏选中态同口径：图标和字亮、容器仍是玻璃），
+        // 之前深色 gOnAccent 压在玻璃上才显得暗；扁平主题亮底上仍用深色 gOnAccent，保证可读。
+        boolean biliLens = chipFavBili instanceof GlassTextView && ((GlassTextView) chipFavBili).isLensOn();
+        boolean localLens = chipFavLocal instanceof GlassTextView && ((GlassTextView) chipFavLocal).isLensOn();
+        if (!styleChipLens(chipFavBili, !favLocalMode)) chipFavBili.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_pill : R.drawable.bg_chip_selected);
+        int biliAttr = favLocalMode ? R.attr.gTextSec : (biliLens ? R.attr.gAccent : R.attr.gOnAccent);
+        chipFavBili.setTextColor(ThemeUtil.color(this, biliAttr));
+        if (!styleChipLens(chipFavLocal, favLocalMode)) chipFavLocal.setBackgroundResource(favLocalMode ? R.drawable.bg_chip_selected : R.drawable.bg_chip_pill);
+        int localAttr = favLocalMode ? (localLens ? R.attr.gAccent : R.attr.gOnAccent) : R.attr.gTextSec;
+        chipFavLocal.setTextColor(ThemeUtil.color(this, localAttr));
         btnNewLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
         if (btnImportLocal != null) btnImportLocal.setVisibility(favLocalMode ? View.VISIBLE : View.GONE);
-        IconUtil.leading(chipFavBili, R.drawable.ic_tab_fav, favLocalMode ? R.attr.gTextSec : R.attr.gOnAccent, 6);
-        IconUtil.leading(chipFavLocal, R.drawable.ic_note, favLocalMode ? R.attr.gOnAccent : R.attr.gTextSec, 6);
+        IconUtil.leading(chipFavBili, R.drawable.ic_tab_fav, biliAttr, 6);
+        IconUtil.leading(chipFavLocal, R.drawable.ic_note, localAttr, 6);
         // 选中态粗细同步切换（与底部 tab 同口径）：玻璃下染色不明显时，粗细也是可见的高亮信号
         chipFavBili.setTypeface(null, favLocalMode ? android.graphics.Typeface.NORMAL : android.graphics.Typeface.BOLD);
         chipFavLocal.setTypeface(null, favLocalMode ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-    }
-
-    /** 收藏页单颗芯片的选中态（v1.52.2）：选中=关透镜+实色亮底（不依赖透镜染色）；未选中=透镜开+染色 0，扁平主题只换背景。 */
-    private void styleFavChip(TextView chip, boolean selected) {
-        if (selected) {
-            if (chip instanceof GlassTextView && ((GlassTextView) chip).isLensOn()) {
-                ((GlassTextView) chip).setLensEnabled(false, null);
-            }
-            chip.setBackgroundResource(R.drawable.bg_chip_selected);
-        } else if (chip instanceof GlassTextView && ((GlassTextView) chip).isLensOn()) {
-            ((GlassTextView) chip).setLensTint(0);
-            chip.setBackgroundResource(R.drawable.bg_chip_pill);
-        } else if (chip instanceof GlassTextView && GlassTheme.isLensActive(this) && rootMain != null) {
-            // 透镜曾被选中态关闭：先把暗底设好再恢复透镜（绑定时会存起当前背景），未选中态仍是玻璃折射观感
-            chip.setBackgroundResource(R.drawable.bg_chip_pill);
-            ((GlassTextView) chip).setLensEnabled(true, rootMain);
-            ((GlassTextView) chip).setLensTint(0);
-        } else {
-            chip.setBackgroundResource(R.drawable.bg_chip_pill);
-        }
     }
 
     private void showLocalLists() {
