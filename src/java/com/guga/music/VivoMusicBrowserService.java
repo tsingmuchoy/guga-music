@@ -145,6 +145,8 @@ public class VivoMusicBrowserService extends MediaBrowserService {
     public void onLoadChildren(String parentId, Result<List<MediaBrowser.MediaItem>> result, Bundle options) {
         int page = 0;
         if (options != null) page = Math.max(0, options.getInt(KEY_PAGE, 0));
+        // options 来自任意可绑定本导出服务的客户端：先夹住上界，别让 page*PAGE_SIZE 溢出成负数
+        page = Math.min(page, Integer.MAX_VALUE / PAGE_SIZE);
         if (LIST_CURRENT.equals(parentId)) {
             PlayerService ps = PlayerService.get();
             List<Track> q = ps == null ? Collections.<Track>emptyList() : ps.getQueue();
@@ -243,6 +245,8 @@ public class VivoMusicBrowserService extends MediaBrowserService {
     private static List<MediaBrowser.MediaItem> pageItems(List<Track> src, int page, String listId) {
         List<MediaBrowser.MediaItem> out = new ArrayList<>();
         if (src == null) return out;
+        // 双保险：即使内部调用方传了超大页码，也不做乘法溢出、不返回负下标
+        if (page < 0 || page > Integer.MAX_VALUE / PAGE_SIZE) return out;
         int from = Math.min(page * PAGE_SIZE, src.size());
         int to = Math.min(src.size(), from + PAGE_SIZE);
         for (int i = from; i < to; i++) {
