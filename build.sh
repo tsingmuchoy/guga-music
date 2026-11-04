@@ -27,7 +27,9 @@ fi
   --version-code "$VER_CODE" --version-name "$VER_NAME" "$OUT/compiled.zip"
 find "$SRC/java" "$OUT/gen" -name "*.java" > "$OUT/sources.txt"
 rm -rf "$OUT/classes" "$OUT/dex"; mkdir -p "$OUT/classes" "$OUT/dex"
-javac -source 8 -target 8 -encoding UTF-8 -cp "$AJ" -d "$OUT/classes" @"$OUT/sources.txt"
+# 用 --release 8 而不是 -source/-target：以 JDK 8 的平台签名编译，
+# 防止将来误用 Java 9+ API 时 javac 放行、Android 8-13 运行时抛 NoSuchMethodError
+javac --release 8 -encoding UTF-8 -cp "$AJ" -d "$OUT/classes" @"$OUT/sources.txt"
 "$BT/d8" --lib "$AJ" --min-api 26 --output "$OUT/dex" $(find "$OUT/classes" -name "*.class")
 cp "$OUT/app-unsigned.apk" "$OUT/app-with-dex.apk"
 (cd "$OUT" && zip -j app-with-dex.apk dex/classes.dex > /dev/null)
