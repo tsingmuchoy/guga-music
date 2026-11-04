@@ -1016,7 +1016,11 @@ else if (m.roma == null) m.roma = txt;
 /** 读缓存文件：拆出 #src 主歌词与 #trans/#roma 分段并对齐 */
 private static Result parseCache(String content) {
 if (content == null) return null;
-String src = content.startsWith("#src:") ? content.substring(5, content.indexOf('\n')) : "缓存";
+String src = "缓存";
+if (content.startsWith("#src:")) {
+int nl = content.indexOf('\n');
+src = content.substring(5, nl < 0 ? content.length() : nl).trim(); // 残缺缓存没有换行，别让 substring 收到 -1
+}
 // 缓存头里的原歌名/歌手（v1.52.0 起写入；老缓存没有，走线索兜底）
 String song = "", singer = "";
 int si = content.indexOf("\n#song:");
