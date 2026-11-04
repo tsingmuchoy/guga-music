@@ -2309,18 +2309,24 @@ return (long) ((hr * 3600 + min * 60) * 1000 + sec * 1000);
 }
 
 static String httpGet(String url, String referer) throws Exception {
-HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+if (url.startsWith("http://")) url = "https://" + url.substring(7); // 与 ImgLoader/PlaylistImport 同口径
+HttpURLConnection c = null;
+try {
+c = (HttpURLConnection) new URL(url).openConnection();
 c.setConnectTimeout(8000);
 c.setReadTimeout(10000);
 c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 if (referer != null) c.setRequestProperty("Referer", referer);
-java.io.InputStream in = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
+int code = c.getResponseCode();
+java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+if (in == null) throw new Exception("HTTP " + code + "（无响应体）");
 BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
 StringBuilder sb = new StringBuilder();
 String line;
-while ((line = r.readLine()) != null) sb.append(line);
-r.close();
+try { while ((line = r.readLine()) != null) sb.append(line); }
+finally { r.close(); }
 return sb.toString();
+} finally { if (c != null) c.disconnect(); }
 }
 
 /** 歌词缓存上限：目录文件超 1000 个（约 500 首）时删最旧的，防越用越大 */
@@ -2340,8 +2346,8 @@ private static String readFile(File f) throws Exception {
 BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8));
 StringBuilder sb = new StringBuilder();
 String line;
-while ((line = r.readLine()) != null) sb.append(line).append("\n");
-r.close();
+try { while ((line = r.readLine()) != null) sb.append(line).append("\n"); }
+finally { r.close(); }
 return sb.toString();
 }
 

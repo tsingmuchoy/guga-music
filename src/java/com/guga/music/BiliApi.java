@@ -98,21 +98,28 @@ public class BiliApi {
 
     // ---------------- 基础请求 ----------------
     private JSONObject getJson(String url) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setConnectTimeout(8000);
-        c.setReadTimeout(12000);
-        c.setRequestProperty("User-Agent", UA);
-        c.setRequestProperty("Referer", "https://www.bilibili.com");
-        String ck = cookieHeader();
-        if (!ck.isEmpty()) c.setRequestProperty("Cookie", ck);
-        int code = c.getResponseCode();
-        BufferedReader r = new BufferedReader(new InputStreamReader(
-                code >= 400 ? c.getErrorStream() : c.getInputStream(), StandardCharsets.UTF_8));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = r.readLine()) != null) sb.append(line);
-        r.close();
-        return new JSONObject(sb.toString());
+        if (url.startsWith("http://")) url = "https://" + url.substring(7);
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(12000);
+            c.setRequestProperty("User-Agent", UA);
+            c.setRequestProperty("Referer", "https://www.bilibili.com");
+            String ck = cookieHeader();
+            if (!ck.isEmpty()) c.setRequestProperty("Cookie", ck);
+            int code = c.getResponseCode();
+            java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            if (in == null) throw new Exception("HTTP " + code + "（无响应体）");
+            BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            try { while ((line = r.readLine()) != null) sb.append(line); }
+            finally { r.close(); }
+            return new JSONObject(sb.toString());
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     private <T> void run(java.util.concurrent.Callable<T> job, Cb<T> cb) {
