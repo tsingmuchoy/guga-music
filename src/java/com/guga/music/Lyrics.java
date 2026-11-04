@@ -212,7 +212,9 @@ r = ff.get();
 r = null;
 }
 INFLIGHT.remove(key, ff);
-final Result fr = r;
+// 审校补丁：fetchSync 极端异常时 ff.get() 抛错，回调绝不能收到 null（播放页/歌词页直接 r.has() 会 NPE），
+// 转空结果，与“未命中”同口径，界面显示暂无歌词。
+final Result fr = r != null ? r : new Result(new ArrayList<>(), "");
 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult(fr));
 });
 }
