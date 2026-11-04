@@ -12,13 +12,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- 关掉系统备份：登录凭证（SESSDATA）与本地数据不进 adb backup / 云备份，只留在本机 -->
     <application
         android:name=".GugaApp"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:supportsRtl="true">
 
         <activity
@@ -90,12 +91,8 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <receiver
-            android:name="android.media.session.MediaButtonReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
+        <!-- 媒体按键（线控/蓝牙）不走 manifest receiver：android.media.session.MediaButtonReceiver
+             是 AndroidX media 库的类，本项目零依赖、framework 里并不存在，声明了也永远不会被
+             实例化。线控由 PlayerService 的活跃 MediaSession（FLAG_HANDLES_MEDIA_BUTTONS）接收。 -->
     </application>
 </manifest>

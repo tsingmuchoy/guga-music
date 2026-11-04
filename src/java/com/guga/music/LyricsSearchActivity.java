@@ -30,6 +30,7 @@ public class LyricsSearchActivity extends Activity {
     private View hsvSrcFilter;
     private String srcFilter = "";
     private boolean searching;
+    private boolean previewing;   // 预览取词进行中：防连点开多个下载线程、弹多个窗
 
     private final BaseAdapter adapter = new BaseAdapter() {
         @Override public int getCount() { return shown.size(); }
@@ -168,6 +169,7 @@ public class LyricsSearchActivity extends Activity {
         new Thread(() -> {
             final List<Lyrics.MCand> found = Lyrics.manualSearch(getApplicationContext(), name, artist);
             runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;   // 回调迟到：页面已退出就别再碰 UI
                 searching = false;
                 results.clear();
                 results.addAll(found);
@@ -179,6 +181,8 @@ public class LyricsSearchActivity extends Activity {
     }
 
     private void preview(final Lyrics.MCand c) {
+        if (previewing || searching) return;   // 取词中不叠加：连点只跑第一个
+        previewing = true;
         Haptics.tick(this);
         tvStatus.setText("正在取这版歌词…");
         new Thread(() -> {
@@ -186,6 +190,9 @@ public class LyricsSearchActivity extends Activity {
             final List<Lyrics.Line> lines = pack == null || pack.lrc == null
                     ? new ArrayList<>() : Lyrics.parseLrc(pack.lrc);
             runOnUiThread(() -> {
+                previewing = false;
+                // 回调迟到且页面已退出：AlertDialog.show() 会抛 BadTokenException 直接崩进程
+                if (isFinishing() || isDestroyed()) return;
                 if (lines.size() < 5) {
                     // 歌词取不到别一票否决：封面+原歌名还能用，歌词继续自动匹配
                     tvStatus.setText("共 " + shown.size() + " 个候选，点一个预览");
@@ -265,6 +272,7 @@ public class LyricsSearchActivity extends Activity {
         new Thread(() -> {
             final boolean ok = Lyrics.applyManual(getApplicationContext(), bvid, c, pack);
             runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;   // 页面已退出：Toast/finish 不再执行
                 if (ok) {
                     boolean hasCover = c.cover != null && !c.cover.isEmpty();
                     Toast.makeText(this, hasCover ? "已匹配 ✓ 封面和歌词都换成这首了"

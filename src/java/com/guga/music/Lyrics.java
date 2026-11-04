@@ -907,8 +907,8 @@ if (pack == null || pack.lrc == null) return null;
 List<Line> lines = parseLrc(pack.lrc);
 if (lines.size() < 5) return null;
 try {
-StringBuilder sb = new StringBuilder("#src:" + src + "\n");
-if (pack.song != null && !pack.song.isEmpty()) sb.append("#song:").append(pack.song).append("\n#singer:").append(pack.singer == null ? "" : pack.singer).append("\n");
+StringBuilder sb = new StringBuilder();
+appendHead(sb, src, pack.song, pack.singer);
 sb.append(pack.lrc);
 if (pack.trans != null && parseLrc(pack.trans).size() >= 3) sb.append("\n#trans:\n").append(pack.trans);
 if (pack.roma != null && parseLrc(pack.roma).size() >= 3) sb.append("\n#roma:\n").append(pack.roma);
@@ -916,7 +916,19 @@ if (pack.words != null && !pack.words.isEmpty()) sb.append("\n#words:\n").append
 writeFile(cache, sb.toString());
 trimLyricsDir(cache);
 } catch (Exception ignored) {}
-return buildResult(lines, src, pack.trans, pack.roma, pack.words);
+Result out = buildResult(lines, src, pack.trans, pack.roma, pack.words);
+// 回填原歌名/歌手：后续 maybeEnrich/maybeWords 重写缓存文件时要靠它保住 #song/#singer 头，
+// 否则补过齐的歌进程重启后缓存头里就只剩 #src，显示层退回视频标题线索
+out.song = pack.song == null ? "" : pack.song;
+out.singer = pack.singer == null ? "" : pack.singer;
+return out;
+}
+
+/** 统一写缓存头：#src 恒写；原歌名/歌手非空才写（视频字幕兜底与未命中没有头，显示层回落视频信息）。
+ *  所有重写歌词缓存文件的地方都必须走这里，别手拼 —— 漏一次 #song 头，下次启动歌名就回退。 */
+private static void appendHead(StringBuilder sb, String src, String song, String singer) {
+sb.append("#src:").append(src).append("\n");
+if (song != null && !song.isEmpty()) sb.append("#song:").append(song).append("\n#singer:").append(singer == null ? "" : singer).append("\n");
 }
 
 /** 把译文/罗马音 LRC 按时间戳（±800ms 最近行）对齐挂到主歌词行上 */
@@ -1342,7 +1354,8 @@ if (tryKugouKrc(track, hints, r)) { done = true; wsrc = "酷狗KRC"; }
 } catch (Exception ignored) {}
 }
 if (!done) { logWordsVerdict(ctx, track, r, null); return r; }
-StringBuilder sb = new StringBuilder("#src:" + r.source + "\n");
+StringBuilder sb = new StringBuilder();
+appendHead(sb, r.source, r.song, r.singer);   // 重写缓存也要保住原歌名/歌手头
 sb.append(lrcTextOf(r.lines));
 String ts = extraTextOf(r.lines, true);
 if (ts != null) sb.append("\n#trans:\n").append(ts);
@@ -1548,7 +1561,8 @@ if (wantT && t != null && t.contains("[") && correlate(r.lines, t) >= 0.35) { al
 if (wantR && ro != null && ro.contains("[") && asciiRatio(ro) >= 0.75 && correlate(r.lines, ro) >= 0.5) { align(r.lines, ro, false); added = true; }
 mark.createNewFile();
 if (added) {
-StringBuilder sb = new StringBuilder("#src:" + r.source + "\n");
+StringBuilder sb = new StringBuilder();
+appendHead(sb, r.source, r.song, r.singer);   // 重写缓存也要保住原歌名/歌手头
 sb.append(lrcTextOf(r.lines));
 String ts = extraTextOf(r.lines, true);
 if (ts != null) sb.append("\n#trans:\n").append(ts);

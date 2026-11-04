@@ -1442,7 +1442,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 return;
             }
             s.playQueue(tracks, pos);
-            startActivity(new Intent(this, PlayerActivity.class));
+            // 350ms 内用户可能已退出页面：歌照播，但别从已销毁的页面拉起播放页（后台启动会被系统拦）
+            if (!isFinishing() && !isDestroyed()) startActivity(new Intent(this, PlayerActivity.class));
         }, 350);
     }
 

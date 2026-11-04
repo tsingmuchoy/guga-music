@@ -691,8 +691,11 @@ public class PlayerService extends Service {
                 }
                 final boolean flacKind = "flac".equals(curStreamKind);
                 final int tierKey = actualTier >= 0 ? actualTier : activeTier;
-                curCacheKey = StreamCache.key(t.bvid, tierKey);
-                java.io.File hit = noTee && !flacKind ? null : StreamCache.hitFile(PlayerService.this, curCacheKey);
+                // 捕获成本次的局部常量：下载完成回调发生在切歌之后时，字段 curCacheKey 已经
+                // 指向新歌，绝不能拿它去转正旧歌的缓存文件（会把新歌未下完的 .part 提前转正）
+                final String cacheKey = StreamCache.key(t.bvid, tierKey);
+                curCacheKey = cacheKey;
+                java.io.File hit = noTee && !flacKind ? null : StreamCache.hitFile(PlayerService.this, cacheKey);
                 if (hit != null) {
                     curFromCache = true;
                     Diag.log(PlayerService.this, "💾 本地缓存播放（0 流量）");
@@ -706,10 +709,10 @@ public class PlayerService extends Service {
                 curFromCache = false;
                 if (!noTee || flacKind) {
                     curTee = new TeeDataSource(PlayerService.this, urls[0], streamHeaders(),
-                            StreamCache.partFile(PlayerService.this, curCacheKey),
+                            StreamCache.partFile(PlayerService.this, cacheKey),
                             new TeeDataSource.Done() {
                                 @Override public void onComplete(java.io.File f) {
-                                    StreamCache.finish(PlayerService.this, curCacheKey);
+                                    StreamCache.finish(PlayerService.this, cacheKey);
                                     Diag.log(PlayerService.this, "💾 已缓存（再播/循环 0 流量）：" + t.title);
                                 }
                                 @Override public void onFail() {}
