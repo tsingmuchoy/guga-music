@@ -71,6 +71,13 @@ public class BiliApi {
 
     public void logout() {
         sp.edit().remove("sessdata").remove("mid").remove("bili_jct").remove("uname").remove("face").apply();
+        // WebView 的全局 cookie 也要清：否则下次进登录页 onPageFinished 会读到残留的
+        // SESSDATA 立刻判定「登录成功」，用户既退不掉也换不了账号
+        try {
+            android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+            cm.removeAllCookies(null);
+            cm.flush();
+        } catch (Exception ignored) {}
     }
 
     private String cookieHeader() {

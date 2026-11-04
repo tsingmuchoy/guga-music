@@ -62,7 +62,8 @@ public class LoginActivity extends Activity {
                 if (kv.length == 2) map.put(kv[0].trim(), kv[1].trim());
             }
         }
-        if (map.containsKey("SESSDATA")) {
+        String sess = map.get("SESSDATA");
+        if (sess != null && !sess.isEmpty()) {
             done = true;
             api.saveLoginCookies(map);
             Toast.makeText(this, "登录成功 🎉", Toast.LENGTH_SHORT).show();
