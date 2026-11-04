@@ -20,6 +20,7 @@ public class LyricsActivity extends Activity {
 
     private TextView tvSong, tvSource, tvEmpty, btnFix, btnManual, btnOffset;
     private Track curTrack;
+    private int lyricSeq = 0; // 取词请求序号：避免退出页面后迟到回调操作已销毁 View、或换一版与在途结果交错覆盖
     private int curOffsetMs = 0;
     private ListView lv;
     private List<Lyrics.Line> lines = new ArrayList<>();
@@ -301,8 +302,11 @@ public class LyricsActivity extends Activity {
     }
 
     private void loadLyrics(final Track t, boolean next) {
+        final int mySeq = ++lyricSeq;
         BiliApi api = new BiliApi(getApplicationContext());
         Lyrics.Cb cb = r -> {
+            // 页面已销毁或已有更新的请求发出时，丢弃这次迟到/过期的回调
+            if (isFinishing() || isDestroyed() || mySeq != lyricSeq) return;
             if (r.has()) {
                 lines = r.lines;
                 tvEmpty.setVisibility(View.GONE);
