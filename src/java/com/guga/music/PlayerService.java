@@ -304,7 +304,9 @@ public class PlayerService extends Service {
         });
         watchdog.postDelayed(trafficTicker, 1000);
         initSession();
-        
+        // 歌词匹配到原歌名/歌手后（含手动锁定/换一版/解锁）：通知栏、媒体会话与悬浮岛即时跟着换
+        Lyrics.setSongInfoListener(bvid -> refreshSongInfo(bvid));
+
         createChannel();
         startForegroundCompat(buildNotification("Apollo", "点一首歌开始听吧"));
         restoreState();
@@ -1285,12 +1287,15 @@ public class PlayerService extends Service {
         Track t = current();
         if (t == null) return;
         try {
+            // 与播放页同一口径：匹配到歌词后用原歌名/歌手，否则回落视频标题/UP主（锁屏、蓝牙、车机共用这套元数据）
+            String title = Lyrics.displayName(this, t);
+            String artist = Lyrics.displayArtist(this, t);
             MediaMetadata.Builder mb = new MediaMetadata.Builder()
-                    .putString(MediaMetadata.METADATA_KEY_TITLE, t.title)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, t.title)
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, t.author)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, t.author)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, t.author)
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, artist)
                     .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩")
                     // 原子随身听的私有字段：平台 MediaMetadata 允许自定义 key（只对系统已知 key 做类型校验）
                     .putLong(VIVO_KEY_LOOP_MODE, (long) vivoLoopMode())
@@ -1427,7 +1432,7 @@ public class PlayerService extends Service {
             }
             if (islandView == null) buildIslandView();
             Track t = current();
-            islandTitle.setText(t.title);
+            islandTitle.setText(Lyrics.displayName(this, t));
             islandToggle.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
             islandMini.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
             if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
@@ -1951,14 +1956,29 @@ public class PlayerService extends Service {
         return b.build();
     }
 
-    private void updateNotification() {
+    private void postNotification() {
         Track t = current();
+        // 通知栏标题/副标题跟播放页同一口径：匹配到歌词显示原歌名/歌手，未命中或字幕兜底显示视频标题/UP主
         Notification n = t == null ? buildNotification("Apollo", "点一首歌开始听吧")
-                : buildNotification(t.title, t.author);
+                : buildNotification(Lyrics.displayName(this, t), Lyrics.displayArtist(this, t));
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.notify(NID, n);
+    }
+
+    private void updateNotification() {
+        postNotification();
         refreshIsland();
         refreshSbLyrics();
+    }
+
+    /** 歌词匹配完成/手动锁定改了歌名歌手：只重发通知与会话元数据，并同步悬浮岛标题。
+     *  不碰状态栏歌词的抓取流程，避免歌词回调里又触发一次匹配。 */
+    private void refreshSongInfo(String bvid) {
+        Track t = current();
+        if (t == null || t.bvid == null || !t.bvid.equals(bvid)) return;
+        publishMetadata();
+        postNotification();
+        if (islandShown && islandTitle != null) islandTitle.setText(Lyrics.displayName(this, t));
     }
 
     private void startForegroundCompat(Notification n) {
@@ -1995,6 +2015,7 @@ public class PlayerService extends Service {
     @Override
     public void onDestroy() {
         Diag.log(this, "⚠️ 服务被销毁（多半是系统杀后台）");
+        Lyrics.setSongInfoListener(null);
         
         try { if (islandShown && islandView != null && islandWm != null) islandWm.removeView(islandView); } catch (Exception ignored) {}
         islandShown = false;

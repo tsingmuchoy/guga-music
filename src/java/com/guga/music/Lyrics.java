@@ -190,13 +190,31 @@ new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult
 // 结果只存内存（进程级 Map），图片走 ImgLoader 原有内存缓存；不写任何磁盘文件。
 public interface CoverCb { void onCover(String url); }
 private static final java.util.Map<String, String> COVER_MEM = new java.util.HashMap<>();
-/** 自动匹配到的歌曲信息（按 bvid 记 [歌名, 歌手]，仅内存）：播放页显示用；手动锁定优先，字幕兜底/未命中时清除 */
-private static final java.util.Map<String, String[]> AUTO_SONG = new java.util.HashMap<>();
-/** 记录自动匹配的歌曲信息（歌名空时清除，显示层回落到视频标题） */
+/** 自动匹配到的歌曲信息（按 bvid 记 [歌名, 歌手]，仅内存）：播放页/通知栏显示用；手动锁定优先，字幕兜底/未命中时清除 */
+private static final java.util.Map<String, String[]> AUTO_SONG = new java.util.concurrent.ConcurrentHashMap<>();
+/** 歌曲信息变化订阅者（目前只有 PlayerService）：歌词匹配到/手动锁定后，通知栏与媒体会话要即时跟着换 */
+public interface SongInfoListener { void onSongInfoChanged(String bvid); }
+private static volatile SongInfoListener songInfoListener;
+public static void setSongInfoListener(SongInfoListener l) { songInfoListener = l; }
+/** 匹配发生在线程池，回调一律切主线程（通知/会话刷新走主线程） */
+private static void fireSongInfo(String bvid) {
+if (bvid == null || songInfoListener == null) return;
+new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+SongInfoListener l = songInfoListener;
+if (l == null) return;
+try { l.onSongInfoChanged(bvid); } catch (Exception ignored) {}
+});
+}
+private static boolean sameStr(String a, String b) { return a == null ? b == null : a.equals(b); }
+/** 记录自动匹配的歌曲信息（歌名空时清除，显示层回落到视频标题）；值真变了才通知外部刷新 */
 private static void recordAutoSong(String bvid, String name, String artist) {
 if (bvid == null) return;
-if (name != null && !name.isEmpty()) AUTO_SONG.put(bvid, new String[]{name, artist == null ? "" : artist});
-else AUTO_SONG.remove(bvid);
+String[] nw = (name != null && !name.isEmpty()) ? new String[]{name, artist == null ? "" : artist} : null;
+String[] old = AUTO_SONG.get(bvid);
+boolean changed = nw == null ? old != null
+        : old == null || !sameStr(old[0], nw[0]) || !sameStr(old[1], nw[1]);
+if (nw != null) AUTO_SONG.put(bvid, nw); else AUTO_SONG.remove(bvid);
+if (changed) fireSongInfo(bvid);
 }
 
 public static boolean isCoverArt(Context ctx) {
@@ -411,6 +429,7 @@ android.content.SharedPreferences sp = app.getSharedPreferences("lyrics_alt", Co
 int next = sp.getInt("alt_" + track.bvid, 0) + 1;
 sp.edit().putInt("alt_" + track.bvid, next).apply();
 LyricsDb.unbind(app, track.bvid); // 用户主动换版本：解除手动锁定，回到自动匹配
+fireSongInfo(track.bvid);        // 先按新口径刷一次，随后 fetchSync 命中会再刷
 try {
 File dir = new File(app.getFilesDir(), "lyrics_v5");
 new File(dir, track.bvid + ".lrc").delete();
@@ -434,7 +453,13 @@ if (cache.exists()) {
 Result cr = parseCache(readFile(cache));
 // 有锁定时只有「正是锁定版」的缓存才直接用；没锁定走原逻辑
 if (cr != null && (bind == null || cr.source.equals(bind.label))) {
-recordAutoSong(track.bvid, (cr.song != null && !cr.song.isEmpty()) ? cr.song : hints.name, (cr.song != null && !cr.song.isEmpty()) ? cr.singer : hints.artist);
+if (cr.source != null && cr.source.contains("视频字幕")) {
+recordAutoSong(track.bvid, null, null);   // 视频字幕兜底：仍显示视频标题/UP主
+} else if (cr.song != null && !cr.song.isEmpty()) {
+recordAutoSong(track.bvid, cr.song, cr.singer);
+} else {
+recordAutoSong(track.bvid, hints.name, hints.artist); // 老缓存/源没回传歌名：与首次命中同口径
+}
 return maybeWords(ctx, track, maybeEnrich(ctx, track, cr, cache, dir), cache, dir);
 }
 }
@@ -448,7 +473,7 @@ if (br != null) { Diag.log(ctx, "🎤 歌词命中：手动锁定（" + srcShort
 // 锁定源这次没取到：落到下面自动流程兜底，绑定保留、下次播放再试
 }
 if (none.exists() && System.currentTimeMillis() - none.lastModified() < 3L * 24 * 3600 * 1000) {
-AUTO_SONG.remove(track.bvid);
+recordAutoSong(track.bvid, null, null);
 return new Result(new ArrayList<>(), "");
 }
 } catch (Exception ignored) {}
@@ -474,11 +499,11 @@ Diag.log(ctx, "🎤 歌词命中：" + srcShort(key) + "《" + hints.name + "》
 
 // B 站字幕兜底
 Result sr = trySubtitles(ctx, track, api, cache);
-if (sr != null) { AUTO_SONG.remove(track.bvid); return maybeWords(ctx, track, maybeEnrich(ctx, track, sr, cache, dir), cache, dir); }
+if (sr != null) { recordAutoSong(track.bvid, null, null); return maybeWords(ctx, track, maybeEnrich(ctx, track, sr, cache, dir), cache, dir); }
 
 try { writeFile(none, ""); trimLyricsDir(none); } catch (Exception ignored) {}
 Diag.log(ctx, "🎤 歌词未命中：《" + hints.name + "》");
-AUTO_SONG.remove(track.bvid);
+recordAutoSong(track.bvid, null, null);
 return new Result(new ArrayList<>(), "");
 }
 
@@ -745,6 +770,7 @@ b.cover = c.cover;
 LyricsDb.bind(ctx, bvid, b);
 COVER_MEM.remove(bvid);
 ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).edit().remove("alt_" + bvid).apply();
+fireSongInfo(bvid);   // 手动锁定改了歌名/歌手：通知栏与媒体会话即时跟上
 return true;
 }
 
@@ -758,29 +784,31 @@ b.cover = c.cover;
 LyricsDb.bind(ctx, bvid, b);
 COVER_MEM.remove(bvid);
 ctx.getSharedPreferences("lyrics_alt", Context.MODE_PRIVATE).edit().remove("alt_" + bvid).apply();
+fireSongInfo(bvid);   // 只锁封面+原歌名：也要让通知栏换歌名
 }
 
 /** 解除手动锁定并清掉歌词缓存，回到自动匹配 */
 public static void clearManual(Context ctx, String bvid) {
 LyricsDb.unbind(ctx, bvid);
 COVER_MEM.remove(bvid);
-AUTO_SONG.remove(bvid);
+recordAutoSong(bvid, null, null);
 try {
 File dir = new File(ctx.getFilesDir(), "lyrics_v5");
 new File(dir, bvid + ".lrc").delete();
 new File(dir, bvid + ".none").delete();
 } catch (Exception ignored) {}
+fireSongInfo(bvid);   // 解锁后回落到视频信息/自动匹配，通知栏同步刷新
 }
 
 /** 这首歌的歌词是否被手动锁定 */
 public static boolean isBound(Context ctx, String bvid) { return LyricsDb.get(ctx, bvid) != null; }
 
-/** 播放/歌词页显示用的歌名：手动匹配优先，其次自动匹配到的歌词所属歌曲，否则用视频标题 */
+/** 播放/歌词页/通知栏显示用的歌名：手动匹配优先，其次自动匹配到的歌词所属歌曲，否则用视频标题 */
 public static String displayName(Context ctx, Track t) {
 if (t == null) return "";
 LyricsDb.Bind bd = LyricsDb.get(ctx, t.bvid);
 if (bd != null && bd.name != null && !bd.name.isEmpty()) return bd.name;
-String[] a = AUTO_SONG.get(t.bvid);
+String[] a = songOf(ctx, t);
 if (a != null && a[0] != null && !a[0].isEmpty()) return a[0];
 return t.title == null ? "" : t.title;
 }
@@ -790,9 +818,48 @@ public static String displayArtist(Context ctx, Track t) {
 if (t == null) return "";
 LyricsDb.Bind bd = LyricsDb.get(ctx, t.bvid);
 if (bd != null && bd.artist != null && !bd.artist.isEmpty()) return bd.artist;
-String[] a = AUTO_SONG.get(t.bvid);
+String[] a = songOf(ctx, t);
 if (a != null && a[1] != null && !a[1].isEmpty()) return a[1];
 return t.author == null ? "" : t.author;
+}
+
+/** 本次匹配到的歌曲信息：内存没有时从本地歌词缓存头恢复（服务被系统杀掉后重建、或没打开过播放页也能对上）。
+ *  只读缓存、绝不联网；恢复结果回填内存，避免每次显示都读文件。 */
+private static String[] songOf(Context ctx, Track t) {
+if (t == null || t.bvid == null) return null;
+String[] a = AUTO_SONG.get(t.bvid);
+if (a != null) return a;
+String[] c = cachedSong(ctx, t);
+if (c != null) AUTO_SONG.put(t.bvid, c);
+return c;
+}
+
+/** 读歌词缓存头里的 #song/#singer（v1.52.0 起写入），不解析整份 LRC。
+ *  视频字幕兜底与「近三天未命中」的 .none 一律返回 null，显示层回落视频标题/UP主；
+ *  源没回传歌名时与 fetchSync 同口径，用标题线索兜底。 */
+private static String[] cachedSong(Context ctx, Track t) {
+File dir = new File(ctx.getFilesDir(), "lyrics_v5");
+File f = new File(dir, t.bvid + ".lrc");
+if (!f.exists()) return null;
+File none = new File(dir, t.bvid + ".none");
+if (none.exists() && System.currentTimeMillis() - none.lastModified() < 3L * 24 * 3600 * 1000) return null;
+String src = "", song = "", singer = "";
+try (java.io.BufferedReader br = new java.io.BufferedReader(
+        new java.io.InputStreamReader(new java.io.FileInputStream(f), java.nio.charset.StandardCharsets.UTF_8))) {
+String line;
+int n = 0;
+while ((line = br.readLine()) != null && n++ < 12) {
+if (line.startsWith("#src:")) src = line.substring(5).trim();
+else if (line.startsWith("#song:")) song = line.substring(6).trim();
+else if (line.startsWith("#singer:")) singer = line.substring(8).trim();
+else if (!line.startsWith("#") && line.contains("[")) break; // 歌词正文开始
+}
+} catch (Exception ignored) { return null; }
+if (src.contains("视频字幕")) return null;
+if (!song.isEmpty()) return new String[]{song, singer};
+Hints h = hintsOf(t);
+if (h.name.isEmpty()) return null;
+return new String[]{h.name, h.artist};
 }
 
 private static Result trySubtitles(Context ctx, Track track, BiliApi api, File cache) {
