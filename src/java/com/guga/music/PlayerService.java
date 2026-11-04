@@ -367,6 +367,7 @@ public class PlayerService extends Service {
     private long trafficDirty = 0;
     private static final int[] TRAFFIC_KBPS = {64, 132, 192, 1000, 640};
     private boolean playbackCbRegistered = false;
+    private android.media.AudioManager.AudioPlaybackCallback playbackCb;
 
     /** 系统「当前活跃播放」列表非空 = 有应用正在出声（暂停的播放器不在活跃列表里）。
      *  顺带注册一次播放变化回调：对方停播的那一刻事件驱动地恢复，比轮询更及时。
@@ -375,8 +376,7 @@ public class PlayerService extends Service {
         try {
             if (audioMgr == null) return true;
             if (!playbackCbRegistered) {
-                playbackCbRegistered = true;
-                audioMgr.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
+                playbackCb = new AudioManager.AudioPlaybackCallback() {
                     @Override
                     public void onPlaybackConfigChanged(
                             java.util.List<android.media.AudioPlaybackConfiguration> configs) {
@@ -387,7 +387,9 @@ public class PlayerService extends Service {
                             refreshSbLyrics();
                         }
                     }
-                }, watchdog);
+                };
+                audioMgr.registerAudioPlaybackCallback(playbackCb, watchdog);
+                playbackCbRegistered = true;
             }
             java.util.List<android.media.AudioPlaybackConfiguration> cs =
                     audioMgr.getActivePlaybackConfigurations();
@@ -2018,7 +2020,35 @@ public class PlayerService extends Service {
     @Override
     public void onDestroy() {
         Diag.log(this, "⚠️ 服务被销毁（多半是系统杀后台）");
+        // 服务没了就把自循环任务全停掉：trafficTicker / sbTicker / 看门狗都是每秒或每 3 秒
+        // 自己重新投递的，不清会永久持有已销毁的 Service，还会继续虚增流量与播放统计
+        playing = false;
+        prepared = false;
+        preparing = false;
+        watchdog.removeCallbacks(trafficTicker);
+        watchdog.removeCallbacks(sbTicker);
+        watchdog.removeCallbacks(islandCollapseTask);
+        cancelWatchdog();
+        listeners.clear();
         Lyrics.setSongInfoListener(null);
+        // 归还音频焦点：进程还活着时系统不会自动回收，别的音乐 App 会一直拿不到焦点
+        try {
+            if (focusHeld && audioMgr != null) {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    if (focusReq != null) audioMgr.abandonAudioFocusRequest(focusReq);
+                } else {
+                    audioMgr.abandonAudioFocus(focusListener);
+                }
+                focusHeld = false;
+            }
+        } catch (Exception ignored) {}
+        // 系统活跃播放回调里持有本 Service，销毁时必须注销
+        try {
+            if (playbackCb != null && audioMgr != null) {
+                audioMgr.unregisterAudioPlaybackCallback(playbackCb);
+                playbackCb = null;
+            }
+        } catch (Exception ignored) {}
         
         try { if (islandShown && islandView != null && islandWm != null) islandWm.removeView(islandView); } catch (Exception ignored) {}
         islandShown = false;
