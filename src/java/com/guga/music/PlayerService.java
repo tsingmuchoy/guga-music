@@ -2025,6 +2025,9 @@ public class PlayerService extends Service {
         playing = false;
         prepared = false;
         preparing = false;
+        // 销毁前把最后一段未落盘的播放时长与流量刷进数据库，避免正在播放时被杀后台导致统计/流量少记
+        try { flushStats(); } catch (Exception ignored) {}
+        try { flushTraffic(); } catch (Exception ignored) {}
         watchdog.removeCallbacks(trafficTicker);
         watchdog.removeCallbacks(sbTicker);
         watchdog.removeCallbacks(islandCollapseTask);
