@@ -55,14 +55,7 @@ public class ImgLoader {
             try {
                 src = CACHE.get(furl);
                 if (src == null) {
-                    HttpURLConnection c = (HttpURLConnection) new URL(furl).openConnection();
-                    c.setConnectTimeout(10000);
-                    c.setReadTimeout(10000);
-                    c.setRequestProperty("User-Agent", "Mozilla/5.0");
-                    c.setRequestProperty("Referer", "https://www.bilibili.com");
-                    InputStream in = c.getInputStream();
-                    src = BitmapFactory.decodeStream(in);
-                    in.close();
+                    src = fetchScaled(furl);
                     if (src != null) CACHE.put(furl, src);
                 }
             } catch (Exception ignored) {}
@@ -100,14 +93,7 @@ public class ImgLoader {
             try {
                 Bitmap src = CACHE.get(furl);
                 if (src == null) {
-                    HttpURLConnection c = (HttpURLConnection) new URL(furl).openConnection();
-                    c.setConnectTimeout(10000);
-                    c.setReadTimeout(10000);
-                    c.setRequestProperty("User-Agent", "Mozilla/5.0");
-                    c.setRequestProperty("Referer", "https://www.bilibili.com");
-                    InputStream in = c.getInputStream();
-                    src = BitmapFactory.decodeStream(in);
-                    in.close();
+                    src = fetchScaled(furl);
                     if (src != null) CACHE.put(furl, src);
                 }
                 if (src != null) {
@@ -120,6 +106,39 @@ public class ImgLoader {
                 if (key.equals(iv.getTag())) iv.setImageBitmap(fout);
             });
         });
+    }
+
+    /** 取图并按 1024px 边长按 2 的幂采样解码：列表小图与 720 唱片都够清晰，
+     *  又不会让超大封面原图在解码瞬间占几十 MB 触发 OOM。响应先读进内存才能二次解析边界。 */
+    private static Bitmap fetchScaled(String url) {
+        HttpURLConnection c = null;
+        InputStream in = null;
+        try {
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(10000);
+            c.setRequestProperty("User-Agent", "Mozilla/5.0");
+            c.setRequestProperty("Referer", "https://www.bilibili.com");
+            in = c.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            byte[] data = bos.toByteArray();
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(data, 0, data.length, o);
+            int max = Math.max(o.outWidth, o.outHeight), sample = 1;
+            while (max / sample > 1024) sample *= 2;
+            o.inJustDecodeBounds = false;
+            o.inSampleSize = sample;
+            return BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            try { if (in != null) in.close(); } catch (Exception ignored) {}
+            if (c != null) c.disconnect();
+        }
     }
 
     private static Bitmap makeDisc(Bitmap cover, int accent) {
