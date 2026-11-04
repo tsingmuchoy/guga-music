@@ -23,8 +23,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,6 +61,9 @@ public boolean has() { return lines != null && !lines.isEmpty(); }
 public interface Cb { void onResult(Result r); }
 
 private static final ExecutorService POOL = Executors.newCachedThreadPool();
+/** 同一 bvid 在途取词合并：首播 fireTrack 双发、播放页/全屏/状态栏三入口并发时，
+ *  共享同一个 Future，避免六源级联请求翻倍与并发写同一缓存文件（读到半写内容）。首个完成后移除。 */
+private static final ConcurrentHashMap<String, Future<Result>> INFLIGHT = new ConcurrentHashMap<>();
 private static final Pattern STAMP = Pattern.compile("\\[(\\d{1,2}):(\\d{1,2})(?:\\.(\\d{1,3}))?\\]");
 
 // ---------------- LRC 解析 ----------------
@@ -178,9 +184,36 @@ return best;
 
 // ---------------- 主流程 ----------------
 public static void fetchFor(final Context ctx, final Track track, final BiliApi api, final Cb cb) {
+final String key = track == null || track.bvid == null ? "" : track.bvid;
+if (key.isEmpty()) {
+// 没有 bvid 无法去重，照旧各自跑
 POOL.execute(() -> {
 Result r = fetchSync(ctx.getApplicationContext(), track, api);
 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult(r));
+});
+return;
+}
+// 同 bvid 并发取词合并：首播 fireTrack 两次 / 多入口同时取词时只跑一次 fetchSync
+Future<Result> f = INFLIGHT.get(key);
+if (f == null) {
+FutureTask<Result> ft = new FutureTask<>(() -> fetchSync(ctx.getApplicationContext(), track, api));
+f = INFLIGHT.putIfAbsent(key, ft);
+if (f == null) {
+f = ft;
+POOL.execute(ft);
+}
+}
+final Future<Result> ff = f;
+POOL.execute(() -> {
+Result r;
+try {
+r = ff.get();
+} catch (Exception e) {
+r = null;
+}
+INFLIGHT.remove(key, ff);
+final Result fr = r;
+new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> cb.onResult(fr));
 });
 }
 
