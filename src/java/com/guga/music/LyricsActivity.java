@@ -20,6 +20,7 @@ public class LyricsActivity extends Activity {
 
     private TextView tvSong, tvSource, tvEmpty, btnFix, btnManual, btnOffset;
     private Track curTrack;
+    private int lyricSeq = 0; // 取词请求序号：避免退出页面后迟到回调操作已销毁 View、或换一版与在途结果交错覆盖
     private int curOffsetMs = 0;
     private ListView lv;
     private List<Lyrics.Line> lines = new ArrayList<>();
@@ -301,8 +302,11 @@ public class LyricsActivity extends Activity {
     }
 
     private void loadLyrics(final Track t, boolean next) {
+        final int mySeq = ++lyricSeq;
         BiliApi api = new BiliApi(getApplicationContext());
         Lyrics.Cb cb = r -> {
+            // 页面已销毁或已有更新的请求发出时，丢弃这次迟到/过期的回调
+            if (isFinishing() || isDestroyed() || mySeq != lyricSeq) return;
             if (r.has()) {
                 lines = r.lines;
                 tvEmpty.setVisibility(View.GONE);
@@ -336,14 +340,30 @@ public class LyricsActivity extends Activity {
         super.onPause();
     }
 
+    /** 歌词行 ViewHolder：缓存主行/罗马音/译文三个 TextView 与（按需创建的）逐字视图，避免快速滚动时反复 findViewById */
+    private static class Holder {
+        TextView tv, tvr, tvt;
+        SyllableView sv;
+    }
+
     private final BaseAdapter adapter = new BaseAdapter() {
         @Override public int getCount() { return lines.size(); }
         @Override public Object getItem(int p) { return lines.get(p); }
         @Override public long getItemId(int p) { return p; }
         @Override public View getView(int p, View cv, ViewGroup parent) {
-            if (cv == null) cv = LayoutInflater.from(LyricsActivity.this).inflate(R.layout.row_lyric, parent, false);
+            Holder h;
+            if (cv == null) {
+                cv = LayoutInflater.from(LyricsActivity.this).inflate(R.layout.row_lyric, parent, false);
+                h = new Holder();
+                h.tv = cv.findViewById(R.id.tvLyricMain);
+                h.tvr = cv.findViewById(R.id.tvLyricRoma);
+                h.tvt = cv.findViewById(R.id.tvLyricTrans);
+                cv.setTag(h);
+            } else {
+                h = (Holder) cv.getTag();
+            }
             Lyrics.Line line = lines.get(p);
-            TextView tv = cv.findViewById(R.id.tvLyricMain);
+            TextView tv = h.tv;
             boolean cur = p == curIdx;
             // 逐字模式：当前行且这行有逐字轴时，用 SyllableView 逐字扫光替代普通文本；
             // 没真逐字且用户开了「模拟扫字」时，按行时长现算一份模拟轴兜底（真数据永远优先）
@@ -354,15 +374,14 @@ public class LyricsActivity extends Activity {
             }
             boolean useWords = cur && Lyrics.isShowWords(LyricsActivity.this)
                     && wlist != null && wlist.size() >= 2;
-            Object tag = cv.getTag();
-            SyllableView sv = tag instanceof SyllableView ? (SyllableView) tag : null;
+            SyllableView sv = h.sv;
             if (useWords) {
                 if (sv == null) {
                     sv = new SyllableView(LyricsActivity.this);
                     sv.setLayoutParams(new ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                     ((ViewGroup) cv).addView(sv, 0);
-                    cv.setTag(sv);
+                    h.sv = sv;
                 }
                 sv.setVisibility(View.VISIBLE);
                 sv.setWords(wlist, 17, ThemeUtil.color(LyricsActivity.this, R.attr.gTextSec),
@@ -380,7 +399,7 @@ public class LyricsActivity extends Activity {
                 tv.setTypeface(null, cur ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
             }
             // 副行：罗马音（小、淡）与中文翻译（略大、次级色），开关关了或这行没数据就不占位
-            TextView tvr = cv.findViewById(R.id.tvLyricRoma);
+            TextView tvr = h.tvr;
             boolean sr = Lyrics.isShowRoma(LyricsActivity.this) && line.roma != null && !line.roma.isEmpty();
             tvr.setVisibility(sr ? View.VISIBLE : View.GONE);
             if (sr) {
@@ -389,7 +408,7 @@ public class LyricsActivity extends Activity {
                 tvr.setTextColor(ThemeUtil.color(LyricsActivity.this, cur ? R.attr.gTextSec : R.attr.gTextFaint));
                 tvr.setTextSize(cur ? 12.5f : 11.5f);
             }
-            TextView tvt = cv.findViewById(R.id.tvLyricTrans);
+            TextView tvt = h.tvt;
             boolean st = Lyrics.isShowTrans(LyricsActivity.this) && line.trans != null && !line.trans.isEmpty();
             tvt.setVisibility(st ? View.VISIBLE : View.GONE);
             if (st) {

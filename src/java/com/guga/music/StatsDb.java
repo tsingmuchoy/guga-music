@@ -132,7 +132,8 @@ public class StatsDb extends SQLiteOpenHelper {
         try {
             db.delete("play_day", null, null);
             for (String[] r : rows) {
-                if (r == null || r.length < 4 || r[0] == null || r[0].isEmpty() || r[1] == null) continue;
+                if (r == null || r.length < 4 || r[0] == null || r[0].isEmpty()
+                        || !validDay(r[1])) continue;
                 ContentValues v = new ContentValues();
                 v.put("bvid", r[0]);
                 v.put("day", r[1]);
@@ -145,6 +146,16 @@ public class StatsDb extends SQLiteOpenHelper {
             }
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
+    }
+
+    /** 备份里的日期必须是合法的 yyyy-MM-dd：字符串比较的范围统计挡不住伪造/损坏的 day 值 */
+    private static boolean validDay(String s) {
+        if (s == null || !s.matches("\\d{4}-\\d{2}-\\d{2}")) return false;
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.CHINA);
+            f.setLenient(false);
+            return f.parse(s) != null;
+        } catch (Exception e) { return false; }
     }
 
     private static long parseLongSafe(String s) {

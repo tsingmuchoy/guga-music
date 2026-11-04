@@ -26,6 +26,10 @@ set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
 PKG="${PKG:-com.guga.music}"
+# PKG 会进 JSON 再拼进 adb shell 命令，先卡死包名字符集，堵住变量注入
+if [[ ! "$PKG" =~ ^[a-zA-Z][a-zA-Z0-9_.]*$ ]]; then
+  echo "✘ PKG 只能是合法包名（字母开头，仅含字母/数字/点/下划线）：$PKG" >&2; exit 1
+fi
 KEY="music_app_white_list"
 BACKUP="$HERE/.vivo-whitelist.bak"
 
@@ -34,7 +38,14 @@ PY="$(command -v python || command -v python3)"
 [ -n "$PY" ] || { echo "✘ 需要 python" >&2; exit 1; }
 
 get()  { "$ADB" shell settings get secure "$KEY" 2>/dev/null | tr -d '\r' | head -1; }
-put()  { "$ADB" shell "settings put secure $KEY '$1'" >/dev/null; }
+# 值由本地 shell 展开后整串交给设备端 sh，单引号会冲出包裹形成命令注入；
+# 名单 JSON 本不该含单引号，直接拒写（--restore 读回的备份同样受这道检查）
+put()  {
+  case "$1" in
+    *"'"*) echo "✘ 名单内容含单引号，拒绝写入（防 adb shell 注入）" >&2; return 1 ;;
+  esac
+  "$ADB" shell "settings put secure $KEY '$1'" >/dev/null
+}
 chk()  { "$ADB" shell settings get secure resident_music_app_white_list 2>/dev/null | tr -d '\r' | head -1; }
 
 if [ "$1" = "--status" ]; then

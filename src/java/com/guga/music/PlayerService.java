@@ -51,6 +51,9 @@ public class PlayerService extends Service {
     private BiliApi api;
     private HistoryDb history;
     private StatsDb statsDb;
+    /** 统计写入串行执行器：频繁切歌时不再每个写操作都起一个短命线程，避免线程扎堆 */
+    private static final java.util.concurrent.ExecutorService STAT_EXEC =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
     private Track statTrack;
     private int statPendingSec;
     private final List<Track> queue = new ArrayList<>();
@@ -304,7 +307,9 @@ public class PlayerService extends Service {
         });
         watchdog.postDelayed(trafficTicker, 1000);
         initSession();
-        
+        // 歌词匹配到原歌名/歌手后（含手动锁定/换一版/解锁）：通知栏、媒体会话与悬浮岛即时跟着换
+        Lyrics.setSongInfoListener(bvid -> refreshSongInfo(bvid));
+
         createChannel();
         startForegroundCompat(buildNotification("Apollo", "点一首歌开始听吧"));
         restoreState();
@@ -365,6 +370,7 @@ public class PlayerService extends Service {
     private long trafficDirty = 0;
     private static final int[] TRAFFIC_KBPS = {64, 132, 192, 1000, 640};
     private boolean playbackCbRegistered = false;
+    private android.media.AudioManager.AudioPlaybackCallback playbackCb;
 
     /** 系统「当前活跃播放」列表非空 = 有应用正在出声（暂停的播放器不在活跃列表里）。
      *  顺带注册一次播放变化回调：对方停播的那一刻事件驱动地恢复，比轮询更及时。
@@ -373,8 +379,7 @@ public class PlayerService extends Service {
         try {
             if (audioMgr == null) return true;
             if (!playbackCbRegistered) {
-                playbackCbRegistered = true;
-                audioMgr.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
+                playbackCb = new AudioManager.AudioPlaybackCallback() {
                     @Override
                     public void onPlaybackConfigChanged(
                             java.util.List<android.media.AudioPlaybackConfiguration> configs) {
@@ -385,7 +390,9 @@ public class PlayerService extends Service {
                             refreshSbLyrics();
                         }
                     }
-                }, watchdog);
+                };
+                audioMgr.registerAudioPlaybackCallback(playbackCb, watchdog);
+                playbackCbRegistered = true;
             }
             java.util.List<android.media.AudioPlaybackConfiguration> cs =
                     audioMgr.getActivePlaybackConfigurations();
@@ -689,8 +696,11 @@ public class PlayerService extends Service {
                 }
                 final boolean flacKind = "flac".equals(curStreamKind);
                 final int tierKey = actualTier >= 0 ? actualTier : activeTier;
-                curCacheKey = StreamCache.key(t.bvid, tierKey);
-                java.io.File hit = noTee && !flacKind ? null : StreamCache.hitFile(PlayerService.this, curCacheKey);
+                // 捕获成本次的局部常量：下载完成回调发生在切歌之后时，字段 curCacheKey 已经
+                // 指向新歌，绝不能拿它去转正旧歌的缓存文件（会把新歌未下完的 .part 提前转正）
+                final String cacheKey = StreamCache.key(t.bvid, tierKey);
+                curCacheKey = cacheKey;
+                java.io.File hit = noTee && !flacKind ? null : StreamCache.hitFile(PlayerService.this, cacheKey);
                 if (hit != null) {
                     curFromCache = true;
                     Diag.log(PlayerService.this, "💾 本地缓存播放（0 流量）");
@@ -704,10 +714,10 @@ public class PlayerService extends Service {
                 curFromCache = false;
                 if (!noTee || flacKind) {
                     curTee = new TeeDataSource(PlayerService.this, urls[0], streamHeaders(),
-                            StreamCache.partFile(PlayerService.this, curCacheKey),
+                            StreamCache.partFile(PlayerService.this, cacheKey),
                             new TeeDataSource.Done() {
                                 @Override public void onComplete(java.io.File f) {
-                                    StreamCache.finish(PlayerService.this, curCacheKey);
+                                    StreamCache.finish(PlayerService.this, cacheKey);
                                     Diag.log(PlayerService.this, "💾 已缓存（再播/循环 0 流量）：" + t.title);
                                 }
                                 @Override public void onFail() {}
@@ -934,7 +944,7 @@ public class PlayerService extends Service {
         flushStats();
         statTrack = t;
         statPendingSec = 0;
-        new Thread(() -> { try { statsDb.recordPlay(t); } catch (Exception ignored) {} }).start();
+        STAT_EXEC.execute(() -> { try { statsDb.recordPlay(t); } catch (Exception ignored) {} });
     }
 
     private void flushStats() {
@@ -942,7 +952,7 @@ public class PlayerService extends Service {
         final int sec = statPendingSec;
         statPendingSec = 0;
         if (statsDb == null || t == null || sec <= 0) return;
-        new Thread(() -> { try { statsDb.addSeconds(t, sec); } catch (Exception ignored) {} }).start();
+        STAT_EXEC.execute(() -> { try { statsDb.addSeconds(t, sec); } catch (Exception ignored) {} });
     }
 
     private void flushTraffic() {
@@ -1285,12 +1295,15 @@ public class PlayerService extends Service {
         Track t = current();
         if (t == null) return;
         try {
+            // 与播放页同一口径：匹配到歌词后用原歌名/歌手，否则回落视频标题/UP主（锁屏、蓝牙、车机共用这套元数据）
+            String title = Lyrics.displayName(this, t);
+            String artist = Lyrics.displayArtist(this, t);
             MediaMetadata.Builder mb = new MediaMetadata.Builder()
-                    .putString(MediaMetadata.METADATA_KEY_TITLE, t.title)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, t.title)
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, t.author)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, t.author)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, t.author)
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
+                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, artist)
                     .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩")
                     // 原子随身听的私有字段：平台 MediaMetadata 允许自定义 key（只对系统已知 key 做类型校验）
                     .putLong(VIVO_KEY_LOOP_MODE, (long) vivoLoopMode())
@@ -1427,7 +1440,7 @@ public class PlayerService extends Service {
             }
             if (islandView == null) buildIslandView();
             Track t = current();
-            islandTitle.setText(t.title);
+            islandTitle.setText(Lyrics.displayName(this, t));
             islandToggle.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
             islandMini.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
             if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
@@ -1951,14 +1964,29 @@ public class PlayerService extends Service {
         return b.build();
     }
 
-    private void updateNotification() {
+    private void postNotification() {
         Track t = current();
+        // 通知栏标题/副标题跟播放页同一口径：匹配到歌词显示原歌名/歌手，未命中或字幕兜底显示视频标题/UP主
         Notification n = t == null ? buildNotification("Apollo", "点一首歌开始听吧")
-                : buildNotification(t.title, t.author);
+                : buildNotification(Lyrics.displayName(this, t), Lyrics.displayArtist(this, t));
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         nm.notify(NID, n);
+    }
+
+    private void updateNotification() {
+        postNotification();
         refreshIsland();
         refreshSbLyrics();
+    }
+
+    /** 歌词匹配完成/手动锁定改了歌名歌手：只重发通知与会话元数据，并同步悬浮岛标题。
+     *  不碰状态栏歌词的抓取流程，避免歌词回调里又触发一次匹配。 */
+    private void refreshSongInfo(String bvid) {
+        Track t = current();
+        if (t == null || t.bvid == null || !t.bvid.equals(bvid)) return;
+        publishMetadata();
+        postNotification();
+        if (islandShown && islandTitle != null) islandTitle.setText(Lyrics.displayName(this, t));
     }
 
     private void startForegroundCompat(Notification n) {
@@ -1995,6 +2023,38 @@ public class PlayerService extends Service {
     @Override
     public void onDestroy() {
         Diag.log(this, "⚠️ 服务被销毁（多半是系统杀后台）");
+        // 服务没了就把自循环任务全停掉：trafficTicker / sbTicker / 看门狗都是每秒或每 3 秒
+        // 自己重新投递的，不清会永久持有已销毁的 Service，还会继续虚增流量与播放统计
+        playing = false;
+        prepared = false;
+        preparing = false;
+        // 销毁前把最后一段未落盘的播放时长与流量刷进数据库，避免正在播放时被杀后台导致统计/流量少记
+        try { flushStats(); } catch (Exception ignored) {}
+        try { flushTraffic(); } catch (Exception ignored) {}
+        watchdog.removeCallbacks(trafficTicker);
+        watchdog.removeCallbacks(sbTicker);
+        watchdog.removeCallbacks(islandCollapseTask);
+        cancelWatchdog();
+        listeners.clear();
+        Lyrics.setSongInfoListener(null);
+        // 归还音频焦点：进程还活着时系统不会自动回收，别的音乐 App 会一直拿不到焦点
+        try {
+            if (focusHeld && audioMgr != null) {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    if (focusReq != null) audioMgr.abandonAudioFocusRequest(focusReq);
+                } else {
+                    audioMgr.abandonAudioFocus(focusListener);
+                }
+                focusHeld = false;
+            }
+        } catch (Exception ignored) {}
+        // 系统活跃播放回调里持有本 Service，销毁时必须注销
+        try {
+            if (playbackCb != null && audioMgr != null) {
+                audioMgr.unregisterAudioPlaybackCallback(playbackCb);
+                playbackCb = null;
+            }
+        } catch (Exception ignored) {}
         
         try { if (islandShown && islandView != null && islandWm != null) islandWm.removeView(islandView); } catch (Exception ignored) {}
         islandShown = false;

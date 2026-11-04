@@ -145,6 +145,7 @@ finally { if (c != null) c.disconnect(); }
 // ---------------- HTTP ----------------
 
 static String httpGet(String url, String referer) throws Exception {
+if (url.startsWith("http://")) url = "https://" + url.substring(7); // targetSdk 28+ 默认禁明文，统一升级
 HttpURLConnection c = null;
 try {
 c = (HttpURLConnection) new URL(url).openConnection();
@@ -332,15 +333,15 @@ if (id == null) throw new Exception("酷狗概念歌单链接没能解析出歌�
 Parsed out = new Parsed();
 out.platform = "kugou";
 JSONObject info = new JSONObject(httpGet(
-"http://mobilecdn.kugou.com/api/v3/special/info?specialid=" + id, "http://www.kugou.com/"));
+"https://mobilecdn.kugou.com/api/v3/special/info?specialid=" + id, "https://www.kugou.com/"));
 JSONObject idata = info.optJSONObject("data");
 out.title = idata == null? "酷狗歌单": idata.optString("specialname", "酷狗歌单");
 int total = idata == null? 0: idata.optInt("songcount", 0);
 int page = 1;
 while (out.tracks.size() < 500) {
 JSONObject r = new JSONObject(httpGet(
-"http://mobilecdn.kugou.com/api/v3/special/song?specialid=" + id + "&page=" + page + "&pagesize=100&version=9108",
-"http://www.kugou.com/"));
+"https://mobilecdn.kugou.com/api/v3/special/song?specialid=" + id + "&page=" + page + "&pagesize=100&version=9108",
+"https://www.kugou.com/"));
 JSONObject data = r.optJSONObject("data");
 JSONArray arr = data == null? null: data.optJSONArray("info");
 if (arr == null || arr.length() == 0) break;
@@ -369,8 +370,8 @@ out.title = "酷我歌单";
 int pn = 0;
 while (out.tracks.size() < 500) {
 JSONObject r = new JSONObject(httpGet(
-"http://nplserver.kuwo.cn/pl.svc?op=getlistinfo&pid=" + id + "&pn=" + pn + "&rn=100&encode=utf8&keyset=pl2012&identity=kuwo&pcmp4=1&vipver=1&newver=1",
-"http://www.kuwo.cn/"));
+"https://nplserver.kuwo.cn/pl.svc?op=getlistinfo&pid=" + id + "&pn=" + pn + "&rn=100&encode=utf8&keyset=pl2012&identity=kuwo&pcmp4=1&vipver=1&newver=1",
+"https://www.kuwo.cn/"));
 if (pn == 0) {
 String t = r.optString("title", "");
 if (!t.isEmpty()) out.title = t;

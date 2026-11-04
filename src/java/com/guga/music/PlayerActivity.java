@@ -577,6 +577,13 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     }
 
     @Override
+    protected void onDestroy() {
+        // 无限旋转动画与 ivCover 互持引用，仅 pause 会在退出页面后仍挂住 Activity；销毁时取消
+        if (discSpin != null) { discSpin.cancel(); discSpin = null; }
+        super.onDestroy();
+    }
+
+    @Override
     public void onTrackChanged(Track t) {
         loadLyrics(t);
         scheduleSheetBlur(900);
@@ -614,6 +621,13 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 
+    /** 队列列表 ViewHolder：缓存封面/标题/副标题三控件，避免长歌单快速滚动反复 findViewById 掉帧 */
+    private static class QueueVH {
+        ImageView cover;
+        TextView title;
+        TextView sub;
+    }
+
     private final BaseAdapter queueAdapter = new BaseAdapter() {
         @Override public int getCount() {
             PlayerService s = PlayerService.get();
@@ -625,16 +639,25 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
         }
         @Override public long getItemId(int p) { return p; }
         @Override public View getView(int p, View cv, ViewGroup parent) {
-            if (cv == null) cv = LayoutInflater.from(PlayerActivity.this).inflate(R.layout.item_track, parent, false);
+            QueueVH h;
+            if (cv == null) {
+                cv = LayoutInflater.from(PlayerActivity.this).inflate(R.layout.item_track, parent, false);
+                h = new QueueVH();
+                h.cover = cv.findViewById(R.id.ivCover);
+                h.title = cv.findViewById(R.id.tvTitle);
+                h.sub = cv.findViewById(R.id.tvSub);
+                cv.setTag(h);
+            } else {
+                h = (QueueVH) cv.getTag();
+            }
             PlayerService s = PlayerService.get();
             if (s == null) return cv;
             Track t = s.getQueue().get(p);
-            ImgLoader.load(cv.findViewById(R.id.ivCover), t.cover);
-            TextView title = cv.findViewById(R.id.tvTitle);
-            title.setText(t.title);
-            if (p == s.getIndex()) ThemeUtil.gradientText(title);
-            else ThemeUtil.plainText(title, ThemeUtil.color(PlayerActivity.this, R.attr.gTextPri));
-            ((TextView) cv.findViewById(R.id.tvSub)).setText((t.author == null ? "" : t.author) + " · " + Track.fmtDur(t.durationSec));
+            ImgLoader.load(h.cover, t.cover);
+            h.title.setText(t.title);
+            if (p == s.getIndex()) ThemeUtil.gradientText(h.title);
+            else ThemeUtil.plainText(h.title, ThemeUtil.color(PlayerActivity.this, R.attr.gTextPri));
+            h.sub.setText((t.author == null ? "" : t.author) + " · " + Track.fmtDur(t.durationSec));
             cv.setBackgroundResource(p == s.getIndex() ? R.drawable.bg_row_current : 0);
             return cv;
         }

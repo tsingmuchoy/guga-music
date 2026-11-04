@@ -4,9 +4,13 @@ set -e
 cd "$(dirname "$0")"
 JAVA_HOME="${JAVA_HOME:-$HOME/tools/jdk17}"
 ANDROID_SDK="${ANDROID_SDK:-$HOME/tools/android-sdk}"
-BT="$ANDROID_SDK/build-tools/34.0.0"
-AJ="$ANDROID_SDK/platforms/android-34/android.jar"
-SRC="$PWD/src/main"
+# 构建工具与平台版本不写死：机器上没装 34 就自动取 SDK 里最新的一套（可用 BT_VER/PLAT_VER 覆盖）
+BT_VER="${BT_VER:-$(ls "$ANDROID_SDK/build-tools" 2>/dev/null | sort -V | tail -1)}"
+PLAT_VER="${PLAT_VER:-$(ls "$ANDROID_SDK/platforms" 2>/dev/null | sed 's/^android-//' | sort -V | tail -1)}"
+BT="$ANDROID_SDK/build-tools/${BT_VER:-34.0.0}"
+AJ="$ANDROID_SDK/platforms/android-${PLAT_VER:-34}/android.jar"
+# 源码就在仓库 src/ 下（src/java、src/res、src/AndroidManifest.xml），不存在 src/main 这一层
+SRC="$PWD/src"
 OUT="$PWD/build-manual"
 VER_CODE="${1:-1}"
 VER_NAME="${2:-1.0.0}"
@@ -23,7 +27,9 @@ fi
   --version-code "$VER_CODE" --version-name "$VER_NAME" "$OUT/compiled.zip"
 find "$SRC/java" "$OUT/gen" -name "*.java" > "$OUT/sources.txt"
 rm -rf "$OUT/classes" "$OUT/dex"; mkdir -p "$OUT/classes" "$OUT/dex"
-javac -source 8 -target 8 -encoding UTF-8 -cp "$AJ" -d "$OUT/classes" @"$OUT/sources.txt"
+# 用 --release 8 而不是 -source/-target：以 JDK 8 的平台签名编译，
+# 防止将来误用 Java 9+ API 时 javac 放行、Android 8-13 运行时抛 NoSuchMethodError
+javac --release 8 -encoding UTF-8 -cp "$AJ" -d "$OUT/classes" @"$OUT/sources.txt"
 "$BT/d8" --lib "$AJ" --min-api 26 --output "$OUT/dex" $(find "$OUT/classes" -name "*.class")
 cp "$OUT/app-unsigned.apk" "$OUT/app-with-dex.apk"
 (cd "$OUT" && zip -j app-with-dex.apk dex/classes.dex > /dev/null)

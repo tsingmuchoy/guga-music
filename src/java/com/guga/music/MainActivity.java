@@ -47,6 +47,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
     private final List<Track> displayTracks = new ArrayList<>();
     private String searchKw = "";
     private int searchPage = 1;
+    private int searchSeq = 0;   // 搜索请求序号：迟到回调不得覆盖新结果
     private boolean searchLoading;
     private boolean searchMore = true;
     private View searchFooter;
@@ -532,8 +533,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         searchPage = 1;
         searchMore = true;
         searchLoading = true;
+        final int seq = ++searchSeq;
         api.search(kw, 1, searchOrder, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
+                if (seq != searchSeq) return;   // 已有更新的搜索/翻页，丢弃这次迟到结果
                 searchLoading = false;
                 boolean wasPull = pullRefreshing;
                 finishPullRefresh();
@@ -551,6 +554,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 hint(v.isEmpty() ? "没搜到结果，换个词试试" : null);
             }
             @Override public void onErr(String msg) {
+                if (seq != searchSeq) return;   // 旧请求的报错也不许顶掉新搜索的状态
                 searchLoading = false;
                 boolean wasPull = pullRefreshing;
                 finishPullRefresh();
@@ -568,8 +572,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
         searchLoading = true;
         updateSearchFooter();
         final int target = page;
+        final int seq = ++searchSeq;
         api.search(searchKw, target, searchOrder, new BiliApi.Cb<List<Track>>() {
             @Override public void onOk(List<Track> v) {
+                if (seq != searchSeq) return;   // 期间又搜索/翻页了，丢弃旧页结果
                 searchLoading = false;
                 if (tab != 0) { updateSearchFooter(); return; }
                 searchPage = target;
@@ -583,6 +589,7 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 if (v.isEmpty()) hint("这页没结果");
             }
             @Override public void onErr(String msg) {
+                if (seq != searchSeq) return;
                 searchLoading = false;
                 if (tab == 0) hint("翻页失败：" + msg);
                 updateSearchFooter();
@@ -1281,6 +1288,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 lvMain.setAdapter(trackAdapter);
                 showFavPage();
                 hint(v.isEmpty() ? "这个收藏夹是空的" : null);
+                if (api.lastFavTruncated) {
+                    Toast.makeText(MainActivity.this,
+                            "这个收藏夹超过 800 首，本次只显示前 " + v.size() + " 首", Toast.LENGTH_LONG).show();
+                }
             }
             @Override public void onErr(String msg) {
                 boolean wasPull = pullRefreshing;
@@ -1442,13 +1453,15 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 return;
             }
             s.playQueue(tracks, pos);
-            startActivity(new Intent(this, PlayerActivity.class));
+            // 350ms 内用户可能已退出页面：歌照播，但别从已销毁的页面拉起播放页（后台启动会被系统拦）
+            if (!isFinishing() && !isDestroyed()) startActivity(new Intent(this, PlayerActivity.class));
         }, 350);
     }
 
     @Override
     public void onTrackChanged(Track t) {
-        tvMiniTitle.setText(t.title);
+        // 与播放页/通知栏同口径：匹配到歌词显示原歌名，未命中或字幕兜底显示视频标题
+        tvMiniTitle.setText(Lyrics.displayName(this, t));
         ImgLoader.load(ivMiniCover, t.cover);
         // v1.52.6：迷你栏跟播放页同口径——先上视频封面，专辑图匹配到后替换（之前只上视频封面，永远对不上唱片页的专辑图）
         Lyrics.fetchCover(this, t, url -> {

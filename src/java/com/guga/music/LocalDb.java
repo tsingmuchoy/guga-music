@@ -35,14 +35,15 @@ public class LocalDb extends SQLiteOpenHelper {
         List<Playlist> out = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT p.id, p.name, (SELECT COUNT(*) FROM ptracks t WHERE t.pid = p.id) FROM playlists p ORDER BY p.created ASC", null);
-        while (c.moveToNext()) {
-            Playlist p = new Playlist();
-            p.id = c.getLong(0);
-            p.name = c.getString(1);
-            p.count = c.getInt(2);
-            out.add(p);
-        }
-        c.close();
+        try {
+            while (c.moveToNext()) {
+                Playlist p = new Playlist();
+                p.id = c.getLong(0);
+                p.name = c.getString(1);
+                p.count = c.getInt(2);
+                out.add(p);
+            }
+        } finally { c.close(); }
         return out;
     }
 
@@ -61,8 +62,12 @@ public class LocalDb extends SQLiteOpenHelper {
 
     public void deletePlaylist(long id) {
         SQLiteDatabase db = getWritableDatabase();
-        db.delete("ptracks", "pid=?", new String[]{String.valueOf(id)});
-        db.delete("playlists", "id=?", new String[]{String.valueOf(id)});
+        db.beginTransaction();
+        try {
+            db.delete("ptracks", "pid=?", new String[]{String.valueOf(id)});
+            db.delete("playlists", "id=?", new String[]{String.valueOf(id)});
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
 
     public List<Track> tracks(long pid) {
@@ -70,17 +75,18 @@ public class LocalDb extends SQLiteOpenHelper {
         Cursor c = getReadableDatabase().query("ptracks",
                 new String[]{"bvid", "cid", "title", "author", "cover", "dur"},
                 "pid=?", new String[]{String.valueOf(pid)}, null, null, "added ASC, id ASC");
-        while (c.moveToNext()) {
-            Track t = new Track();
-            t.bvid = c.getString(0);
-            t.cid = c.getLong(1);
-            t.title = c.getString(2);
-            t.author = c.getString(3);
-            t.cover = c.getString(4);
-            t.durationSec = c.getInt(5);
-            out.add(t);
-        }
-        c.close();
+        try {
+            while (c.moveToNext()) {
+                Track t = new Track();
+                t.bvid = c.getString(0);
+                t.cid = c.getLong(1);
+                t.title = c.getString(2);
+                t.author = c.getString(3);
+                t.cover = c.getString(4);
+                t.durationSec = c.getInt(5);
+                out.add(t);
+            }
+        } finally { c.close(); }
         return out;
     }
 
@@ -88,8 +94,8 @@ public class LocalDb extends SQLiteOpenHelper {
     public boolean addTrack(long pid, Track t) {
         Cursor c = getReadableDatabase().query("ptracks", new String[]{"id"},
                 "pid=? AND bvid=?", new String[]{String.valueOf(pid), t.bvid}, null, null, null);
-        boolean exists = c.moveToFirst();
-        c.close();
+        boolean exists;
+        try { exists = c.moveToFirst(); } finally { c.close(); }
         if (exists) return false;
         ContentValues v = new ContentValues();
         v.put("pid", pid);

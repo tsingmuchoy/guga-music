@@ -68,7 +68,8 @@ public class VivoMusicBrowserService extends MediaBrowserService {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private int tokenRetry = 0;
-    private boolean favLoading = false;
+    private volatile boolean favLoading = false;
+    private final Object favLock = new Object();   // 多个 Binder 线程可能同时订阅收藏列表
 
     @Override
     public void onCreate() {
@@ -145,6 +146,8 @@ public class VivoMusicBrowserService extends MediaBrowserService {
     public void onLoadChildren(String parentId, Result<List<MediaBrowser.MediaItem>> result, Bundle options) {
         int page = 0;
         if (options != null) page = Math.max(0, options.getInt(KEY_PAGE, 0));
+        // options 来自任意可绑定本导出服务的客户端：先夹住上界，别让 page*PAGE_SIZE 溢出成负数
+        page = Math.min(page, Integer.MAX_VALUE / PAGE_SIZE);
         if (LIST_CURRENT.equals(parentId)) {
             PlayerService ps = PlayerService.get();
             List<Track> q = ps == null ? Collections.<Track>emptyList() : ps.getQueue();
@@ -188,12 +191,20 @@ public class VivoMusicBrowserService extends MediaBrowserService {
             result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
             return;
         }
-        if (favLoading) { // 正在拉取，先给缓存
-            result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
-            return;
+        synchronized (favLock) {
+            if (favLoading) { // 正在拉取，先给缓存
+                result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
+                return;
+            }
+            favLoading = true;
         }
-        favLoading = true;
         result.detach();
+        // 20 秒安全网：回调万一不回来，别让客户端永久挂起、也别把 favLoading 永久卡住
+        main.postDelayed(() -> {
+            synchronized (favLock) { if (!favLoading) return; favLoading = false; }
+            try { result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE)); }
+            catch (Exception ignored) {}
+        }, 20_000L);
         api.favFolders(new BiliApi.Cb<List<BiliApi.FavFolder>>() {
             @Override public void onOk(List<BiliApi.FavFolder> folders) {
                 final List<Track> all = new ArrayList<>();
@@ -230,19 +241,26 @@ public class VivoMusicBrowserService extends MediaBrowserService {
     }
 
     private void finishFav(Result<List<MediaBrowser.MediaItem>> result, int page, List<Track> all) {
-        favLoading = false;
+        // 只结算一次：超时安全网已发过结果时，迟到的真回调不再重复 sendResult（会抛 IllegalStateException）
+        synchronized (favLock) {
+            if (!favLoading) return;
+            favLoading = false;
+        }
         favSnapshot = all;
         favStamp = System.currentTimeMillis();
-        result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
+        try { result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE)); }
+        catch (Exception ignored) {}
     }
 
     /**
      * 切一页并生成条目。mediaId 形如 {@code guga:cur:12}，点播时按它回查同一份列表。
      * 最后一条的 extras 带上分页信息，小部件据此判断还有没有下一页。
      */
-    private static List<MediaBrowser.MediaItem> pageItems(List<Track> src, int page, String listId) {
+    private List<MediaBrowser.MediaItem> pageItems(List<Track> src, int page, String listId) {
         List<MediaBrowser.MediaItem> out = new ArrayList<>();
         if (src == null) return out;
+        // 双保险：即使内部调用方传了超大页码，也不做乘法溢出、不返回负下标
+        if (page < 0 || page > Integer.MAX_VALUE / PAGE_SIZE) return out;
         int from = Math.min(page * PAGE_SIZE, src.size());
         int to = Math.min(src.size(), from + PAGE_SIZE);
         for (int i = from; i < to; i++) {
@@ -259,12 +277,15 @@ public class VivoMusicBrowserService extends MediaBrowserService {
         return out;
     }
 
-    private static MediaBrowser.MediaItem item(String mediaId, Track t, Bundle extras) {
+    private MediaBrowser.MediaItem item(String mediaId, Track t, Bundle extras) {
+        // 与播放页/通知栏同口径：匹配到歌词后用原歌名/歌手（服务本身即 Context）
+        String name = Lyrics.displayName(this, t);
+        String artist = Lyrics.displayArtist(this, t);
         MediaDescription.Builder d = new MediaDescription.Builder()
                 .setMediaId(mediaId)
-                .setTitle(t.title)
-                .setSubtitle(t.author)
-                .setDescription(t.author);
+                .setTitle(name)
+                .setSubtitle(artist)
+                .setDescription(artist);
         if (extras != null) d.setExtras(extras);
         return new MediaBrowser.MediaItem(d.build(), MediaBrowser.MediaItem.FLAG_PLAYABLE);
     }
