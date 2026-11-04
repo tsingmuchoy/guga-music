@@ -68,7 +68,8 @@ public class VivoMusicBrowserService extends MediaBrowserService {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private int tokenRetry = 0;
-    private boolean favLoading = false;
+    private volatile boolean favLoading = false;
+    private final Object favLock = new Object();   // 多个 Binder 线程可能同时订阅收藏列表
 
     @Override
     public void onCreate() {
@@ -190,12 +191,20 @@ public class VivoMusicBrowserService extends MediaBrowserService {
             result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
             return;
         }
-        if (favLoading) { // 正在拉取，先给缓存
-            result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
-            return;
+        synchronized (favLock) {
+            if (favLoading) { // 正在拉取，先给缓存
+                result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
+                return;
+            }
+            favLoading = true;
         }
-        favLoading = true;
         result.detach();
+        // 20 秒安全网：回调万一不回来，别让客户端永久挂起、也别把 favLoading 永久卡住
+        main.postDelayed(() -> {
+            synchronized (favLock) { if (!favLoading) return; favLoading = false; }
+            try { result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE)); }
+            catch (Exception ignored) {}
+        }, 20_000L);
         api.favFolders(new BiliApi.Cb<List<BiliApi.FavFolder>>() {
             @Override public void onOk(List<BiliApi.FavFolder> folders) {
                 final List<Track> all = new ArrayList<>();
@@ -232,10 +241,15 @@ public class VivoMusicBrowserService extends MediaBrowserService {
     }
 
     private void finishFav(Result<List<MediaBrowser.MediaItem>> result, int page, List<Track> all) {
-        favLoading = false;
+        // 只结算一次：超时安全网已发过结果时，迟到的真回调不再重复 sendResult（会抛 IllegalStateException）
+        synchronized (favLock) {
+            if (!favLoading) return;
+            favLoading = false;
+        }
         favSnapshot = all;
         favStamp = System.currentTimeMillis();
-        result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE));
+        try { result.sendResult(pageItems(favSnapshot, page, LIST_FAVORITE)); }
+        catch (Exception ignored) {}
     }
 
     /**
