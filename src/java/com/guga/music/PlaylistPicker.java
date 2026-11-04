@@ -61,7 +61,8 @@ public class PlaylistPicker {
         TextView tv = new TextView(act);
         tv.setLayoutParams(lp);
         if (icon != 0) IconUtil.leading(tv, icon, R.attr.gAccent);
-        tv.setPadding(6, 30, 6, 30);
+        float d = act.getResources().getDisplayMetrics().density;
+        tv.setPadding((int) (6 * d), (int) (30 * d), (int) (6 * d), (int) (30 * d));
         tv.setText(sub.isEmpty() ? main : main + "   ·   " + sub);
         tv.setTextSize(15.5f);
         tv.setTextColor(ThemeUtil.color(act, R.attr.gTextPri));
