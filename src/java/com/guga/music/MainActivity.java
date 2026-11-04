@@ -1456,7 +1456,8 @@ public class MainActivity extends Activity implements PlayerService.Listener {
 
     @Override
     public void onTrackChanged(Track t) {
-        tvMiniTitle.setText(t.title);
+        // 与播放页/通知栏同口径：匹配到歌词显示原歌名，未命中或字幕兜底显示视频标题
+        tvMiniTitle.setText(Lyrics.displayName(this, t));
         ImgLoader.load(ivMiniCover, t.cover);
         // v1.52.6：迷你栏跟播放页同口径——先上视频封面，专辑图匹配到后替换（之前只上视频封面，永远对不上唱片页的专辑图）
         Lyrics.fetchCover(this, t, url -> {

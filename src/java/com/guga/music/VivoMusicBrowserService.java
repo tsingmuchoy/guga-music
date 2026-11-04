@@ -242,7 +242,7 @@ public class VivoMusicBrowserService extends MediaBrowserService {
      * 切一页并生成条目。mediaId 形如 {@code guga:cur:12}，点播时按它回查同一份列表。
      * 最后一条的 extras 带上分页信息，小部件据此判断还有没有下一页。
      */
-    private static List<MediaBrowser.MediaItem> pageItems(List<Track> src, int page, String listId) {
+    private List<MediaBrowser.MediaItem> pageItems(List<Track> src, int page, String listId) {
         List<MediaBrowser.MediaItem> out = new ArrayList<>();
         if (src == null) return out;
         // 双保险：即使内部调用方传了超大页码，也不做乘法溢出、不返回负下标
@@ -263,12 +263,15 @@ public class VivoMusicBrowserService extends MediaBrowserService {
         return out;
     }
 
-    private static MediaBrowser.MediaItem item(String mediaId, Track t, Bundle extras) {
+    private MediaBrowser.MediaItem item(String mediaId, Track t, Bundle extras) {
+        // 与播放页/通知栏同口径：匹配到歌词后用原歌名/歌手（服务本身即 Context）
+        String name = Lyrics.displayName(this, t);
+        String artist = Lyrics.displayArtist(this, t);
         MediaDescription.Builder d = new MediaDescription.Builder()
                 .setMediaId(mediaId)
-                .setTitle(t.title)
-                .setSubtitle(t.author)
-                .setDescription(t.author);
+                .setTitle(name)
+                .setSubtitle(artist)
+                .setDescription(artist);
         if (extras != null) d.setExtras(extras);
         return new MediaBrowser.MediaItem(d.build(), MediaBrowser.MediaItem.FLAG_PLAYABLE);
     }
