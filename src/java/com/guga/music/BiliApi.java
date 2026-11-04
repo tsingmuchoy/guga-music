@@ -309,6 +309,7 @@ public class BiliApi {
             if (pick == null) return empty;
             String url = pick.optString("subtitle_url");
             if (url.startsWith("//")) url = "https:" + url;
+            else if (url.startsWith("http://")) url = "https://" + url.substring(7); // 系统默认禁明文，字幕接口偶尔给 http
             if (url.isEmpty()) return empty;
             JSONObject body = getJson(url);
             JSONArray items = body.optJSONArray("body");
