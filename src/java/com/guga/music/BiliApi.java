@@ -497,9 +497,13 @@ public class BiliApi {
         }, cb);
     }
 
+    /** 最近一次收藏夹读取是否被 40 页上限截断（UI 据此提示，别让用户以为夹子只有这么点歌） */
+    public volatile boolean lastFavTruncated = false;
+
     public void favTracks(long mediaId, Cb<List<Track>> cb) {
         run(() -> {
             prepare();
+            lastFavTruncated = false;
             List<Track> out = new ArrayList<>();
             int pn = 1;
             while (pn <= 40) { // ps 上限 20，最多 40 页 = 800 条
@@ -524,6 +528,10 @@ public class BiliApi {
                 }
                 if (!d.optBoolean("has_more")) break;
                 pn++;
+            }
+            if (pn > 40) {
+                lastFavTruncated = true;
+                Diag.log(appCtx, "📁 收藏夹超过 800 首，本次只取前 " + out.size() + " 首");
             }
             return out;
         }, cb);

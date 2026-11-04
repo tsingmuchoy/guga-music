@@ -1288,6 +1288,10 @@ public class MainActivity extends Activity implements PlayerService.Listener {
                 lvMain.setAdapter(trackAdapter);
                 showFavPage();
                 hint(v.isEmpty() ? "这个收藏夹是空的" : null);
+                if (api.lastFavTruncated) {
+                    Toast.makeText(MainActivity.this,
+                            "这个收藏夹超过 800 首，本次只显示前 " + v.size() + " 首", Toast.LENGTH_LONG).show();
+                }
             }
             @Override public void onErr(String msg) {
                 boolean wasPull = pullRefreshing;
