@@ -79,7 +79,14 @@ public class UpdateChecker {
             int yi = i < y.length ? parseNum(y[i]) : 0;
             if (xi != yi) return Integer.compare(xi, yi);
         }
-        return 0;
+        // 数字段全相同时，带 -beta/-rc 等后缀的预发布版视为更低，正式版仍要提示更新
+        boolean pa = isPrerelease(a), pb = isPrerelease(b);
+        return pa == pb ? 0 : (pa ? -1 : 1);
+    }
+
+    private static boolean isPrerelease(String v) {
+        String[] p = v.split("\\.");
+        return p.length > 0 && p[p.length - 1].matches(".*[^0-9].*");
     }
 
     private static int parseNum(String s) {
