@@ -407,9 +407,14 @@ public class UpdateChecker {
                     + " != 资产元数据 " + info.apkSize + "，删包");
             return "下到的文件大小对不上（" + f.length() + " 字节，应为 " + info.apkSize + " 字节）";
         }
+        // 尽力而为的签名/版本校验：双方都能取到签名才比较；取整不到只留痕，交给系统安装器兜底，
+        // 避免个别 ROM 上 getPackageArchiveInfo 不给签名时把正常更新也挡掉
+        final int flags = android.os.Build.VERSION.SDK_INT >= 28
+                ? android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+                : android.content.pm.PackageManager.GET_SIGNATURES;
         PackageInfo ai;
         try {
-            ai = ctx.getPackageManager().getPackageArchiveInfo(f.getAbsolutePath(), 0);
+            ai = ctx.getPackageManager().getPackageArchiveInfo(f.getAbsolutePath(), flags);
         } catch (Exception e) {
             ai = null;
         }
@@ -425,8 +430,44 @@ public class UpdateChecker {
             Diag.log(ctx, "⬆️ 更新：校验失败，版本号不对：" + ai.versionName + "，应为 " + info.version);
             return "下到的安装包版本号不对（" + ai.versionName + "）";
         }
+        try {
+            PackageInfo cur = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), flags);
+            if (versionCodeOf(ai) < versionCodeOf(cur)) {
+                Diag.log(ctx, "⬆️ 更新：校验失败，下载包 versionCode 低于当前版本");
+                return "下到的安装包版本比当前还旧";
+            }
+            android.content.pm.Signature[] a = signaturesOf(cur), b = signaturesOf(ai);
+            if (a != null && b != null && a.length > 0 && b.length > 0 && !sameSignatures(a, b)) {
+                Diag.log(ctx, "⬆️ 更新：校验失败，签名与当前应用不一致");
+                return "下到的安装包签名对不上";
+            }
+        } catch (Exception e) {
+            Diag.log(ctx, "⬆️ 更新：签名/版本校验跳过：" + e);
+        }
         Diag.log(ctx, "⬆️ 更新：安装包校验通过（" + f.length() + "B，包名/版本 v" + ai.versionName + " 对上）");
         return null;
+    }
+
+    private static long versionCodeOf(PackageInfo p) {
+        return android.os.Build.VERSION.SDK_INT >= 28 ? p.getLongVersionCode() : p.versionCode;
+    }
+
+    private static android.content.pm.Signature[] signaturesOf(PackageInfo p) {
+        if (p == null) return null;
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            return p.signingInfo == null ? null : p.signingInfo.getApkContentsSigners();
+        }
+        return p.signatures;
+    }
+
+    private static boolean sameSignatures(android.content.pm.Signature[] a, android.content.pm.Signature[] b) {
+        if (a.length != b.length) return false;
+        for (android.content.pm.Signature x : a) {
+            boolean hit = false;
+            for (android.content.pm.Signature y : b) if (x.equals(y)) { hit = true; break; }
+            if (!hit) return false;
+        }
+        return true;
     }
 
     // ---------------- 拉起安装（图传口径：未授权跳设置、回来自动续；已授权当场拉） ----------------
