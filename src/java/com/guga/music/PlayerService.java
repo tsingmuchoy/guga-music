@@ -51,6 +51,9 @@ public class PlayerService extends Service {
     private BiliApi api;
     private HistoryDb history;
     private StatsDb statsDb;
+    /** 统计写入串行执行器：频繁切歌时不再每个写操作都起一个短命线程，避免线程扎堆 */
+    private static final java.util.concurrent.ExecutorService STAT_EXEC =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
     private Track statTrack;
     private int statPendingSec;
     private final List<Track> queue = new ArrayList<>();
@@ -941,7 +944,7 @@ public class PlayerService extends Service {
         flushStats();
         statTrack = t;
         statPendingSec = 0;
-        new Thread(() -> { try { statsDb.recordPlay(t); } catch (Exception ignored) {} }).start();
+        STAT_EXEC.execute(() -> { try { statsDb.recordPlay(t); } catch (Exception ignored) {} });
     }
 
     private void flushStats() {
@@ -949,7 +952,7 @@ public class PlayerService extends Service {
         final int sec = statPendingSec;
         statPendingSec = 0;
         if (statsDb == null || t == null || sec <= 0) return;
-        new Thread(() -> { try { statsDb.addSeconds(t, sec); } catch (Exception ignored) {} }).start();
+        STAT_EXEC.execute(() -> { try { statsDb.addSeconds(t, sec); } catch (Exception ignored) {} });
     }
 
     private void flushTraffic() {
