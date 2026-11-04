@@ -58,11 +58,14 @@ public class BiliApi {
 
     // ---------------- 登录态 ----------------
     public boolean isLoggedIn() {
-        return sp.getString("sessdata", null) != null;
+        String v = sp.getString("sessdata", null);
+        return v != null && !v.isEmpty();
     }
 
     public void saveLoginCookies(Map<String, String> cookies) {
         SharedPreferences.Editor e = sp.edit();
+        // 覆盖式写入：新会话没带上的键要删掉旧值，否则换账号后新旧 bili_jct/mid 会混用
+        e.remove("sessdata").remove("mid").remove("bili_jct");
         if (cookies.containsKey("SESSDATA")) e.putString("sessdata", cookies.get("SESSDATA"));
         if (cookies.containsKey("DedeUserID")) e.putString("mid", cookies.get("DedeUserID"));
         if (cookies.containsKey("bili_jct")) e.putString("bili_jct", cookies.get("bili_jct"));
@@ -138,23 +141,33 @@ public class BiliApi {
     private void prepare() throws Exception {
         if (sp.getString("buvid3", null) == null) {
             JSONObject spi = getJson("https://api.bilibili.com/x/frontend/finger/spi");
-            JSONObject d = spi.getJSONObject("data");
-            sp.edit().putString("buvid3", d.getString("b_3"))
-                    .putString("buvid4", d.getString("b_4")).apply();
+            JSONObject sd = spi.optJSONObject("data");
+            String b3 = sd == null ? "" : sd.optString("b_3", "");
+            if (!b3.isEmpty()) {
+                sp.edit().putString("buvid3", b3)
+                        .putString("buvid4", sd.optString("b_4", "")).apply();
+            }
         }
-        String today = String.valueOf(System.currentTimeMillis() / 86400000L);
+        // 本地自然日（北京时间），不再用 UTC 天导致每天早上 8 点前不刷新密钥
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA)
+                .format(new java.util.Date());
         if (!today.equals(sp.getString("mixin_day", "")) || sp.getString("mixin", null) == null) {
             JSONObject nav = getJson("https://api.bilibili.com/x/web-interface/nav");
-            JSONObject d = nav.getJSONObject("data");
-            JSONObject wi = d.getJSONObject("wbi_img");
-            String img = wi.getString("img_url");
-            String sub = wi.getString("sub_url");
-            img = img.substring(img.lastIndexOf('/') + 1).replace(".png", "");
-            sub = sub.substring(sub.lastIndexOf('/') + 1).replace(".png", "");
+            JSONObject d = nav.optJSONObject("data");
             SharedPreferences.Editor e = sp.edit();
-            e.putString("mixin", Wbi.mixinKey(img, sub));
             e.putString("mixin_day", today);
-            if (d.optBoolean("isLogin")) {
+            JSONObject wi = d == null ? null : d.optJSONObject("wbi_img");
+            String img = wi == null ? "" : wi.optString("img_url", "");
+            String sub = wi == null ? "" : wi.optString("sub_url", "");
+            if (!img.isEmpty() && !sub.isEmpty()) {
+                img = img.substring(img.lastIndexOf('/') + 1).replace(".png", "");
+                sub = sub.substring(sub.lastIndexOf('/') + 1).replace(".png", "");
+                e.putString("mixin", Wbi.mixinKey(img, sub));
+            } else {
+                // 偶发风控/字段缺失：沿用手上旧密钥，别让一次 nav 异常把全部 WBI 接口打死
+                Diag.log(appCtx, "🔑 nav 未返回 wbi_img，沿用旧签名密钥");
+            }
+            if (d != null && d.optBoolean("isLogin")) {
                 e.putString("uname", d.optString("uname"));
                 e.putString("face", d.optString("face"));
                 e.putString("mid", String.valueOf(d.optLong("mid")));
