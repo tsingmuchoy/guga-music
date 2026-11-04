@@ -577,6 +577,13 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     }
 
     @Override
+    protected void onDestroy() {
+        // 无限旋转动画与 ivCover 互持引用，仅 pause 会在退出页面后仍挂住 Activity；销毁时取消
+        if (discSpin != null) { discSpin.cancel(); discSpin = null; }
+        super.onDestroy();
+    }
+
+    @Override
     public void onTrackChanged(Track t) {
         loadLyrics(t);
         scheduleSheetBlur(900);
