@@ -9,7 +9,7 @@ public class Wbi {
         String s = imgKey + subKey;
         StringBuilder sb = new StringBuilder();
         for (int idx : MIXIN_TAB) if (idx < s.length()) sb.append(s.charAt(idx));
-        return sb.substring(0, 32);
+        return sb.substring(0, Math.min(32, sb.length()));
     }
     public static String md5(String s) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
@@ -18,6 +18,11 @@ public class Wbi {
         for (byte b : d) sb.append(String.format("%02x", b));
         return sb.toString();
     }
+    /** 与运行版 com.guga.music.Wbi.enc 同口径：空格 %20、* 必须编码、~ 保持不编码 */
+    private static String enc(String s) throws Exception {
+        return URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+                .replace("*", "%2A").replace("%7E", "~");
+    }
     public static String sign(Map<String,String> params, String mixin, long wts) throws Exception {
         TreeMap<String,String> p = new TreeMap<>(params);
         p.put("wts", String.valueOf(wts));
@@ -25,7 +30,7 @@ public class Wbi {
         for (Map.Entry<String,String> e : p.entrySet()) {
             String v = e.getValue().replaceAll("[!'()*]", "");
             if (q.length() > 0) q.append('&');
-            q.append(URLEncoder.encode(e.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(v, "UTF-8").replace("+", "%20"));
+            q.append(enc(e.getKey())).append('=').append(enc(v));
         }
         return q + "&w_rid=" + md5(q.toString() + mixin);
     }
