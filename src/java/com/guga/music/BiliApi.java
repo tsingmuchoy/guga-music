@@ -49,7 +49,7 @@ public class BiliApi {
     private final Context appCtx;
 
     /** 最近一次搜索接口返回的总条数（data.numResults），-1 表示接口没给 */
-    public int lastSearchTotal = -1;
+    public volatile int lastSearchTotal = -1;
 
     public BiliApi(Context ctx) {
         appCtx = ctx.getApplicationContext();
