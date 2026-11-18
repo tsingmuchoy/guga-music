@@ -358,8 +358,7 @@ public class PlayerService extends Service {
     public boolean isPrepared() { return prepared; }
     public int getMode() { return getSharedPreferences("player", MODE_PRIVATE).getInt("mode", MODE_SEQ); }
     public void cycleMode() {
-        int m = (getMode() + 1) % 3;
-        getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
+        setMode((getMode() + 1) % 3);
     }
     // ---- v1.23.0 省流量：旋转缓存 + 流量统计 ----
     private TeeDataSource curTee;
@@ -1231,9 +1230,23 @@ public class PlayerService extends Service {
     private static final String VIVO_KEY_LOOP_MODE = "vivomusicmix.media.metadata.LOOP_MODE";
     private static final String VIVO_KEY_SUPPORT_EVENT = "vivomusicmix.media.metadata.support_event";
     private static final String VIVO_KEY_CAST_STATE = "vivomusicmix.media.metadata.cast_state";
-    /** 能力位：23 = 基础传输(1|2|4) + 支持 seek(16)。小部件本身也是按会话 actions
-     *  是否含 ACTION_SEEK_TO 推导出 23 / 7 的，所以这里跟它保持一致。 */
-    private static final long VIVO_SUPPORT_EVENT = 23L;
+    /** vivo 能力位（support_event）。真机逆向 VivoMusicWidgetMix 6.2.7.1 的结论：
+     *  <ul>
+     *    <li>1|2|4 基础传输、16 支持 seek —— 原来的 23 只到这里。</li>
+     *    <li>128 循环模式按钮：e5.w0.l0() 把它存进 w0.s，onClick 里作为
+     *        onLoopModeIconClicked 的参数、且是循环图标 d 的 enable 位。</li>
+     *    <li>256 / 512 / 1024 三个循环模式图标（列表/单曲/随机）的 enable 位（w0.v/w/x），
+     *        FlipMusicListTabView 与 MusicListTabView 也用 512/1024 判播放列表 Tab。</li>
+     *    <li>64 锁屏能力、8 进度/章节、32 碰传、2048 高版本协作 —— 小部件给主流 App
+     *        硬编码的 2439 / 2455 / 2527 / 4095 都含这些位。</li>
+     *  </ul>
+     *  对不在硬编码名单里的包名（本应用），b1.a(包名) 走 default 分支返回
+     *  getSupportEvent()，也就是我们发布的这个值；所以填 23 会让 128 及以上全为 0，
+     *  循环按钮和播放列表入口被判成不支持而置灰。这里按小部件自身的最大能力位 0xFFF
+     *  声明；未实现的能力（投屏/收藏/歌词）由 cast_state=0 与「忽略未知 customAction」
+     *  兜底，不会假装成功，真机若出现多余无效按钮再按位收敛。
+     */
+    private static final long VIVO_SUPPORT_EVENT = 4095L;
     /** 小部件的循环模式枚举：1=顺序 2=单曲 3=随机；本项目内部是 0/1/2，故 +1 换算。 */
 
     // ---------------- 媒体会话（系统媒体面：锁屏 / 蓝牙 / 原子随身听等） ----------------
@@ -1272,9 +1285,8 @@ public class PlayerService extends Service {
                     if (!VIVO_ACTION_PLAY_MODE.equals(action)) return;
                     try {
                         int mode = args == null ? 0 : args.getInt(VIVO_KEY_LOOP_MODE, 0);
+                        // setMode 内部已重发 metadata/state，这里不重复发布
                         setMode(mode - 1);
-                        publishMetadata();
-                        publishState();
                         Diag.log(PlayerService.this, "🔁 原子随身听：切换循环模式 → " + mode);
                     } catch (Exception ignored) {}
                 }
@@ -1346,10 +1358,15 @@ public class PlayerService extends Service {
     /** 循环模式换算：小部件枚举 1=顺序 2=单曲 3=随机，本项目内部 0/1/2。 */
     private int vivoLoopMode() { return getMode() + 1; }
 
-    /** 设置播放模式（0=顺序 1=单曲 2=随机）。 */
+    /** 设置播放模式（0=顺序 1=单曲 2=随机）。
+     *  原子随身听从 metadata 的 LOOP_MODE 读当前模式，所以不管模式是从小部件下发
+     *  （onCustomAction）还是从 App 播放页点按钮（cycleMode）改的，都必须重发会话元数据，
+     *  否则小部件一直停在旧模式、按钮看着像「点了没反应」。 */
     public void setMode(int m) {
         m = ((m % 3) + 3) % 3;
         getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
+        publishMetadata();
+        publishState();
     }
 
     /** 按协议回执错误：key_action + error_code，小部件据此弹「未登录」等提示。 */
