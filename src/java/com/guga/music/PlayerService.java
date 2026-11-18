@@ -1283,6 +1283,10 @@ public class PlayerService extends Service {
             // 会话一建好就把状态发出去：没有 PlaybackState 的会话在系统「活跃会话」列表里
             // 可能不可见，小部件就找不到本应用（表现为协作服务从不被绑定）。
             publishState();
+            // 紧接着发能力帧：小部件连接后读 metadata 里的 support_event / LOOP_MODE 决定
+            // 循环按钮与播放列表入口是否可点。等到切歌时才发（fireTrack）已经太晚，
+            // 那时 UI 已按 support_event=0 渲染成置灰且不会再重读。
+            publishMetadata();
             // 会话一建好就把 token 交给原子随身听的协作服务：客户端连接那一刻框架只发一次，
             // 之后再改不会补发，晚一步小部件就拿不到控制器。
             try { VivoMusicBrowserService.onSessionReady(session.getSessionToken()); } catch (Exception ignored) {}
@@ -1292,28 +1296,33 @@ public class PlayerService extends Service {
 
     private void publishMetadata() {
         if (session == null) return;
-        Track t = current();
-        if (t == null) return;
         try {
-            // 与播放页同一口径：匹配到歌词后用原歌名/歌手，否则回落视频标题/UP主（锁屏、蓝牙、车机共用这套元数据）
-            String title = Lyrics.displayName(this, t);
-            String artist = Lyrics.displayArtist(this, t);
-            MediaMetadata.Builder mb = new MediaMetadata.Builder()
-                    .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, artist)
-                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩")
-                    // 原子随身听的私有字段：平台 MediaMetadata 允许自定义 key（只对系统已知 key 做类型校验）
-                    .putLong(VIVO_KEY_LOOP_MODE, (long) vivoLoopMode())
+            MediaMetadata.Builder mb = new MediaMetadata.Builder();
+            Track t = current();
+            if (t != null) {
+                // 与播放页同一口径：匹配到歌词后用原歌名/歌手，否则回落视频标题/UP主（锁屏、蓝牙、车机共用这套元数据）
+                String title = Lyrics.displayName(this, t);
+                String artist = Lyrics.displayArtist(this, t);
+                mb.putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                        .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+                        .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                        .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
+                        .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, artist)
+                        .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩");
+                if (t.durationSec > 0) mb.putLong(MediaMetadata.METADATA_KEY_DURATION, t.durationSec * 1000L);
+                if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
+                    mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, sessionArt);
+                    mb.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, sessionArt);
+                }
+            }
+            // 原子随身听私有字段必须无条件发布，与「有没有正在播放的曲目」无关。
+            // 小部件 MediaMetadataCompat.getLong() 读这三个 key 判定按钮可用：会话刚建立、
+            // 队列还没恢复时若因 current()==null 直接 return，小部件 getMetadata() 拿到 null，
+            // 它的 c3.a（supportEvents）保持默认 0 → 循环按钮 / 播放列表入口全部置灰。
+            // 平台 MediaMetadata 允许自定义 key（只对系统已知 key 做类型校验）。
+            mb.putLong(VIVO_KEY_LOOP_MODE, (long) vivoLoopMode())
                     .putLong(VIVO_KEY_SUPPORT_EVENT, VIVO_SUPPORT_EVENT)
                     .putLong(VIVO_KEY_CAST_STATE, 0L);
-            if (t.durationSec > 0) mb.putLong(MediaMetadata.METADATA_KEY_DURATION, t.durationSec * 1000L);
-            if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
-                mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, sessionArt);
-                mb.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, sessionArt);
-            }
             session.setMetadata(mb.build());
         } catch (Exception ignored) {}
     }
