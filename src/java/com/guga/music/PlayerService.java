@@ -314,6 +314,9 @@ public class PlayerService extends Service {
         startForegroundCompat(buildNotification("Apollo", "点一首歌开始听吧"));
         restoreState();
         if (current() != null) updateNotification();
+        // 冷启动时存档队列是在这里恢复的（不走 fireTrack），补一次通知，
+        // 否则小部件此时订阅拿到的仍是空列表
+        try { VivoMusicBrowserService.onQueueChanged(); } catch (Exception ignored) {}
     }
 
     // ---------------- 对外控制 ----------------
@@ -506,6 +509,8 @@ public class PlayerService extends Service {
         queue.addAll(tracks);
         index = Math.max(0, Math.min(start, queue.size() - 1));
         startTrack();
+        // 整份队列被替换（不只是切歌），显式通知一次；fireTrack 也会通知，两处都留着更保险
+        try { VivoMusicBrowserService.onQueueChanged(); } catch (Exception ignored) {}
     }
 
     private boolean sameQueue(List<Track> tracks) {
@@ -1155,6 +1160,8 @@ public class PlayerService extends Service {
         for (Listener l : listeners) l.onTrackChanged(t);
         publishMetadata();
         refreshSessionArt(t);
+        // 播放队列/当前曲变了，通知原子随身听重新拉「正在播放」列表（它只在 subscribe 时拉一次）
+        try { VivoMusicBrowserService.onQueueChanged(); } catch (Exception ignored) {}
     }
 
     private void fireError(String msg) {
@@ -1266,8 +1273,8 @@ public class PlayerService extends Service {
                 @Override public void onSkipToPrevious() { prev(); }
                 @Override public void onSeekTo(long pos) { seekTo((int) Math.max(0, pos)); }
                 @Override public void onStop() { if (playing) toggle(); }
-                // 原子随身听在它的浏览列表里点歌：mediaId 形如 guga:cur:12，
-                // extras 里 vivomusicmix_key_list 指明来自哪个列表。
+                // 原子随身听在它的浏览列表里点歌：mediaId 形如 vivomusicmix_current_list:12，
+                // extras 里 vivomusicmix_key_list 也是这个列表 id（真机逆向确认）。
                 @Override public void onPlayFromMediaId(String mediaId, Bundle extras) {
                     try {
                         VivoMusicBrowserService.playMediaId(PlayerService.this, mediaId,

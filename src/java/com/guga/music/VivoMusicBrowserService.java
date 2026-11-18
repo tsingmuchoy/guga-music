@@ -63,6 +63,7 @@ public class VivoMusicBrowserService extends MediaBrowserService {
     private static volatile List<Track> favSnapshot = Collections.emptyList();
     private static volatile List<Track> localSnapshot = Collections.emptyList();
     private static volatile long favStamp = 0L;
+    private static volatile long localStamp = 0L;
 
     private static volatile VivoMusicBrowserService inst;
 
@@ -127,6 +128,21 @@ public class VivoMusicBrowserService extends MediaBrowserService {
         }
     }
 
+    /** 播放队列变化（点歌单、切歌、恢复存档、随机重排等）后通知已订阅的小部件重新拉列表。
+     *  MediaBrowserService 的 onLoadChildren 只在 subscribe 那一刻触发一次，不主动
+     *  notifyChildrenChanged 的话，小部件首次订阅拿到的空列表会一直留在界面上。
+     *  带 options 的重载让框架沿用订阅时的页码重新回调 onLoadChildren(parentId, result, options)。 */
+    public static void onQueueChanged() {
+        final VivoMusicBrowserService s = inst;
+        if (s == null) return;
+        s.main.post(() -> {
+            try {
+                // 无参重载会通知该 parentId 下的所有订阅，并沿用各自订阅时的 options（页码）
+                s.notifyChildrenChanged(LIST_CURRENT);
+            } catch (Exception ignored) {}
+        });
+    }
+
     // ------------------------------------------------------------------ 浏览树
 
     @Override
@@ -150,6 +166,13 @@ public class VivoMusicBrowserService extends MediaBrowserService {
         page = Math.min(page, Integer.MAX_VALUE / PAGE_SIZE);
         if (LIST_CURRENT.equals(parentId)) {
             PlayerService ps = PlayerService.get();
+            if (ps == null) {
+                // 小部件可能先于 App 启动（此时播放服务还没起来）：先回一个空结果让订阅成立，
+                // 再尝试拉起服务；服务 onCreate 恢复存档队列后会 onQueueChanged 触发重拉。
+                // 后台起前台服务在 Android 12+ 可能被拒，失败就等用户自己打开 App。
+                try { PlayerService.ensureStarted(this); } catch (Exception ignored) {}
+                ps = PlayerService.get();
+            }
             List<Track> q = ps == null ? Collections.<Track>emptyList() : ps.getQueue();
             result.sendResult(pageItems(q, page, LIST_CURRENT));
         } else if (LIST_LOCAL.equals(parentId)) {
@@ -163,7 +186,9 @@ public class VivoMusicBrowserService extends MediaBrowserService {
 
     /** 本地音乐：本地歌单里的全部歌曲。 */
     private void loadLocal(final Result<List<MediaBrowser.MediaItem>> result, final int page) {
-        if (localSnapshot.isEmpty()) {
+        // 与收藏列表同口径：60 秒后重读一次，避免导入/删除本地歌单后小部件一直显示旧列表。
+        // 空快照也要重读（原先 isEmpty() 判断会让「删到空」永远停在空列表）。
+        if (localSnapshot.isEmpty() || System.currentTimeMillis() - localStamp > 60_000L) {
             try {
                 List<Track> all = new ArrayList<>();
                 LocalDb db = new LocalDb(this);
@@ -172,6 +197,7 @@ public class VivoMusicBrowserService extends MediaBrowserService {
                     if (ts != null) all.addAll(ts);
                 }
                 localSnapshot = all;
+                localStamp = System.currentTimeMillis();
             } catch (Exception ignored) {}
         }
         result.sendResult(pageItems(localSnapshot, page, LIST_LOCAL));
@@ -253,7 +279,8 @@ public class VivoMusicBrowserService extends MediaBrowserService {
     }
 
     /**
-     * 切一页并生成条目。mediaId 形如 {@code guga:cur:12}，点播时按它回查同一份列表。
+     * 切一页并生成条目。mediaId 形如 {@code vivomusicmix_current_list:12}（列表 id + 序号），
+     * 点播时按它回查同一份列表；小部件回传的 {@code vivomusicmix_key_list} 也是这个列表 id。
      * 最后一条的 extras 带上分页信息，小部件据此判断还有没有下一页。
      */
     private List<MediaBrowser.MediaItem> pageItems(List<Track> src, int page, String listId) {
@@ -294,8 +321,8 @@ public class VivoMusicBrowserService extends MediaBrowserService {
 
     /**
      * 供 PlayerService 的 onPlayFromMediaId 调用：小部件点了某个条目。
-     * mediaId 形如 {@code guga:cur:12}；列表 id 以 mediaId 前缀为准，extras 里的
-     * {@code vivomusicmix_key_list} 作为交叉校验。
+     * mediaId 形如 {@code vivomusicmix_current_list:12}（真机逆向确认前缀就是完整列表 id）；
+     * 列表 id 以 mediaId 前缀为准，extras 里的 {@code vivomusicmix_key_list} 作为交叉校验。
      */
     public static void playMediaId(Context ctx, String mediaId, String listId) {
         if (mediaId == null) return;
