@@ -36,6 +36,9 @@ public class PlayerService extends Service {
         void onTrackChanged(Track t);
         void onStateChanged(boolean playing);
         void onError(String msg);
+        /** 播放模式变化（含原子随身听通过 onCustomAction 下发的切换）：
+         *  默认空实现，只有播放页需要即时刷新模式按钮。 */
+        default void onModeChanged(int mode) {}
     }
 
     public static final int MODE_SEQ = 0, MODE_LOOP = 1, MODE_SHUFFLE = 2;
@@ -1374,6 +1377,11 @@ public class PlayerService extends Service {
         getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
         publishMetadata();
         publishState();
+        // 通知 UI 即时刷新模式按钮：原子随身听下发时 Activity 在前台，
+        // 此前只更新会话元数据不通知 Listener，播放页要切走再切回才刷新。
+        for (Listener l : listeners) {
+            try { l.onModeChanged(m); } catch (Exception ignored) {}
+        }
     }
 
     /** 按协议回执错误：key_action + error_code，小部件据此弹「未登录」等提示。 */

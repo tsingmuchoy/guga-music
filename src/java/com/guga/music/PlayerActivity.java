@@ -617,6 +617,11 @@ public class PlayerActivity extends Activity implements PlayerService.Listener {
     }
 
     @Override
+    public void onModeChanged(int mode) {
+        refreshMode(); // 原子随身听切换模式后即时刷新按钮，无需切走再切回
+    }
+
+    @Override
     public void onError(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
