@@ -175,10 +175,12 @@ public class VivoMusicBrowserService extends MediaBrowserService {
             }
             List<Track> q = ps == null ? Collections.<Track>emptyList() : ps.getQueue();
             result.sendResult(pageItems(q, page, LIST_CURRENT));
-        } else if (LIST_LOCAL.equals(parentId)) {
-            loadLocal(result, page);
-        } else if (LIST_FAVORITE.equals(parentId)) {
-            loadFavorite(result, page);
+        } else if (LIST_LOCAL.equals(parentId) || LIST_FAVORITE.equals(parentId)) {
+            // 用户要求：原子随身听只保留「正在播放」列表，不要收藏 / 本地（下载）列表。
+            // 小部件的列表 Tab 显隐与循环模式图标共用 support_event 的 512/1024 位，
+            // 清位会让单曲/随机图标变灰，所以改在数据层返回空列表：Tab 仍在但内容为空。
+            // 不拉起播放服务、不读数据库/网络，也省掉无谓的请求。
+            result.sendResult(new ArrayList<MediaBrowser.MediaItem>());
         } else {
             result.sendResult(new ArrayList<MediaBrowser.MediaItem>());
         }
