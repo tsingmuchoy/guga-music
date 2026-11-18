@@ -76,17 +76,66 @@ bash tools/vivo-whitelist.sh --restore  # 还原（并清掉派生缓存）
   `vivomusicmix.media.metadata.LOOP_MODE` = 1 顺序 / 2 单曲 / 3 随机；本项目内部是 0/1/2，故 **+1 换算**。
   注意方向：平台 `MediaSession.Callback` **没有** `onSessionEvent`（只有 `MediaController.Callback` 有），
   所以请求侧一律走 `onCustomAction`；回执侧（应用 → 小部件）才用 `MediaSession.sendSessionEvent`。
-- **能力位** `vivomusicmix.media.metadata.support_event`：23 = 基础传输(1|2|4) + 支持 seek(16)。
-  小部件本身也是按会话 `PlaybackState.actions` 是否含 `ACTION_SEEK_TO` 推导出 23/7，保持一致。
+- **能力位** `vivomusicmix.media.metadata.support_event`：**必须包含 128 / 256 / 512 / 1024**，
+  只填 23（基础传输 1|2|4 + seek 16）会让循环按钮和播放列表入口被判成不支持而置灰。
+  详见下方「3.3.1 能力位真机逆向」。
 - **错误回执**：平台 `MediaBrowserService.Result` 没有 `sendError`，改用会话事件
   `vivomusicmix.session.event.error`，bundle 里 `key_action` + `error_code`（505=未登录，201=其它）。
+  小部件 `c0$b.j()` 先比对 **event 名**是否等于 `vivomusicmix.session.event.error`，
+  再从 bundle 取 `key_action` 交给 `c0.m0()` 按 GET_LIST / FAVORITE / PLAY_MODE 分发 —— 两边都要对。
 - **平台 `MediaMetadata` 允许自定义 key**（只对系统已知 key 做类型校验），所以 vivo 私有字段可以直接 put。
+
+### 3.3.1 能力位真机逆向（2026-11-19，VivoMusicWidgetMix 6.2.7.1 反汇编）
+
+把 APK 从 `/system/app/VivoMusicWidgetMix/VivoMusicWidgetMix.apk` 拉出来，用
+`build-tools/dexdump.exe -d classes.dex` 反汇编后确认的完整链路：
+
+```
+我们的 MediaMetadata.getLong("...support_event")
+  → c0.l0() / o.W() 写入 c3.a（supportEvents，构造器默认 0）
+  → MusicWidgetMixService.I0() → getSupportEvent()
+  → b1.a(包名)：本应用不在硬编码名单里，走 default 分支返回 getSupportEvent()
+  → e5/w0.l0() 用 b1.c(值, 位) 判按钮 enable
+```
+
+各位含义（`b1.c(x, bit)` 即 `(x & bit) == bit`）：
+
+| 位 | 值 | 作用 |
+| --- | --- | --- |
+| 1\|2\|4 | 7 | 基础传输 |
+| 8 | 8 | 进度/章节（`b1.g`） |
+| 16 | 16 | seek（`h1()` / `isSupportSeek`） |
+| 32 | 32 | 碰传（`b1.h`） |
+| 64 | 64 | 锁屏能力（`b1.e` / `w0.t`） |
+| **128** | **128** | **循环模式按钮**：`w0.s`，`onClick` 里作为 `onLoopModeIconClicked` 参数 |
+| **256** | **256** | **循环模式图标 i**（`w0.v`） |
+| **512** | **512** | **循环模式图标 j**（`w0.w`）+ 播放列表 Tab 显示 |
+| **1024** | **1024** | **循环模式图标 k**（`w0.x`）+ 播放列表 Tab 显示 |
+| 2048 | 2048 | 高版本协作能力 |
+
+小部件给主流 App 硬编码的值可作参照：2439 / 2455 / 2527 / **4095（0xFFF，全能力）**。
+`FlipMusicListTabView.x()` 与 `MusicListTabView` 里，若 512 和 1024 **都不置位**，
+会走 `setVisibility(8)` 隐藏列表 Tab、并把 ViewPager 收敛成单个列表 —— 这正是「播放列表不可用」的表现。
+本项目取 **4095**：未实现的能力由 `cast_state=0` 和「忽略未知 customAction」兜底，不会假装成功。
+
+其他已核实的协议细节（纠正早期静态推断的误判）：
+
+- **列表走 `subscribe()`**：`c0.z0(parentId, page)` 用 `MediaBrowserCompat.subscribe(parentId, options, callback)`，
+  `options` 里放 `vivomusicmix_key_media_page`。`GET_LIST` 只是错误回执里的 `key_action`，不是请求动作。
+- **框架只在订阅那一刻回调一次 `onLoadChildren`**，队列变化必须主动 `notifyChildrenChanged(parentId)`。
+- **类型**：小部件下发 `PLAY_MODE` 用 `Bundle.putInt(LOOP_MODE, 1..3)`（我们 `getInt` 读）；
+  读 metadata 用 `MediaMetadataCompat.getLong()`（我们 `putLong` 写）。两侧类型不同但各自自洽。
+- **`KEY_LIST` 传的是完整列表 id**（`vivomusicmix_current_list` / `_favorite_list` / `_local_list`），
+  与我们的 mediaId 前缀一致，`playMediaId()` 的交叉校验能通过。
+- `onGetRoot` 的 `BrowserRoot` extras **不被读取**：`c0.onConnected()` 只取 session token。
+- `sendSessionEvent` 在该协议里**只用于错误回执**；正常模式同步靠 `onMetadataChanged`。
 
 ### 3.4 现状与边界
 
-- 已实现：发现、传输控制（播/停/上下曲/进度）、正在播放 / 本地 / 收藏三个列表、点播、循环模式。
-- 未实现：歌词透传（`MediaSession.setExtras()` 透传逐行歌词，当前未接，按需再加）、投屏（`cast_state` 恒为 0）、本地收藏（能力位里不声明收藏，小部件不会发收藏动作；
-  真发过来平台默认实现什么都不做，不会假装收藏成功）、歌单同步（`GET_LIST` 目前只在未登录时回执 505）。
+- 已实现：发现、传输控制（播/停/上下曲/进度）、正在播放 / 本地 / 收藏三个列表、点播、循环模式、
+  队列变化后的 `notifyChildrenChanged`、会话建立瞬间的能力帧发布。
+- 未实现：歌词透传（`MediaSession.setExtras()` 透传逐行歌词，当前未接，按需再加）、投屏（`cast_state` 恒为 0）、本地收藏（
+  真发过来 `onCustomAction` 只认 PLAY_MODE，其余忽略，不会假装收藏成功）、歌单同步（`GET_LIST` 目前只在未登录时回执 505）。
 - 收藏列表 = B 站各收藏夹的歌曲拉平；未登录时按协议回 505。
 - 暴露面与标准媒体浏览器服务一致：可浏览歌单标题、可控制播放；不暴露文件、账号凭证、设置等非媒体能力。
 
