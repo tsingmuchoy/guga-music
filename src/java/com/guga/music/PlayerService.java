@@ -1240,23 +1240,25 @@ public class PlayerService extends Service {
     private static final String VIVO_KEY_LOOP_MODE = "vivomusicmix.media.metadata.LOOP_MODE";
     private static final String VIVO_KEY_SUPPORT_EVENT = "vivomusicmix.media.metadata.support_event";
     private static final String VIVO_KEY_CAST_STATE = "vivomusicmix.media.metadata.cast_state";
-    /** vivo 能力位（support_event）。真机逆向 VivoMusicWidgetMix 6.2.7.1 的结论：
+    /** vivo 能力位（support_event）。jadx 逆向 VivoMusicWidgetMix 6.2.7.1 的结论：
      *  <ul>
-     *    <li>1|2|4 基础传输、16 支持 seek —— 原来的 23 只到这里。</li>
-     *    <li>128 循环模式按钮：e5.w0.l0() 把它存进 w0.s，onClick 里作为
-     *        onLoopModeIconClicked 的参数、且是循环图标 d 的 enable 位。</li>
-     *    <li>256 / 512 / 1024 三个循环模式图标（列表/单曲/随机）的 enable 位（w0.v/w/x），
-     *        FlipMusicListTabView 与 MusicListTabView 也用 512/1024 判播放列表 Tab。</li>
-     *    <li>64 锁屏能力、8 进度/章节、32 碰传、2048 高版本协作 —— 小部件给主流 App
-     *        硬编码的 2439 / 2455 / 2527 / 4095 都含这些位。</li>
+     *    <li>1|2|4 基础传输、16 seek、8 进度/章节、64 锁屏、32 碰传 —— 基础能力。</li>
+     *    <li>128 循环模式按钮：e5.w0.l0() 存进 w0.s，onClick(iv_loop_mode) 作为
+     *        onLoopModeIconClicked 的参数。循环按钮只依赖这一位，与列表位无关。</li>
+     *    <li>256 / 512 / 1024 是三个"列表图标" iv_list_current / _favorite / _local
+     *        的 enable 位（w0.v/w/x）——注意不是循环模式图标，之前注释写错过。</li>
+     *    <li>列表 Tab 显隐：MusicListTabView.I() 里
+     *        if (c(512) || c(EVENT_TYPE_LIST_LOCAL=1024)) 显示完整 Tab 栏（正在播放/收藏/下载）；
+     *        两者都不置位则 setVisibility(8) 隐藏 Tab 栏、ViewPager 只留"正在播放"列表 ——
+     *        这正是网易云那种"只有播放列表"的效果。</li>
+     *    <li>2048 高版本协作。</li>
      *  </ul>
-     *  对不在硬编码名单里的包名（本应用），b1.a(包名) 走 default 分支返回
-     *  getSupportEvent()，也就是我们发布的这个值；所以填 23 会让 128 及以上全为 0，
-     *  循环按钮和播放列表入口被判成不支持而置灰。这里按小部件自身的最大能力位 0xFFF
-     *  声明；未实现的能力（投屏/收藏/歌词）由 cast_state=0 与「忽略未知 customAction」
-     *  兜底，不会假装成功，真机若出现多余无效按钮再按位收敛。
+     *  对不在硬编码名单里的包名（本应用），b1.a(包名) 走 default 分支返回我们发布的值。
+     *  取 2527（0x9DF）= 网易云高版本硬编码值：含 128/256 等基础能力（循环按钮与当前列表
+     *  图标照常可用），但清掉 512 与 1024 → 隐藏收藏/下载 Tab。此前取 4095（全开）会让
+     *  两个空 Tab 一直显示。未实现的投屏/收藏仍由 cast_state=0 与忽略未知 customAction 兜底。
      */
-    private static final long VIVO_SUPPORT_EVENT = 4095L;
+    private static final long VIVO_SUPPORT_EVENT = 2527L;
     /** 小部件的循环模式枚举：1=顺序 2=单曲 3=随机；本项目内部是 0/1/2，故 +1 换算。 */
 
     // ---------------- 媒体会话（系统媒体面：锁屏 / 蓝牙 / 原子随身听等） ----------------
