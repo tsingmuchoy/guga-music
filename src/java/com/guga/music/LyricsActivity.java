@@ -39,9 +39,11 @@ public class LyricsActivity extends Activity {
                 long pos = s.getPosition() - curOffsetMs;
                 for (int i = 0; i < lv.getChildCount(); i++) {
                     Object tag = lv.getChildAt(i).getTag();
-                    if (tag instanceof SyllableView) {
-                        SyllableView sv = (SyllableView) tag;
-                        if (sv.getVisibility() == View.VISIBLE) sv.setPosition(pos);
+                    // 注意：行 tag 自 v1.52.10 起是 Holder（低6 ViewHolder 改造），逐字视图在 h.sv；
+                    // 此前直接判 instanceof SyllableView 永远为假，40ms 快刷形同虚设，扫光只在换行重绑时动一次
+                    if (tag instanceof Holder) {
+                        SyllableView sv = ((Holder) tag).sv;
+                        if (sv != null && sv.getVisibility() == View.VISIBLE) sv.setPosition(pos);
                     }
                 }
             }
