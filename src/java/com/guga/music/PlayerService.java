@@ -36,6 +36,9 @@ public class PlayerService extends Service {
         void onTrackChanged(Track t);
         void onStateChanged(boolean playing);
         void onError(String msg);
+        /** 播放模式变化（含原子随身听通过 onCustomAction 下发的切换）：
+         *  默认空实现，只有播放页需要即时刷新模式按钮。 */
+        default void onModeChanged(int mode) {}
     }
 
     public static final int MODE_SEQ = 0, MODE_LOOP = 1, MODE_SHUFFLE = 2;
@@ -314,6 +317,9 @@ public class PlayerService extends Service {
         startForegroundCompat(buildNotification("Apollo", "点一首歌开始听吧"));
         restoreState();
         if (current() != null) updateNotification();
+        // 冷启动时存档队列是在这里恢复的（不走 fireTrack），补一次通知，
+        // 否则小部件此时订阅拿到的仍是空列表
+        try { VivoMusicBrowserService.onQueueChanged(); } catch (Exception ignored) {}
     }
 
     // ---------------- 对外控制 ----------------
@@ -358,8 +364,7 @@ public class PlayerService extends Service {
     public boolean isPrepared() { return prepared; }
     public int getMode() { return getSharedPreferences("player", MODE_PRIVATE).getInt("mode", MODE_SEQ); }
     public void cycleMode() {
-        int m = (getMode() + 1) % 3;
-        getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
+        setMode((getMode() + 1) % 3);
     }
     // ---- v1.23.0 省流量：旋转缓存 + 流量统计 ----
     private TeeDataSource curTee;
@@ -507,6 +512,8 @@ public class PlayerService extends Service {
         queue.addAll(tracks);
         index = Math.max(0, Math.min(start, queue.size() - 1));
         startTrack();
+        // 整份队列被替换（不只是切歌），显式通知一次；fireTrack 也会通知，两处都留着更保险
+        try { VivoMusicBrowserService.onQueueChanged(); } catch (Exception ignored) {}
     }
 
     private boolean sameQueue(List<Track> tracks) {
@@ -1156,6 +1163,8 @@ public class PlayerService extends Service {
         for (Listener l : listeners) l.onTrackChanged(t);
         publishMetadata();
         refreshSessionArt(t);
+        // 播放队列/当前曲变了，通知原子随身听重新拉「正在播放」列表（它只在 subscribe 时拉一次）
+        try { VivoMusicBrowserService.onQueueChanged(); } catch (Exception ignored) {}
     }
 
     private void fireError(String msg) {
@@ -1231,9 +1240,25 @@ public class PlayerService extends Service {
     private static final String VIVO_KEY_LOOP_MODE = "vivomusicmix.media.metadata.LOOP_MODE";
     private static final String VIVO_KEY_SUPPORT_EVENT = "vivomusicmix.media.metadata.support_event";
     private static final String VIVO_KEY_CAST_STATE = "vivomusicmix.media.metadata.cast_state";
-    /** 能力位：23 = 基础传输(1|2|4) + 支持 seek(16)。小部件本身也是按会话 actions
-     *  是否含 ACTION_SEEK_TO 推导出 23 / 7 的，所以这里跟它保持一致。 */
-    private static final long VIVO_SUPPORT_EVENT = 23L;
+    /** vivo 能力位（support_event）。jadx 逆向 VivoMusicWidgetMix 6.2.7.1 的结论：
+     *  <ul>
+     *    <li>1|2|4 基础传输、16 seek、8 进度/章节、64 锁屏、32 碰传 —— 基础能力。</li>
+     *    <li>128 循环模式按钮：e5.w0.l0() 存进 w0.s，onClick(iv_loop_mode) 作为
+     *        onLoopModeIconClicked 的参数。循环按钮只依赖这一位，与列表位无关。</li>
+     *    <li>256 / 512 / 1024 是三个"列表图标" iv_list_current / _favorite / _local
+     *        的 enable 位（w0.v/w/x）——注意不是循环模式图标，之前注释写错过。</li>
+     *    <li>列表 Tab 显隐：MusicListTabView.I() 里
+     *        if (c(512) || c(EVENT_TYPE_LIST_LOCAL=1024)) 显示完整 Tab 栏（正在播放/收藏/下载）；
+     *        两者都不置位则 setVisibility(8) 隐藏 Tab 栏、ViewPager 只留"正在播放"列表 ——
+     *        这正是网易云那种"只有播放列表"的效果。</li>
+     *    <li>2048 高版本协作。</li>
+     *  </ul>
+     *  对不在硬编码名单里的包名（本应用），b1.a(包名) 走 default 分支返回我们发布的值。
+     *  取 2527（0x9DF）= 网易云高版本硬编码值：含 128/256 等基础能力（循环按钮与当前列表
+     *  图标照常可用），但清掉 512 与 1024 → 隐藏收藏/下载 Tab。此前取 4095（全开）会让
+     *  两个空 Tab 一直显示。未实现的投屏/收藏仍由 cast_state=0 与忽略未知 customAction 兜底。
+     */
+    private static final long VIVO_SUPPORT_EVENT = 2527L;
     /** 小部件的循环模式枚举：1=顺序 2=单曲 3=随机；本项目内部是 0/1/2，故 +1 换算。 */
 
     // ---------------- 媒体会话（系统媒体面：锁屏 / 蓝牙 / 原子随身听等） ----------------
@@ -1253,8 +1278,8 @@ public class PlayerService extends Service {
                 @Override public void onSkipToPrevious() { prev(); }
                 @Override public void onSeekTo(long pos) { seekTo((int) Math.max(0, pos)); }
                 @Override public void onStop() { if (playing) toggle(); }
-                // 原子随身听在它的浏览列表里点歌：mediaId 形如 guga:cur:12，
-                // extras 里 vivomusicmix_key_list 指明来自哪个列表。
+                // 原子随身听在它的浏览列表里点歌：mediaId 形如 vivomusicmix_current_list:12，
+                // extras 里 vivomusicmix_key_list 也是这个列表 id（真机逆向确认）。
                 @Override public void onPlayFromMediaId(String mediaId, Bundle extras) {
                     try {
                         VivoMusicBrowserService.playMediaId(PlayerService.this, mediaId,
@@ -1272,9 +1297,8 @@ public class PlayerService extends Service {
                     if (!VIVO_ACTION_PLAY_MODE.equals(action)) return;
                     try {
                         int mode = args == null ? 0 : args.getInt(VIVO_KEY_LOOP_MODE, 0);
+                        // setMode 内部已重发 metadata/state，这里不重复发布
                         setMode(mode - 1);
-                        publishMetadata();
-                        publishState();
                         Diag.log(PlayerService.this, "🔁 原子随身听：切换循环模式 → " + mode);
                     } catch (Exception ignored) {}
                 }
@@ -1283,6 +1307,10 @@ public class PlayerService extends Service {
             // 会话一建好就把状态发出去：没有 PlaybackState 的会话在系统「活跃会话」列表里
             // 可能不可见，小部件就找不到本应用（表现为协作服务从不被绑定）。
             publishState();
+            // 紧接着发能力帧：小部件连接后读 metadata 里的 support_event / LOOP_MODE 决定
+            // 循环按钮与播放列表入口是否可点。等到切歌时才发（fireTrack）已经太晚，
+            // 那时 UI 已按 support_event=0 渲染成置灰且不会再重读。
+            publishMetadata();
             // 会话一建好就把 token 交给原子随身听的协作服务：客户端连接那一刻框架只发一次，
             // 之后再改不会补发，晚一步小部件就拿不到控制器。
             try { VivoMusicBrowserService.onSessionReady(session.getSessionToken()); } catch (Exception ignored) {}
@@ -1292,28 +1320,40 @@ public class PlayerService extends Service {
 
     private void publishMetadata() {
         if (session == null) return;
-        Track t = current();
-        if (t == null) return;
         try {
-            // 与播放页同一口径：匹配到歌词后用原歌名/歌手，否则回落视频标题/UP主（锁屏、蓝牙、车机共用这套元数据）
-            String title = Lyrics.displayName(this, t);
-            String artist = Lyrics.displayArtist(this, t);
-            MediaMetadata.Builder mb = new MediaMetadata.Builder()
-                    .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
-                    .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, artist)
-                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩")
-                    // 原子随身听的私有字段：平台 MediaMetadata 允许自定义 key（只对系统已知 key 做类型校验）
-                    .putLong(VIVO_KEY_LOOP_MODE, (long) vivoLoopMode())
+            MediaMetadata.Builder mb = new MediaMetadata.Builder();
+            Track t = current();
+            if (t != null) {
+                // 与播放页同一口径：匹配到歌词后用原歌名/歌手，否则回落视频标题/UP主（锁屏、蓝牙、车机共用这套元数据）
+                String title = Lyrics.displayName(this, t);
+                String artist = Lyrics.displayArtist(this, t);
+                mb.putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                        .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+                        // 原子随身听列表高亮：小部件把列表项的 MediaItem.mediaId 当作 song.musicId
+                        // （c0: song.setMusicId(mediaItem.mediaId)），再与"当前播放 musicId"比对——
+                        // 后者取自 metadata 的 MEDIA_ID（c3.f9183d）。本项目列表 mediaId 形如
+                        // vivomusicmix_current_list:N，故这里必须填同口径的值，否则当前曲目在
+                        // 播放列表里永远不高亮。
+                        .putString(MediaMetadata.METADATA_KEY_MEDIA_ID,
+                                VivoMusicBrowserService.LIST_CURRENT + ":" + Math.max(0, index))
+                        .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                        .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
+                        .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, artist)
+                        .putString(MediaMetadata.METADATA_KEY_ALBUM, "哔哩哔哩");
+                if (t.durationSec > 0) mb.putLong(MediaMetadata.METADATA_KEY_DURATION, t.durationSec * 1000L);
+                if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
+                    mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, sessionArt);
+                    mb.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, sessionArt);
+                }
+            }
+            // 原子随身听私有字段必须无条件发布，与「有没有正在播放的曲目」无关。
+            // 小部件 MediaMetadataCompat.getLong() 读这三个 key 判定按钮可用：会话刚建立、
+            // 队列还没恢复时若因 current()==null 直接 return，小部件 getMetadata() 拿到 null，
+            // 它的 c3.a（supportEvents）保持默认 0 → 循环按钮 / 播放列表入口全部置灰。
+            // 平台 MediaMetadata 允许自定义 key（只对系统已知 key 做类型校验）。
+            mb.putLong(VIVO_KEY_LOOP_MODE, (long) vivoLoopMode())
                     .putLong(VIVO_KEY_SUPPORT_EVENT, VIVO_SUPPORT_EVENT)
                     .putLong(VIVO_KEY_CAST_STATE, 0L);
-            if (t.durationSec > 0) mb.putLong(MediaMetadata.METADATA_KEY_DURATION, t.durationSec * 1000L);
-            if (sessionArt != null && t.bvid != null && t.bvid.equals(sessionArtBvid)) {
-                mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, sessionArt);
-                mb.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, sessionArt);
-            }
             session.setMetadata(mb.build());
         } catch (Exception ignored) {}
     }
@@ -1337,10 +1377,20 @@ public class PlayerService extends Service {
     /** 循环模式换算：小部件枚举 1=顺序 2=单曲 3=随机，本项目内部 0/1/2。 */
     private int vivoLoopMode() { return getMode() + 1; }
 
-    /** 设置播放模式（0=顺序 1=单曲 2=随机）。 */
+    /** 设置播放模式（0=顺序 1=单曲 2=随机）。
+     *  原子随身听从 metadata 的 LOOP_MODE 读当前模式，所以不管模式是从小部件下发
+     *  （onCustomAction）还是从 App 播放页点按钮（cycleMode）改的，都必须重发会话元数据，
+     *  否则小部件一直停在旧模式、按钮看着像「点了没反应」。 */
     public void setMode(int m) {
         m = ((m % 3) + 3) % 3;
         getSharedPreferences("player", MODE_PRIVATE).edit().putInt("mode", m).apply();
+        publishMetadata();
+        publishState();
+        // 通知 UI 即时刷新模式按钮：原子随身听下发时 Activity 在前台，
+        // 此前只更新会话元数据不通知 Listener，播放页要切走再切回才刷新。
+        for (Listener l : listeners) {
+            try { l.onModeChanged(m); } catch (Exception ignored) {}
+        }
     }
 
     /** 按协议回执错误：key_action + error_code，小部件据此弹「未登录」等提示。 */
