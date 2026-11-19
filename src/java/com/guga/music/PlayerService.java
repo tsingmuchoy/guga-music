@@ -1329,6 +1329,13 @@ public class PlayerService extends Service {
                 String artist = Lyrics.displayArtist(this, t);
                 mb.putString(MediaMetadata.METADATA_KEY_TITLE, title)
                         .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+                        // 原子随身听列表高亮：小部件把列表项的 MediaItem.mediaId 当作 song.musicId
+                        // （c0: song.setMusicId(mediaItem.mediaId)），再与"当前播放 musicId"比对——
+                        // 后者取自 metadata 的 MEDIA_ID（c3.f9183d）。本项目列表 mediaId 形如
+                        // vivomusicmix_current_list:N，故这里必须填同口径的值，否则当前曲目在
+                        // 播放列表里永远不高亮。
+                        .putString(MediaMetadata.METADATA_KEY_MEDIA_ID,
+                                VivoMusicBrowserService.LIST_CURRENT + ":" + Math.max(0, index))
                         .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
                         .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
                         .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, artist)
