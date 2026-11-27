@@ -1,6 +1,7 @@
 package com.guga.music;
 
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -21,8 +22,12 @@ public final class RainbowAmbientDrawable extends Drawable {
 
     public RainbowAmbientDrawable(int[] colors) {
         washColors = colors.clone();
+        float[] hsv = new float[3];
         for (int i = 0; i < washColors.length; i++) {
-            washColors[i] = (washColors[i] & 0x00FFFFFF) | 0x40000000;
+            // 背景透过深色底衬会降饱和；环境光比按钮色带更饱满，避免混成灰。
+            Color.colorToHSV(washColors[i], hsv);
+            hsv[1] = Math.max(0.62f, hsv[1]);
+            washColors[i] = Color.HSVToColor(0x55, hsv);
         }
     }
 
@@ -30,12 +35,12 @@ public final class RainbowAmbientDrawable extends Drawable {
         float w = bounds.width(), h = bounds.height();
         if (w <= 0 || h <= 0) return;
         spectrum = new LinearGradient(bounds.left, bounds.top,
-                bounds.right, bounds.bottom, washColors, null, Shader.TileMode.CLAMP);
+                bounds.left + w * 0.35f, bounds.bottom, washColors, null, Shader.TileMode.CLAMP);
         float radius = Math.max(w, h) * 0.7f;
         coolLight = new RadialGradient(bounds.left + w * 0.9f, bounds.top + h * 0.18f,
-                radius, 0x247ADCEB, 0x007ADCEB, Shader.TileMode.CLAMP);
+                radius, 0x087ADCEB, 0x007ADCEB, Shader.TileMode.CLAMP);
         warmLight = new RadialGradient(bounds.left + w * 0.08f, bounds.top + h * 0.82f,
-                radius, 0x20C4A0F4, 0x00C4A0F4, Shader.TileMode.CLAMP);
+                radius, 0x08C4A0F4, 0x00C4A0F4, Shader.TileMode.CLAMP);
     }
 
     @Override public void draw(Canvas canvas) {
