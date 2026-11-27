@@ -31,7 +31,7 @@ public final class GlassRegressionTest extends Instrumentation {
         Bundle result = new Bundle();
         try {
             onMainChecked(this::testCaptureAndLifecycle);
-            for (String theme : new String[]{"glass", "material"}) captureTheme(theme);
+            for (String theme : new String[]{"glass", "material", "rainbow"}) captureTheme(theme);
             result.putString("stream", "PASS: visibility, exception cleanup, rebind, detach, shader, theme screenshots\n");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable error) {

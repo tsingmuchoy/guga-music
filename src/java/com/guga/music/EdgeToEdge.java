@@ -27,6 +27,9 @@ public class EdgeToEdge {
         View content = activity.findViewById(android.R.id.content);
         if (content instanceof ViewGroup && ((ViewGroup) content).getChildCount() > 0) {
             View root = ((ViewGroup) content).getChildAt(0);
+            if ("rainbow".equals(ThemeUtil.effectiveId(activity))) {
+                root.setBackground(new RainbowAmbientDrawable(ThemeUtil.gradColors(activity)));
+            }
             root.setFitsSystemWindows(true);
             root.requestApplyInsets();
         }

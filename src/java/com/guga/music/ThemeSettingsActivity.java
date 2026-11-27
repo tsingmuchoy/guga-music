@@ -61,7 +61,8 @@ public class ThemeSettingsActivity extends Activity {
             name.setTypeface(null, android.graphics.Typeface.BOLD);
             labels.addView(name);
             TextView detail = new TextView(this);
-            detail.setText(d.id.equals("material") ? "纯色表面 · 简洁轻盈" : "通透表面 · 柔和折光");
+            detail.setText(d.id.equals("material") ? "纯色表面 · 简洁轻盈"
+                    : d.id.equals("rainbow") ? "七色渐变 · 通透折光" : "通透表面 · 柔和折光");
             detail.setTextSize(12);
             detail.setTextColor(ThemeUtil.color(this, R.attr.gTextSec));
             detail.setPadding(0, (int) (4 * getResources().getDisplayMetrics().density), 0, 0);
