@@ -33,6 +33,7 @@
 - 不支持酷狗/波点/QQ音乐等腾讯系平台（无接口 + DRM）
 
 ## 技术备忘
+- 🌈 彩虹桥主题：深靛底色、连续七色环境渐变、柔和七色按钮/进度/歌词强调色；玻璃卡片透出背景色谱，着色器随尺寸变化缓存，无常驻动画（v1.53.2）
 - 登录：passport 二维码 generate/poll → SESSDATA 存本地 SharedPreferences（加密存储可后续加）
 - 接口签名：搜索/播放用 WBI 签名（nav 取 img/sub key，MD5 混淆算法公开可实现）
 - 播放：playurl fnval=16 取 dash.audio[0]，MediaPlayer 带 headers(Referer/UA) 播放
