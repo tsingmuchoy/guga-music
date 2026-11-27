@@ -16,6 +16,8 @@ import android.view.ViewOutlineProvider;
 import android.widget.FrameLayout;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.concurrent.atomic.AtomicReference;
+import android.view.ViewGroup;
 
 /** 无第三方测试依赖；在真实 Android 图形栈上验证采样和生命周期。 */
 public final class GlassRegressionTest extends Instrumentation {
@@ -28,7 +30,7 @@ public final class GlassRegressionTest extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
-            runOnMainSync(this::testCaptureAndLifecycle);
+            onMainChecked(this::testCaptureAndLifecycle);
             for (String theme : new String[]{"glass", "material"}) captureTheme(theme);
             result.putString("stream", "PASS: visibility, exception cleanup, rebind, detach, shader, theme screenshots\n");
             finish(Activity.RESULT_OK, result);
@@ -36,6 +38,23 @@ public final class GlassRegressionTest extends Instrumentation {
             result.putString("stream", "FAIL: " + android.util.Log.getStackTraceString(error));
             finish(Activity.RESULT_CANCELED, result);
         }
+    }
+
+    private void onMainChecked(Runnable action) {
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        runOnMainSync(() -> {
+            try { action.run(); } catch (Throwable error) { failure.set(error); }
+        });
+        if (failure.get() != null) throw new AssertionError("Main-thread check failed", failure.get());
+    }
+
+    private int activeLenses(View view) {
+        int count = view instanceof GlassLensHost && ((GlassLensHost) view).isLensOn() ? 1 : 0;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) count += activeLenses(group.getChildAt(i));
+        }
+        return count;
     }
 
     private void testCaptureAndLifecycle() {
@@ -101,6 +120,11 @@ public final class GlassRegressionTest extends Instrumentation {
             try (FileOutputStream out = new FileOutputStream(new File(directory, id + ".png"))) {
                 screenshot.compress(Bitmap.CompressFormat.PNG, 100, out);
             } finally { screenshot.recycle(); }
+            onMainChecked(() -> {
+                int count = activeLenses(activity.getWindow().getDecorView());
+                boolean expected = Build.VERSION.SDK_INT >= 33 && !"material".equals(id);
+                check(expected ? count > 0 : count == 0, "unexpected live lens count for " + id + ": " + count);
+            });
         } finally { runOnMainSync(activity::finish); waitForIdleSync(); }
     }
 }

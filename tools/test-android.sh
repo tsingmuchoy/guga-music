@@ -16,6 +16,7 @@ find "$OUT/test-classes" -name '*.class' > "$OUT/test-sources.txt"
 adb install -r app-v1.53.0-dev.apk
 adb install -r "$OUT/test-aligned.apk"
 adb shell am instrument -w com.guga.music.tests/com.guga.music.GlassRegressionTest | tee "$OUT/android-test.log"
-grep -q 'PASS: visibility' "$OUT/android-test.log"
 mkdir -p "$OUT/screenshots"
-adb pull /sdcard/Android/data/com.guga.music/files/glass-preview/. "$OUT/screenshots/"
+adb pull /sdcard/Android/data/com.guga.music/files/glass-preview/. "$OUT/screenshots/" || true
+adb logcat -d -t 300 > "$OUT/logcat.txt"
+grep -q 'PASS: visibility' "$OUT/android-test.log"

@@ -50,3 +50,4 @@ jobs:
           path: |
             build-manual/screenshots/
             build-manual/android-test.log
+            build-manual/logcat.txt
