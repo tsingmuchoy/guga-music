@@ -20,6 +20,9 @@
         <item name="gGlassLo">#18FFFFFF</item>
         <item name="gGlow1">#4DFB7299</item>
         <item name="gGlow2">#2656B6F7</item>
+        <item name="gGlowType">1</item>
+        <item name="gGlowRadius1">130%p</item>
+        <item name="gGlowRadius2">120%p</item>
         <item name="gHiLine">#59FFFFFF</item>
         <item name="gRim">#40FFFFFF</item>
         <item name="gBarHi">#F2353331</item>

@@ -16,8 +16,9 @@
 `GlassLensDelegate` 在换底衬、分离视图、软件绘制和渲染失败时保留/恢复原背景、轮廓和高光覆盖层可见性。
 染色只在效果变脏后重建时提交，删除每帧无效的 uniform 更新。
 
-Android 8 模拟器检查发现原有 `bg_ambient` 的百分比径向渐变半径在主题解析时引发页面加载崩溃。
-基础资源改用兼容的 dp 半径，API 33+ 单独保留百分比版本，使新系统继续随容器缩放环境光。
+Android 8 模拟器检查发现原有 `bg_ambient` 在重应用渐变主题色时，框架重读的属性集合缺少非主题属性的径向半径，导致页面加载崩溃。
+基础资源把渐变类型与半径一并纳入主题属性，保留自适应的百分比环境光；API 33+ 保留原资源。
+根因可对照 [Android 8 GradientDrawable 源码的 applyThemeChildElements / updateGradientDrawableGradient](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-8.0.0_r1/graphics/java/android/graphics/drawable/GradientDrawable.java)。
 
 ## 检查
 
