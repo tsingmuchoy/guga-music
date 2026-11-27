@@ -33,6 +33,7 @@ public class LiquidGlassLens {
     private static final String LENS_AGSL =
                         "            uniform shader content;\n" +
             "            uniform float  margin;\n" +
+            "            uniform float  pixelScale;\n" +
             "            uniform float2 viewSize;\n" +
             "            uniform float4 shape1;    // 真实主形状（触摸凸起的尺度用它）\n" +
             "            uniform float4 radii1;\n" +
@@ -101,7 +102,7 @@ public class LiquidGlassLens {
             "                float d = lensSDF(p);\n" +
             "\n" +
             "                // 覆盖率：1.5px 抗锯齿羽化，形状外完全透明\n" +
-            "                float cov = clamp(0.5 - d / 1.5, 0.0, 1.0);\n" +
+            "                float cov = clamp(0.5 - d / max(1.0, pixelScale), 0.0, 1.0);\n" +
             "                if (cov <= 0.004) {\n" +
             "                    return half4(0.0);\n" +
             "                }\n" +
@@ -239,13 +240,17 @@ public class LiquidGlassLens {
             "                // 贴边亮线（中心在边内 1px，半宽 2px）+ 迎光侧辉光：从亮线内侧（边内 3px）起\n" +
             "                // 向内 1.5 次幂衰减，宽度与斜面弱相关、上限默认 6px、小控件按短边收。\n" +
             "                // 辉光不叠在亮线上，两侧亮线峰值相等\n" +
-            "                float bandW = clamp(bevel * 0.3, 2.0, rimBandMax);\n" +
-            "                float glowIn = clamp((-d - 1.0) / 2.0, 0.0, 1.0);\n" +
-            "                float glow = glowIn * pow(clamp(1.0 - (-d - 3.0) / bandW, 0.0, 1.0), 1.5) * cov;\n" +
-            "                float hair = clamp(1.0 - abs(d + 1.0) / 2.0, 0.0, 1.0) * cov;\n" +
+            "                float inner = -d / pixelScale;\n" +
+            "                float bandW = max(1.0, min(bevel * 0.3, rimBandMax) / pixelScale);\n" +
+            "                float glowIn = smoothstep(0.6, 1.8, inner);\n" +
+            "                float glow = glowIn * pow(clamp(1.0 - (inner - 1.8) / bandW, 0.0, 1.0), 1.5);\n" +
+            "                float hair = 1.0 - smoothstep(0.0, 0.85, abs(inner - 0.65));\n" +
             "                float spec = (hair * 0.70 * (lobeF + lobeB) + glow * 0.10 * lobeF)\n" +
             "                             * specStrength * (1.0 - 0.35 * press);\n" +
             "                col += float3(spec);\n" +
+            "                // 轻微表面反射建立暗部层次；中心保持通透，边缘渐强。\n" +
+            "                float fresnel = 0.018 + 0.035 * edge * edge;\n" +
+            "                col = mix(col, float3(0.86, 0.93, 1.0), fresnel);\n" +
             "\n" +
             "                col = clamp(col, float3(0.0), float3(1.0));\n" +
             "                return half4(half3(col * cov), half(cov));\n" +
@@ -271,6 +276,14 @@ public class LiquidGlassLens {
     private RuntimeShader shader;
     private boolean shaderBroken;
     private int tintArgb;
+    private int surfaceColor;
+
+    public void setSurfaceColor(int argb) {
+        if (surfaceColor != argb) {
+            surfaceColor = argb;
+            effectDirty = true;
+        }
+    }
 
     /** 选中态芯片等保留底色时用（straight-alpha ARGB，a=0 关闭） */
     public void setTint(int argb) {
@@ -393,15 +406,7 @@ public class LiquidGlassLens {
         // 录制区域向四周外扩 margin：模糊在边缘处能采到真实内容而非透明黑
         renderNode.setPosition(-marginPx, -marginPx, width + marginPx, height + marginPx);
         recordBackdrop(backdropSource, glassView, offsetX, offsetY, marginPx, recW, recH);
-        // v1.52.5：染色 uniform 必须每帧刷新——之前只在 buildEffect（尺寸变化重建效果时）设一次，
-        // 而全中文芯片粗细切换不改变字宽（CJK 全宽字）、尺寸不变就不重建，染色永远停在首次值；
-        // “B站收藏夹”含拉丁字母 B、粗细会改变宽度才会重建——这正是 B站那颗会变、本地/排序/统计那几颗不会变的原因。
-        // RuntimeShader 的 uniform 在渲染时读取，每帧设一次即可跟上 setTint。
-        sh.setFloatUniform("tintColor",
-                android.graphics.Color.red(tintArgb) / 255f,
-                android.graphics.Color.green(tintArgb) / 255f,
-                android.graphics.Color.blue(tintArgb) / 255f,
-                android.graphics.Color.alpha(tintArgb) / 255f);
+        // uniform 在效果重建时提交；setTint 会置脏，避免每帧重复更新无效快照。
         // 形状覆盖率由着色器输出（形状外 alpha=0），无需 clipPath
         canvas.drawRenderNode(renderNode);
         return true;
@@ -429,6 +434,7 @@ public class LiquidGlassLens {
         // 圆角不超出半高：小芯片自动成药丸全圆角，大卡片保持设定圆角
         float corner = Math.min(cornerPx, Math.min(width, height) / 2f);
         sh.setFloatUniform("margin", (float) marginPx);
+        sh.setFloatUniform("pixelScale", Math.max(0.5f, rimBandMaxPx / 6f));
         sh.setFloatUniform("viewSize", (float) width, (float) height);
         sh.setFloatUniform("shape1", cx, cy, hw, hh);
         sh.setFloatUniform("radii1", corner, corner, corner, corner);
@@ -439,8 +445,9 @@ public class LiquidGlassLens {
         sh.setFloatUniform("shape2", 0f, 0f, 0f, 0f);
         sh.setFloatUniform("radius2", 0f);
         sh.setFloatUniform("blendK", 0f);
-        sh.setFloatUniform("bevel", bevelPx);
-        sh.setFloatUniform("refractPx", refractPx);
+        float shortSide = Math.min(width, height);
+        sh.setFloatUniform("bevel", Math.min(bevelPx, shortSide * 0.22f));
+        sh.setFloatUniform("refractPx", Math.min(refractPx, shortSide * 0.12f));
         sh.setFloatUniform("falloff", falloff);
         sh.setFloatUniform("refractDir", -1f);
         sh.setFloatUniform("sampleLo", sampleLoX, sampleLoY);
@@ -456,7 +463,10 @@ public class LiquidGlassLens {
                 android.graphics.Color.blue(tintArgb) / 255f,
                 android.graphics.Color.alpha(tintArgb) / 255f);
         sh.setFloatUniform("adaptiveTint", 0f);
-        sh.setFloatUniform("glassTint", 0f, 0f, 0f, 0f);
+        sh.setFloatUniform("glassTint",
+                android.graphics.Color.red(surfaceColor) / 255f,
+                android.graphics.Color.green(surfaceColor) / 255f,
+                android.graphics.Color.blue(surfaceColor) / 255f, 0.12f);
         sh.setFloatUniform("dimAmount", 0f);
         sh.setFloatUniform("satFactor", sat);
         sh.setFloatUniform("press", 0f);
@@ -475,5 +485,6 @@ public class LiquidGlassLens {
     public void release() {
         renderNode.discardDisplayList();
         shader = null;
+        effectDirty = true;
     }
 }

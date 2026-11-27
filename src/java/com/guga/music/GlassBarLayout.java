@@ -61,6 +61,6 @@ public class GlassBarLayout extends FrameLayout implements GlassLensHost {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        delegate.release();
+        delegate.release(this);
     }
 }

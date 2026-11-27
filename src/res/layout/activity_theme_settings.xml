@@ -2,6 +2,8 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:clipToPadding="false"
     android:background="@drawable/bg_ambient">
 
     <LinearLayout
@@ -14,10 +16,21 @@
             android:id="@+id/btnBack"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:gravity="center_vertical"
             android:text="← 主题配色"
             android:textColor="?attr/gTextPri"
             android:textSize="20sp"
             android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:text="选一种颜色，让音乐有自己的光。"
+            android:textColor="?attr/gTextSec"
+            android:textSize="14sp" />
 
         <LinearLayout
             android:id="@+id/llThemes"

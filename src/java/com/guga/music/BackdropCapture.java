@@ -38,6 +38,9 @@ public class BackdropCapture {
     /** 进行中的采样层数（只在主线程改）。> 0 说明当前绘制发生在某块玻璃的采样里 */
     private static int depth = 0;
 
+    /** 采样期间不允许另一个透镜递归录制（包括不同容器里的玻璃）。 */
+    public static boolean isCapturing() { return depth > 0; }
+
     /** 当前正被某次采样藏起的视图（跨实例共享，避免嵌套采样提前恢复外层的隐藏） */
     private static final Set<View> hiddenViews =
             Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
@@ -52,6 +55,7 @@ public class BackdropCapture {
      * @param canvas 画布原点需已对齐 source 左上角
      */
     public void draw(Canvas canvas, View source, View glass) {
+        if (source == glass) return;
         drawLevel(canvas, source, glass);
     }
 
@@ -74,8 +78,11 @@ public class BackdropCapture {
         if (clip) canvas.clipRect(0f, 0f, (float) host.getWidth(), (float) host.getHeight());
         canvas.translate(dx, dy);
         if (clip) canvas.clipRect(0f, 0f, (float) branch.getWidth(), (float) branch.getHeight());
-        drawLevel(canvas, branch, glass);
-        canvas.restoreToCount(save);
+        try {
+            drawLevel(canvas, branch, glass);
+        } finally {
+            canvas.restoreToCount(save);
+        }
     }
 
     /** 画 host 自身，期间把 hidden 与同级玻璃置为 INVISIBLE 让 dispatchDraw 跳过它们 */
@@ -104,7 +111,8 @@ public class BackdropCapture {
 
     /** 藏起单个视图；已在共享集合里的（外层已藏）不再重复登记 */
     private void hideView(View v, ArrayList<View> hiddenHere) {
-        if (v == null) return;
+        // GONE/INVISIBLE 控件不参与采样，也不能在 finally 中被恢复为 VISIBLE。
+        if (v == null || v.getVisibility() != View.VISIBLE) return;
         if (hiddenViews.add(v)) {
             v.setTransitionVisibility(View.INVISIBLE);
             hiddenHere.add(v);

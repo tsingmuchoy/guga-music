@@ -39,7 +39,7 @@ public class ThemeUtil {
                     new int[]{0xFFFF5E5E, 0xFFFFB03A, 0xFFF7E74B, 0xFF3DFFA2, 0xFF3FA9FF, 0xFFB26BFF}),
             new Def("material", "Material You", R.style.ThemeMaterial, 0xFF0D0D12, 0xFF1E1E26, 0xFFA8B6FF,
                     new int[]{0xFFA8B6FF, 0xFFD3BFFF}),
-            new Def("glass", "glass", R.style.ThemeGlass, 0xFF0A0E16, 0xFF182238, 0xFF7DD3FC,
+            new Def("glass", "液态玻璃", R.style.ThemeGlass, 0xFF0A0E16, 0xFF182238, 0xFF7DD3FC,
                     new int[]{0xFF67E8F9, 0xFFA78BFA}),
     };
 

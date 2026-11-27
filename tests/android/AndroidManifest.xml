@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.guga.music.tests">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+    <application android:label="Apollo regression checks" />
+    <instrumentation android:name="com.guga.music.GlassRegressionTest"
+        android:targetPackage="com.guga.music" />
+</manifest>

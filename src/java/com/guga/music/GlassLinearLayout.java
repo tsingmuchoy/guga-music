@@ -50,6 +50,6 @@ public class GlassLinearLayout extends LinearLayout implements GlassLensHost {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        delegate.release();
+        delegate.release(this);
     }
 }
