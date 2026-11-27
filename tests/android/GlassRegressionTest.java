@@ -98,6 +98,8 @@ public final class GlassRegressionTest extends Instrumentation {
                 check(host.getBackground() == background, "rebind lost original background");
                 check(host.getOutlineProvider() == outline, "outline was not restored");
                 check(rim.getVisibility() == View.INVISIBLE, "rim visibility was not restored");
+                delegate.setEnabled(host, true, host);
+                check(!delegate.isOn() && host.getBackground() == background, "self backdrop must use fallback");
                 delegate.setEnabled(host, true, root);
                 delegate.draw(new Canvas(bitmap), host);
                 check(!delegate.isOn() && host.getBackground() == background, "software fallback lost background");

@@ -57,7 +57,7 @@ public class GlassLensDelegate {
     }
 
     public void setEnabled(View host, boolean enable, View backdrop) {
-        if (enable && Build.VERSION.SDK_INT >= 33 && backdrop != null) {
+        if (enable && Build.VERSION.SDK_INT >= 33 && backdrop != null && backdrop != host) {
             if (on && backdropSource == backdrop) return; // 幂等：重复绑定不再重建
             float d = host.getResources().getDisplayMetrics().density;
             LiquidGlassLens l = new LiquidGlassLens(
