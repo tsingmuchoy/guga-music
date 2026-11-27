@@ -1,7 +1,6 @@
 package com.guga.music;
 
 import android.app.Activity;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -34,39 +33,44 @@ public class ThemeSettingsActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(pad, pad, pad, pad);
             row.setBackgroundResource(R.drawable.bg_card);
+            row.setFocusable(true);
+            row.setMinimumHeight((int) (88 * getResources().getDisplayMetrics().density));
+            row.setContentDescription(d.name + (d.id.equals(cur) ? "，使用中" : "，点按切换"));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             lp.topMargin = (int) (10 * getResources().getDisplayMetrics().density);
             row.setLayoutParams(lp);
 
-            // 三个预览色点：底色 / 表面 / 点缀
-            int[] dots = {d.bg, d.surface, d.accent};
-            for (int c : dots) {
-                View dot = new View(this);
-                int sz = (int) (22 * getResources().getDisplayMetrics().density);
-                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(sz, sz);
-                dlp.rightMargin = (int) (6 * getResources().getDisplayMetrics().density);
-                dot.setLayoutParams(dlp);
-                GradientDrawable g = new GradientDrawable();
-                g.setShape(GradientDrawable.OVAL);
-                g.setColor(c);
-                g.setStroke(1, 0x3AFFFFFF);
-                dot.setBackground(g);
-                row.addView(dot);
-            }
+            View preview = new ThemePreviewView(this, d);
+            preview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            row.addView(preview, new LinearLayout.LayoutParams(
+                    (int) (64 * getResources().getDisplayMetrics().density),
+                    (int) (56 * getResources().getDisplayMetrics().density)));
+
+            LinearLayout labels = new LinearLayout(this);
+            labels.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+            labelParams.leftMargin = pad;
+            labels.setLayoutParams(labelParams);
 
             TextView name = new TextView(this);
             name.setText(d.name);
             name.setTextSize(15);
             name.setTextColor(ThemeUtil.color(this, R.attr.gTextPri));
-            LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-            nlp.leftMargin = (int) (6 * getResources().getDisplayMetrics().density);
-            name.setLayoutParams(nlp);
-            row.addView(name);
+            name.setTypeface(null, android.graphics.Typeface.BOLD);
+            labels.addView(name);
+            TextView detail = new TextView(this);
+            detail.setText(d.id.equals("material") ? "纯色表面 · 简洁轻盈" : "通透表面 · 柔和折光");
+            detail.setTextSize(12);
+            detail.setTextColor(ThemeUtil.color(this, R.attr.gTextSec));
+            detail.setPadding(0, (int) (4 * getResources().getDisplayMetrics().density), 0, 0);
+            labels.addView(detail);
+            row.addView(labels);
 
             if (d.id.equals(cur)) {
                 TextView check = new TextView(this);
-                check.setText("✓ 使用中");
+                check.setText("✓");
                 check.setTextSize(13);
                 check.setTextColor(ThemeUtil.color(this, R.attr.gAccent));
                 row.addView(check);

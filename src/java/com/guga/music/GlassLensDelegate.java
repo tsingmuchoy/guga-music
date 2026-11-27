@@ -26,6 +26,8 @@ public class GlassLensDelegate {
     private float cornerDp;
     private int tintArgb;
     private View rimView;
+    private int savedRimVisibility;
+    private ViewOutlineProvider savedOutlineProvider;
 
     public GlassLensDelegate(float cornerDp) {
         this.cornerDp = cornerDp;
@@ -55,29 +57,34 @@ public class GlassLensDelegate {
     }
 
     public void setEnabled(View host, boolean enable, View backdrop) {
-        if (enable && Build.VERSION.SDK_INT >= 33 && backdrop != null) {
+        if (enable && Build.VERSION.SDK_INT >= 33 && backdrop != null && backdrop != host) {
             if (on && backdropSource == backdrop) return; // 幂等：重复绑定不再重建
             float d = host.getResources().getDisplayMetrics().density;
             LiquidGlassLens l = new LiquidGlassLens(
                     cornerDp * d, // 圆角（着色器内还会钳制到半高以内，药丸芯片自动成全圆角）
                     8f * d,       // 斜面厚度
-                    5f * d,       // 折射量
+                    4f * d,       // 折射量：边缘保留弯折，减少文字重影
                     2.0f,         // 逆幂衰减：弯折压在最外几个像素
-                    0.5f,         // 色散
-                    6f * d,       // 底衬模糊
-                    1.0f,         // 高光强度
+                    0.16f,        // 克制的色散，避免彩色硬边
+                    4f * d,       // 更清透的底衬
+                    0.72f,        // 高光强度
                     -0.5f, -0.866f, // 光源方向（左上）
                     6f * d,       // 辉光带宽上限
-                    1.15f);       // 饱和度（轻微提 vibrancy）
+                    1.08f);       // 保留主题色，避免光晕过饱和
             l.setTint(tintArgb);
+            l.setSurfaceColor(ThemeUtil.color(host.getContext(), R.attr.gSurface));
             if (!l.prepare()) {
-                on = false;
+                revert(host);
                 return;
             }
             if (lens != null) lens.release();
             lens = l;
             backdropSource = backdrop;
-            savedBackground = host.getBackground();
+            if (!on) {
+                savedBackground = host.getBackground();
+                savedOutlineProvider = host.getOutlineProvider();
+                if (rimView != null) savedRimVisibility = rimView.getVisibility();
+            }
             host.setBackground(null);
             final float radius = cornerDp * d;
             host.setOutlineProvider(new ViewOutlineProvider() {
@@ -98,7 +105,11 @@ public class GlassLensDelegate {
 
     /** 绘制透镜；返回 true 表示已画，调用方继续画内容；false 则走回退 */
     public boolean draw(Canvas canvas, View host) {
-        if (!on || lens == null || !canvas.isHardwareAccelerated()) return false;
+        if (!on || lens == null || BackdropCapture.isCapturing()) return false;
+        if (!canvas.isHardwareAccelerated()) {
+            revert(host);
+            return false;
+        }
         float d = host.getResources().getDisplayMetrics().density;
         try {
             if (lens.draw(canvas, host, backdropSource, (int) (16f * d + 0.5f))) return true;
@@ -119,20 +130,16 @@ public class GlassLensDelegate {
             lens = null;
         }
         backdropSource = null;
-        if (savedBackground != null) {
-            host.setBackground(savedBackground);
-            savedBackground = null;
-        }
-        host.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
-        if (rimView != null) rimView.setVisibility(View.VISIBLE);
+        host.setBackground(savedBackground);
+        savedBackground = null;
+        host.setOutlineProvider(savedOutlineProvider);
+        savedOutlineProvider = null;
+        if (rimView != null) rimView.setVisibility(savedRimVisibility);
         host.invalidate();
     }
 
-    public void release() {
-        if (lens != null) {
-            lens.release();
-            lens = null;
-        }
-        on = false;
+    public void release(View host) {
+        // detach 后 View 可能被复用；恢复背景，避免重绑定保存到 null 背景。
+        revert(host);
     }
 }

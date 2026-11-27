@@ -13,6 +13,9 @@
     <attr name="gGlassLo" format="color" />
     <attr name="gGlow1" format="color" />
     <attr name="gGlow2" format="color" />
+    <attr name="gGlowType" format="integer" />
+    <attr name="gGlowRadius1" format="fraction" />
+    <attr name="gGlowRadius2" format="fraction" />
     <attr name="gHiLine" format="color" />
     <attr name="gRim" format="color" />
     <attr name="gBarHi" format="color" />

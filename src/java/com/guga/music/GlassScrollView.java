@@ -44,6 +44,6 @@ public class GlassScrollView extends ScrollView implements GlassLensHost {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        delegate.release();
+        delegate.release(this);
     }
 }

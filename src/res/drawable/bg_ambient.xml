@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 8 重应用渐变主题色时，只会重读主题属性。
+         类型与半径也走主题属性，避免重读时找不到必需的径向半径。 -->
     <item>
         <shape android:shape="rectangle">
             <solid android:color="?attr/gBg" />
@@ -7,15 +9,15 @@
     </item>
     <item>
         <shape android:shape="rectangle">
-            <gradient android:type="radial" android:centerX="0.85" android:centerY="0.0"
-                android:gradientRadius="130%p"
+            <gradient android:type="?attr/gGlowType" android:centerX="0.85" android:centerY="0.0"
+                android:gradientRadius="?attr/gGlowRadius1"
                 android:startColor="?attr/gGlow1" android:endColor="#00000000" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <gradient android:type="radial" android:centerX="0.05" android:centerY="0.95"
-                android:gradientRadius="120%p"
+            <gradient android:type="?attr/gGlowType" android:centerX="0.05" android:centerY="0.95"
+                android:gradientRadius="?attr/gGlowRadius2"
                 android:startColor="?attr/gGlow2" android:endColor="#00000000" />
         </shape>
     </item>

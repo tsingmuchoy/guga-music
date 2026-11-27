@@ -50,6 +50,6 @@ public class GlassTextView extends TextView implements GlassLensHost {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        delegate.release();
+        delegate.release(this);
     }
 }

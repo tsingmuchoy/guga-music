@@ -46,6 +46,6 @@ public class GlassEditText extends EditText implements GlassLensHost {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        delegate.release();
+        delegate.release(this);
     }
 }
