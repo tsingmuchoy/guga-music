@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 旧系统 applyTheme 不接受百分比径向半径，会在 inflate 时崩溃。
+         API 33+ 的 drawable-v33 保留随容器缩放的百分比版本。 -->
     <item>
         <shape android:shape="rectangle">
             <solid android:color="?attr/gBg" />
@@ -8,14 +10,14 @@
     <item>
         <shape android:shape="rectangle">
             <gradient android:type="radial" android:centerX="0.85" android:centerY="0.0"
-                android:gradientRadius="130%p"
+                android:gradientRadius="520dp"
                 android:startColor="?attr/gGlow1" android:endColor="#00000000" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
             <gradient android:type="radial" android:centerX="0.05" android:centerY="0.95"
-                android:gradientRadius="120%p"
+                android:gradientRadius="480dp"
                 android:startColor="?attr/gGlow2" android:endColor="#00000000" />
         </shape>
     </item>

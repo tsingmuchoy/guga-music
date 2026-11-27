@@ -16,6 +16,9 @@
 `GlassLensDelegate` 在换底衬、分离视图、软件绘制和渲染失败时保留/恢复原背景、轮廓和高光覆盖层可见性。
 染色只在效果变脏后重建时提交，删除每帧无效的 uniform 更新。
 
+Android 8 模拟器检查发现原有 `bg_ambient` 的百分比径向渐变半径在主题解析时引发页面加载崩溃。
+基础资源改用兼容的 dp 半径，API 33+ 单独保留百分比版本，使新系统继续随容器缩放环境光。
+
 ## 检查
 
 GitHub Actions 的 `Android build and glass checks` 工作流执行资源编译、Java 编译、DEX 和 APK 打包，并在 Android 8.0 / Android 13 模拟器运行无第三方依赖的 instrumentation：
