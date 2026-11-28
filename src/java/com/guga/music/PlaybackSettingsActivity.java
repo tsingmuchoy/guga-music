@@ -353,11 +353,16 @@ public class PlaybackSettingsActivity extends Activity {
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
         for (int tier = 0; tier < PlayerService.QUALITY_NAMES.length; tier++) {
             final int t = tier;
-            LinearLayout row = new LinearLayout(this);
+            // 与下方卡片同款真液态玻璃：GlassLinearLayout（24dp 圆角，与 bg_card 一致），
+            // 透镜由 GlassTheme.bindActivity 统一开启；选中态只靠「✓ 使用中」亮字表示，不给药丸染色。
+            GlassLinearLayout row = new GlassLinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(pad, pad, pad, pad);
             row.setBackgroundResource(R.drawable.bg_card);
+            android.util.TypedValue tv = new android.util.TypedValue();
+            getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
+            row.setForeground(getDrawable(tv.resourceId));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             lp.topMargin = (int) (10 * getResources().getDisplayMetrics().density);
@@ -394,6 +399,9 @@ public class PlaybackSettingsActivity extends Activity {
             });
             box.addView(row);
         }
+        // 行是动态生成的：onCreate 里 bindActivity 跑在本方法之前、点选后又会重建，
+        // 必须在这里补绑一次透镜；已绑过的卡片幂等跳过，非玻璃主题 / API 33 以下直接 no-op。
+        GlassTheme.bindActivity(this);
     }
 
     @Override
